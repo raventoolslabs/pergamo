@@ -1,8 +1,8 @@
 node_modules
+dist
 test
 data
 .env
 .env.example
 .gitignore
 jest.config.js
-package-lock.json

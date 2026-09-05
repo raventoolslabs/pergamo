@@ -14,11 +14,11 @@ describe('Organization Tests', () => {
   let token;
 
   beforeAll(async () => {
+    server = await app(0);
     api = axios.create({
-      baseURL: `http://localhost:${Config.port}`,
+      baseURL: `http://localhost:${server.address().port}`,
       validateStatus: () => { return true; }
     });
-    server = await app();
   });
 
   afterAll(async() => {

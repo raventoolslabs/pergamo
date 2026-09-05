@@ -1,6 +1,7 @@
 
 import sequelize, { QueryTypes } from "../utils/db";
 import JWTUtils from '../utils/jwt';
+import { timingSafeEqualStr } from '../utils/hash';
 import Config from '../config';
 import { ValidationError, StatusCodes } from "../middleware/error.middleware";
 import owasp from 'owasp-password-strength-test';
@@ -13,20 +14,32 @@ owasp.config({
   minOptionalTestsToPass : 4,
 });
 
+const validatePasswordStrength = (password:string, req:any) => {
+
+  const testPassword = owasp.test(password);
+
+  if(testPassword.errors && testPassword.errors.length > 0) throw new ValidationError(StatusCodes.BAD_REQUEST,
+    'INVALID_PASSWORD', testPassword.errors[0], req);
+}
+
 const login = async (req, res, next) => {
   
   try {
 
     const { body } = req;
 
-    if(!body?.name && !body?.password) throw new ValidationError(StatusCodes.BAD_REQUEST, 
+    if(!body?.name || !body?.password) throw new ValidationError(StatusCodes.BAD_REQUEST,
       'INCORRECT_LOGIN', 'Incorrect Login', req);
-  
+
     const { name, password } = req.body;
 
     let payload:any = { name };
-    
-    if(name === Config.user_master && password === Config.password_master) {
+
+    const isMaster = !!Config.user_master && !!Config.password_master &&
+      timingSafeEqualStr(name, Config.user_master) &&
+      timingSafeEqualStr(password, Config.password_master);
+
+    if(isMaster) {
 
       payload.master = true;
 
@@ -71,6 +84,8 @@ const create = async (req, res, next) => {
     const { name, password } = req.body;
     const id = req.body.id;
 
+    validatePasswordStrength(password, req);
+
     let result:any;
 
     if(id) {
@@ -113,10 +128,7 @@ const changePassword = async (organization:string, req:any) => {
 
   const { password } = body;
 
-  const testPassword = owasp.test(password);
-
-  if(testPassword.errors && testPassword.errors.length > 0) throw new ValidationError(StatusCodes.BAD_REQUEST, 
-    'INVALID_PASSWORD', testPassword.errors[0], req);
+  validatePasswordStrength(password, req);
 
   const result:any = (await sequelize.query(
     `UPDATE pergamo.organization 
