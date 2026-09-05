@@ -8,6 +8,19 @@ export const sha256 = async(str:string ) => {
   return hash.digest('hex');
 }
 
+/**
+ * Compara dos cadenas en tiempo constante. Ambas se reducen antes a un digest
+ * de longitud fija para no filtrar la longitud del secreto y para que
+ * timingSafeEqual no falle con entradas de distinto tamaño.
+ */
+export const timingSafeEqualStr = (a:string, b:string) => {
+
+  const digestA = crypto.createHash('sha256').update(String(a)).digest();
+  const digestB = crypto.createHash('sha256').update(String(b)).digest();
+
+  return crypto.timingSafeEqual(digestA, digestB);
+}
+
 export const sha256File = async(filePath:string ) => {
 
   return new Promise((resolve, reject) => {

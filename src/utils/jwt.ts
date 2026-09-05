@@ -9,7 +9,10 @@ const privateKey = fs.readFileSync(path.join(Config.path_base, '.key', 'private-
 const publicKey = fs.readFileSync(path.join(Config.path_base, '.key', 'public-key.pem'), 'utf8');
 
 const generateToken = (payload) => {
-  return jwt.sign(payload, privateKey, { algorithm: 'RS256' });
+  return jwt.sign(payload, privateKey, {
+    algorithm: 'RS256',
+    expiresIn: Config.jwt_expires_in
+  });
 };
 
 const verifyToken = async (token) => {

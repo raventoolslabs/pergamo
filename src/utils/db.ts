@@ -14,6 +14,14 @@ const configDatabase:any = {
   define: {
     timestamps: false,
   },
+  // Explicito en lugar de heredar los valores por defecto de Sequelize, para
+  // que el dimensionamiento sea una decision visible y ajustable.
+  pool: {
+    max: process.env.DB_POOL_MAX ? Number.parseInt(process.env.DB_POOL_MAX) : 10,
+    min: process.env.DB_POOL_MIN ? Number.parseInt(process.env.DB_POOL_MIN) : 0,
+    acquire: 35000,
+    idle: 10000
+  },
   dialectOptions: {
     dialectModule: pg,
     connectTimeout: 35000,

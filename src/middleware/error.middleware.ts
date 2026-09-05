@@ -30,6 +30,22 @@ const errorHandler = (err, req, res, next) => {
         error: err.message
       });
 
+    } else if(err.name === 'MulterError') {
+
+      // Errores de subida (tamano excedido, campo inesperado...): son fallos de
+      // peticion, no del servidor, y no deben acabar en el 500 generico.
+      const statusCode = err.code === 'LIMIT_FILE_SIZE' ?
+        StatusCodes.REQUEST_TOO_LONG : StatusCodes.BAD_REQUEST;
+
+      log.warn(`${req.method} ${req.originalUrl} - ${req.id} | Error(${err.code}): ${err.message}`);
+
+      res.status(statusCode)
+      .set('Content-Type', 'application/json')
+      .send({
+        statusCode,
+        error: err.code === 'LIMIT_FILE_SIZE' ? 'File too large' : err.message
+      });
+
     } else {
       log.error(`${req.method} ${req.originalUrl} - ${req.id} | ${err}`);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR)

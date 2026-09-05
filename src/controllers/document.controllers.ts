@@ -8,6 +8,8 @@ import log from '../utils/log';
 import Config from "../config";
 import antivirus from "../utils/antivirus";
 import FilesUtils from "../utils/files";
+import { verifyMimetype } from "../utils/filetype";
+import { metadataValueSchema } from "../utils/validation";
 import { sha256File } from "../utils/hash";
 import sequelize, { QueryTypes } from "../utils/db";
 import Document from "../models/document.models";
@@ -32,6 +34,13 @@ const upload = async (req, res, next) => {
 
     if(!Config.valid_mimetype.includes(file.mimetype)) throw new ValidationError(StatusCodes.BAD_REQUEST,
       'INVALID_MIMETYPE', `Invalid mimetype "${file.mimetype}"`, req);
+
+    const fileType = await verifyMimetype(file.path, file.mimetype);
+
+    if(fileType.verifiable && !fileType.matches) throw new ValidationError(StatusCodes.BAD_REQUEST,
+      'INVALID_MIMETYPE', `File content does not match the declared mimetype "${file.mimetype}"`, req);
+
+    if(!fileType.verifiable) log.warn(`${req.method} ${req.originalUrl} - ${req.id} | No content signature available for mimetype "${file.mimetype}"`);
 
     const metadata = {
       name: path.parse(file.originalname).name,
@@ -144,8 +153,13 @@ const modifyFile = async (req, res, next) => {
     }
     const info = await getInfo(req);
 
-    if(file.mimetype !== info.metadata.mimetype) 
+    if(file.mimetype !== info.metadata.mimetype)
       throw new ValidationError(StatusCodes.BAD_REQUEST, 'INVALID_MIMETYPE', 'Invalid mimetype', req);
+
+    const fileType = await verifyMimetype(file.path, file.mimetype);
+
+    if(fileType.verifiable && !fileType.matches) throw new ValidationError(StatusCodes.BAD_REQUEST,
+      'INVALID_MIMETYPE', `File content does not match the declared mimetype "${file.mimetype}"`, req);
 
     const metadata = info.metadata;
     metadata.name = path.parse(file.originalname).name;
@@ -154,29 +168,47 @@ const modifyFile = async (req, res, next) => {
     metadata.extension = mime.extension(file.mimetype);
     metadata.hash = await sha256File(file.path);
 
-    const result = await sequelize.query(
-      `UPDATE pergamo.document 
-      SET metadata = :metadata ,modification_date = CURRENT_TIMESTAMP 
-      WHERE organization = :organization AND id = :id RETURNING *;`, {
-      replacements: { metadata: JSON.stringify(metadata), organization, id },
-      type: QueryTypes.INSERT
-    });
+    // La actualizacion toca dos almacenes (base de datos y disco). Se confirma
+    // en base de datos solo despues de que el fichero este en su sitio, de modo
+    // que un fallo al escribir en disco no deje metadatos describiendo un
+    // contenido que no existe.
+    const transaction = await sequelize.transaction();
+    let document:Document;
 
-    const document:Document = result[0][0];
+    try {
+
+      const result = await sequelize.query(
+        `UPDATE pergamo.document
+        SET metadata = :metadata ,modification_date = CURRENT_TIMESTAMP
+        WHERE organization = :organization AND id = :id RETURNING *;`, {
+        replacements: { metadata: JSON.stringify(metadata), organization, id },
+        type: QueryTypes.INSERT,
+        transaction
+      });
+
+      document = result[0][0];
+
+      const filePath = path.join(Config.path_base, organization, document.path);
+
+      if(Config.max_version_file > 1) await createVersion(id, filePath);
+
+      await FilesUtils.mvAsync(req.file.path, filePath);
+
+      await transaction.commit();
+
+    } catch(errorUpdate) {
+      await transaction.rollback();
+      throw errorUpdate;
+    }
 
     log.debug(`${req.method} ${req.originalUrl} - ${req.id} | Document: ${JSON.stringify(document)}`);
-
-    const filePath = path.join(Config.path_base, organization, document.path);
-
-    if(Config.max_version_file > 1) await createVersion(id, filePath);
-
-    await FilesUtils.mvAsync(req.file.path, filePath);
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
       .send(document.metadata);
 
   } catch (error) {
+    if(req?.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     next(error);
   }
 };
@@ -244,7 +276,15 @@ const modifyMetadata = async (req, res, next) => {
     const auxMetadata = req.body;
 
     Object.keys(auxMetadata).forEach((key) => {
-      if(Config.valid_metadata_modify.includes(key)) metadata[key] = auxMetadata [key];
+
+      if(!Config.valid_metadata_modify.includes(key)) return;
+
+      const value = metadataValueSchema.safeParse(auxMetadata[key]);
+
+      if(!value.success) throw new ValidationError(StatusCodes.BAD_REQUEST,
+        'INVALID_METADATA', `Invalid value for metadata field "${key}"`, req);
+
+      metadata[key] = auxMetadata[key];
     });
 
     const result = await sequelize.query(
@@ -322,10 +362,14 @@ const remove = async (req, res, next) => {
     const info:any = result[0];
 
     if(Config.remove_file_disk) {
-      FilesUtils.rmdir(
-        path.join(Config.path_base, organization), 
-        path.dirname(path.join(Config.path_base, organization, info.path)))
-    } 
+      try {
+        await FilesUtils.rmdir(
+          path.join(Config.path_base, organization),
+          path.dirname(path.join(Config.path_base, organization, info.path)))
+      } catch(errorFile:any) {
+        log.warn(`${req.method} ${req.originalUrl} - ${req.id} | Document ${id} removed from database, but file removal failed: ${errorFile.message}`);
+      }
+    }
     
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
