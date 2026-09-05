@@ -3,7 +3,10 @@ import Middleware from '../middleware';
 import Config from '../config';
 import * as Controllers from '../controllers/document.controllers';
 
-const upload = multer({ dest: Config.tmp_base });
+const upload = multer({
+  dest: Config.tmp_base,
+  limits: { fileSize: Config.max_file_size }
+});
 const router = require('express').Router();
 
 router.post('/', Middleware.auth, upload.single('document'), Controllers.upload);

@@ -16,12 +16,12 @@ describe('Document Tests', () => {
   let id;
 
   beforeAll(async () => {
+    server = await app(0);
+
     api = axios.create({
-      baseURL: `http://localhost:${Config.port}`,
+      baseURL: `http://localhost:${server.address().port}`,
       validateStatus: () => { return true; }
     });
-
-    server = await app();
 
     const response = await api.post(`/organization/login`, {
       name: 'pergamo',

@@ -1,7 +1,8 @@
-export default interface Document {
+export default interface Organization {
   id: string;
   creation_date: Date;
   modification_date: Date;
-  path: string,
-  metadata:any
+  discharge_date?: Date;
+  name: string;
+  password?: string;
 }
