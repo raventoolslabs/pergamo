@@ -45,13 +45,18 @@
     "typescript": "^4.9.5"
   },
   "scripts": {
-    "build": "tsc && node -e \"const fs=require('fs');fs.copyFileSync('src/config/init.sql','dist/config/init.sql');fs.cpSync('src/migrations','dist/migrations',{recursive:true})\"",
+    "build": "npm run build:api && npm run build:web",
+    "build:api": "tsc && node -e \"const fs=require('fs');fs.copyFileSync('src/config/init.sql','dist/config/init.sql');fs.cpSync('src/migrations','dist/migrations',{recursive:true})\"",
+    "build:web": "npm --prefix web ci && npm --prefix web run build",
     "init": "node dist/init.js",
     "start": "node dist/index.js",
     "rescan": "node dist/scripts/rescan.js",
     "scan:release": "node dist/scripts/release.js",
-    "dev": "npx ts-node src/index.ts",
+    "dev": "node dev.js",
+    "dev:api": "npx ts-node src/index.ts",
+    "dev:web": "npm --prefix web run dev",
     "dev:init": "npx ts-node src/init.ts",
-    "test": "npx jest --detectOpenHandles"
+    "test": "npx jest --detectOpenHandles",
+    "test:e2e": "./e2e/run.sh"
   }
 }

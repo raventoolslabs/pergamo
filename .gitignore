@@ -3,3 +3,8 @@ data
 .env
 package-lock.json
 dist
+!web/package-lock.json
+!e2e/package-lock.json
+e2e/screenshots
+e2e/test-results
+e2e/playwright-report
