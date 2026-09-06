@@ -15,6 +15,51 @@ export const metadataValueSchema = z.union([
 ]);
 
 /**
+ * Escapa los comodines de LIKE en un texto que viene del cliente.
+ *
+ * Sin esto, un '%' deja de ser un caracter a buscar y pasa a significar
+ * "cualquier cosa": la busqueda devuelve la tabla entera. La barra invertida se
+ * escapa tambien porque es el caracter de escape por defecto de LIKE en
+ * PostgreSQL.
+ */
+export const escapeLike = (value:string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+/**
+ * Parametros de los listados paginados.
+ *
+ * Los valores llegan de la query string, es decir siempre como cadena: se
+ * convierten con coerce y se acotan aqui. El limite superior es lo que impide
+ * que un cliente pida la tabla entera en una sola peticion.
+ */
+const paginationSchema = {
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  offset: z.coerce.number().int().min(0).default(0)
+};
+
+/**
+ * Filtros y orden del listado de documentos.
+ *
+ * 'sort' y 'order' terminan interpolados en el SQL —no admiten parametro
+ * enlazado—, asi que se declaran como enum: lo que no esta en la lista no llega
+ * a la consulta. Cualquier otra forma de validarlos seria una inyeccion.
+ */
+export const documentListQuerySchema = z.object({
+  ...paginationSchema,
+  name: z.string().max(256).optional(),
+  tag: z.string().max(256).optional(),
+  scan_status: z.enum(['pending', 'clean', 'infected', 'error']).optional(),
+  sort: z.enum(['creation_date', 'modification_date']).default('creation_date'),
+  order: z.enum(['asc', 'desc']).default('desc')
+}).strict();
+
+export const organizationListQuerySchema = z.object({
+  ...paginationSchema,
+  name: z.string().max(64).optional(),
+  include_discharged: z.enum(['true', 'false']).default('false')
+    .transform((value) => value === 'true')
+}).strict();
+
+/**
  * Interruptores booleanos por variable de entorno.
  *
  * El patron anterior (`process.env.X === 'true'`) exigia el literal exacto: un
