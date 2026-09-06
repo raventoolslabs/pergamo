@@ -1,8 +1,14 @@
 #!/bin/sh
 set -e
 
-# Arranca cada proceso con el usuario minimo que necesita: clamd y freshclam
-# como 'clamav', la aplicacion como 'node'. Ningun proceso queda como root.
+# Arranca la aplicacion con el usuario minimo que necesita ('node'), nunca root.
+#
+# Aqui ya no se lanza clamd. Antes se demonizaba y la aplicacion arrancaba
+# detras sin esperar al socket: cargar las firmas lleva decenas de segundos y
+# durante esa ventana cada subida devolvia un 500 opaco ('set -e' no ayudaba,
+# porque cubre el exit code del fork y no el estado del demonio). Ahora clamd es
+# un servicio propio con healthcheck, y la aplicacion espera a poder hablar con
+# el antes de escuchar (ver src/app.ts).
 
 DATA_DIR="${DIR_DATA:-/usr/src/app/data}"
 
@@ -17,12 +23,6 @@ if ! su-exec node test -w "$DATA_DIR"; then
   echo "       En el host, sobre el directorio montado como volumen, ejecuta:"
   echo "         chown -R 1000:1000 ./data"
   exit 1
-fi
-
-if [ "$ENABLE_ANTIVIRUS" = "true" ]; then
-  su-exec clamav freshclam || echo "AVISO: freshclam no actualizo las firmas; se usaran las ya presentes"
-  su-exec clamav freshclam -d
-  su-exec clamav clamd
 fi
 
 su-exec node node dist/init.js

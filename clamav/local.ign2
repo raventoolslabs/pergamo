@@ -1,0 +1,18 @@
+# Firmas ignoradas localmente (formato .ign2: un nombre de firma por linea).
+#
+# Este fichero es la via correcta para neutralizar un falso positivo concreto y
+# recurrente. El principio del proyecto es que un falso positivo se LIBERA
+# mediante revision; nunca se "arregla" modificando el documento.
+#
+# Procedimiento:
+#   1. Liberar el documento afectado:  npm run scan:release -- <id>
+#      (conserva scan_signature, de modo que el falso positivo queda trazado)
+#   2. Si la misma firma reincide sobre documentos legitimos, anadirla aqui y
+#      reiniciar el servicio clamav.
+#
+# Anota siempre por que se ignora y quien lo decidio: una linea sin contexto es
+# indistinguible de un hueco de seguridad abierto por descuido.
+#
+# Ejemplo:
+#   # 2026-09-06 - falso positivo sobre facturas firmadas con XYZ - decidido por <equipo>
+#   Pdf.Exploit.Ejemplo-1234567-0

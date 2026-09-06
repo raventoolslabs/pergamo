@@ -5,6 +5,12 @@ import Config from '../config';
 
 export const globalHandler = (req, res, next) => {
   req.id = UUID.v4();
+
+  // Pergamo sirve contenido subido por terceros: sin esto, un navegador puede
+  // ignorar el Content-Type declarado, deducir el tipo del contenido y tratar
+  // como HTML algo que se almaceno como otra cosa.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
   const startTime = process.hrtime();
   log.debug(`${req.method} ${req.originalUrl} - ${req.id} | Start request`);
 
