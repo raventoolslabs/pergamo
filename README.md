@@ -66,13 +66,22 @@ Para desarrollo, `npm run dev` ejecuta la API sin compilar mediante ts-node.
 
 ### Despliegue con Docker
 
-`docker compose up --build` levanta la pila completa: **postgres**, **clamav** y **pergamo**. Antes el `docker-compose.yml` declaraba un único servicio, con ClamAV dentro del contenedor de la API y sin base de datos, así que no levantaba nada usable por sí solo.
+`docker compose up --build` levanta dos servicios: **clamav** y **pergamo**. Antes el `docker-compose.yml` declaraba un único servicio, con ClamAV dentro del contenedor de la API.
 
 | Servicio | Papel |
 |---|---|
-| `postgres` | Base de datos, con volumen propio y `healthcheck`. |
 | `clamav` | Demonio de análisis, imagen oficial con versión fijada, volumen propio para las firmas y `healthcheck` real contra el puerto 3310. Su puerto **no** se publica al host. |
-| `pergamo` | La API. No arranca hasta que los dos anteriores están sanos. |
+| `pergamo` | La aplicación: interfaz y API en el puerto 3000. No arranca hasta que el escáner está sano. |
+
+**La base de datos no la declara el compose.** Sale de `DB_HOST` y `DB_PORT` del `.env`, y se alcanza por la red `steamfront`, que es externa —no la crea este fichero— y es donde vive el postgres compartido del host. Antes el compose levantaba su propio contenedor de postgres con su propio volumen, lo que creaba una segunda base en máquinas que ya tenían una. Si la red no existe todavía:
+
+```
+docker network create steamfront
+```
+
+El contenedor publica el **3000**, que es la puerta de entrada: el mismo puerto que ocupa la interfaz en `npm run dev`, para que el proxy inverso apunte siempre al mismo sitio. Los dos entornos comparten ese puerto a propósito, así que solo puede correr uno de los dos a la vez. El compose fija `PORT=3000` dentro de la imagen, de modo que el `PORT=3001` que el `.env` lleva para desarrollo no se filtra al contenedor.
+
+En un host cuyos contenedores no tengan salida a internet, el servicio `clamav` necesita `CLAMAV_NO_FRESHCLAMD=true` y que las firmas se siembren desde fuera sobre el volumen que monta en `/var/lib/clamav`: freshclam no puede actualizarse por sí mismo desde dentro, y sin esa variable falla en cada arranque.
 
 ClamAV vive ahora en su propio contenedor por tres motivos: aísla su ~1–1,5 GB residentes del cgroup de la API (antes un OOM del escáner tumbaba el servicio), permite un healthcheck de verdad, y saca la lógica de arranque de clamd del `docker-entrypoint.sh`. La aplicación le habla por TCP y espera a poder hacerlo **antes** de escuchar: la ventana en la que cada subida devolvía un `500` opaco mientras clamd cargaba firmas ya no existe.
 
@@ -134,12 +143,25 @@ interfaz con Vite, ya enlazadas entre sí.
 
 | | |
 |---|---|
-| Interfaz | `http://127.0.0.1:5173` |
+| Interfaz | `http://127.0.0.1:3000` |
 | API | `http://127.0.0.1:3001` |
 
-El 3001 y no el 3000 porque el 3000 suele tenerlo un despliegue en marcha. El proxy de Vite
-redirige `/organization`, `/document`, `/version` y `/config` a esa API, así que se trabaja contra
-datos reales; `PERGAMO_API` apunta a otro destino si hace falta.
+La interfaz ocupa el **3000**, que es el mismo puerto que publica el contenedor. Es deliberado: el
+proxy inverso apunta siempre ahí y no hay que tocarlo para cambiar de un entorno a otro, a cambio
+de que solo pueda correr uno de los dos. Si el 3000 está pillado por el contenedor, el arranque lo
+dice y basta con un `docker stop pergamo`.
+
+La API se va al 3001, detrás. El proxy de Vite redirige `/organization`, `/document`, `/version` y
+`/config` a ella, así que se trabaja contra datos reales; `PERGAMO_API` apunta a otro destino si
+hace falta, y `PERGAMO_DEV_WEB_PORT` mueve la interfaz para levantarla con el contenedor en marcha.
+
+Para llegar por un dominio y no por `localhost`, `PERGAMO_WEB_HOST` en el `.env`
+(`pergamo.raventools.labs` en este despliegue). Hacen falta las dos cosas que configura: Vite
+**bloquea** toda petición cuyo `Host` no sea `localhost` —y el proxy inverso conserva el original—,
+y el websocket del HMR hay que dirigirlo al 443 del proxy en lugar de al puerto de Vite, que el
+cortafuegos no deja pasar. Efecto lateral que conviene conocer: con la variable puesta, navegando
+por `127.0.0.1` el HMR también se conecta al dominio público; si el navegador no lo resuelve, la
+página se sirve igual y lo único que se pierde es la recarga en caliente.
 
 Un `Ctrl+C` cierra las dos cosas. Cada proceso se lanza en su propio grupo y se mata el grupo
 entero: `ts-node` y `vite` son envoltorios que lanzan a su vez el node de verdad, y una señal al

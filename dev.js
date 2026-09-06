@@ -54,12 +54,22 @@ for (const linea of fs.readFileSync(ENV_FILE, 'utf8').split('\n')) {
   entorno[pareja[1]] = pareja[2].trim().replace(/^["']|["']$/g, '');
 }
 
-const PUERTO_API = Number.parseInt(entorno.PORT || '3000', 10);
-const PUERTO_WEB = Number.parseInt(process.env.PERGAMO_DEV_WEB_PORT || '5173', 10);
+const PUERTO_API = Number.parseInt(entorno.PORT || '3001', 10);
+
+// El 3000 es la puerta de entrada: la misma que publica el contenedor, para
+// que el proxy inverso apunte siempre ahi y no haya que tocarlo al cambiar de
+// entorno. Aqui lo ocupa Vite, y la API se va al 3001.
+const PUERTO_WEB = Number.parseInt(process.env.PERGAMO_DEV_WEB_PORT || entorno.PERGAMO_DEV_WEB_PORT || '3000', 10);
 
 // Por defecto solo el equipo local. Abrirlo a la red no basta con esto: el
-// firewall del host tiene politica DROP y solo admite 22, 80 y 443.
-const HOST = process.env.PERGAMO_DEV_HOST || '127.0.0.1';
+// firewall del host tiene politica DROP y solo admite 22, 80 y 443. El proxy
+// inverso llega por host networking, asi que alcanza este 127.0.0.1.
+const HOST = process.env.PERGAMO_DEV_HOST || entorno.PERGAMO_DEV_HOST || '127.0.0.1';
+
+// Host publico con el que se sirve la interfaz detras del proxy inverso. Vite
+// lo necesita para no bloquear la peticion por el 'Host' y para dirigir ahi el
+// websocket del HMR.
+const WEB_HOST = process.env.PERGAMO_WEB_HOST || entorno.PERGAMO_WEB_HOST || '';
 
 /* -------------------------------------------------------------- comprobar -- */
 
@@ -89,13 +99,27 @@ const arrancar = async () => {
     );
   }
 
+  // La API y la interfaz no pueden pedir el mismo puerto. Pasa en cuanto un
+  // .env se copia de un despliegue, donde PORT es 3000 porque ahi la aplicacion
+  // sirve las dos cosas a la vez; aqui son dos procesos.
+  if (PUERTO_API === PUERTO_WEB) {
+    morir(
+      `La API y la interfaz piden las dos el puerto ${PUERTO_API}.`,
+      `  PORT=3001   en ${path.basename(ENV_FILE)}\n\n` +
+      '  El 3000 es la puerta de entrada y lo ocupa la interfaz, que es a donde\n' +
+      '  apunta el proxy inverso; la API va detras, en el 3001.'
+    );
+  }
+
   for (const [puerto, quien] of [[PUERTO_API, 'la API'], [PUERTO_WEB, 'la interfaz']]) {
     if (!(await puertoLibre(puerto))) {
       morir(
         `El puerto ${puerto} ya esta ocupado, y lo necesita ${quien}.`,
         `  ss -ltnp 'sport = :${puerto}'\n\n` +
         '  Puede ser un arranque anterior que no llego a morir, u otro servicio\n' +
-        `  del host. El 3000, por ejemplo, lo tiene el contenedor de produccion.`
+        '  del host. El 3000 lo comparten a proposito este entorno y el\n' +
+        '  contenedor, para que el proxy inverso apunte siempre al mismo sitio:\n' +
+        '  si lo tiene el contenedor, `docker stop pergamo` y vuelve a probar.'
       );
     }
   }
@@ -188,19 +212,21 @@ const arrancar = async () => {
   lanzar('La API', path.join(RAIZ, 'node_modules', '.bin', 'ts-node'), ['src/index.ts']);
 
   // PERGAMO_API es lo que hace que el proxy de Vite hable con ESTA API y no con
-  // la de produccion, que escucha en el 3000 por defecto.
+  // otra. PERGAMO_WEB_HOST es lo que permite que la interfaz se sirva por el
+  // dominio publico: sin el, Vite responde «Blocked request» a todo lo que no
+  // llegue como localhost (ver web/vite.config.ts).
   lanzar(
     'La interfaz',
     path.join(RAIZ, 'web', 'node_modules', '.bin', 'vite'),
     ['--host', HOST, '--port', String(PUERTO_WEB), '--strictPort'],
-    { PERGAMO_API: `http://127.0.0.1:${PUERTO_API}` },
+    { PERGAMO_API: `http://127.0.0.1:${PUERTO_API}`, PERGAMO_WEB_HOST: WEB_HOST },
     path.join(RAIZ, 'web')
   );
 
   console.log(`
 ${fuerte('Pergamo en desarrollo')}
 
-  Interfaz   ${verde(`http://${HOST}:${PUERTO_WEB}`)}
+  Interfaz   ${verde(`http://${HOST}:${PUERTO_WEB}`)}${WEB_HOST ? gris(`  ·  https://${WEB_HOST}`) : ''}
   API        ${gris(`http://${HOST}:${PUERTO_API}`)}
   Base       ${gris(`${entorno.DB_NAME} en ${dbHost}:${dbPort}`)}
   Antivirus  ${gris(entorno.ENABLE_ANTIVIRUS === 'true' ? 'activado' : 'desactivado')}
