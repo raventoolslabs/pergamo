@@ -48,6 +48,8 @@
     "build": "tsc && node -e \"const fs=require('fs');fs.copyFileSync('src/config/init.sql','dist/config/init.sql');fs.cpSync('src/migrations','dist/migrations',{recursive:true})\"",
     "init": "node dist/init.js",
     "start": "node dist/index.js",
+    "rescan": "node dist/scripts/rescan.js",
+    "scan:release": "node dist/scripts/release.js",
     "dev": "npx ts-node src/index.ts",
     "dev:init": "npx ts-node src/init.ts",
     "test": "npx jest --detectOpenHandles"

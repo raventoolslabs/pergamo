@@ -2,6 +2,7 @@ import axios from 'axios';
 import path from 'path';
 import fs from 'fs';
 import FormData from 'form-data';
+import { Readable } from 'stream';
 
 import { app } from '../src/app';
 import sequelize, { QueryTypes } from '../src/utils/db';
@@ -157,20 +158,59 @@ describe('Isolation and input validation', () => {
     expect(response.status).toBe(StatusCodes.BAD_REQUEST);
   });
 
-  // Solo si el limite configurado permite generar el fichero rapidamente.
-  if(Config.max_file_size <= 5242880) {
-    it('Should reject a file over the configured size limit', async () => {
-      const form = new FormData();
-      form.append('document', Buffer.concat([
-        Buffer.from('%PDF-'),
-        Buffer.alloc(Config.max_file_size + 1024, 0x41)
-      ]), { filename: 'grande.pdf', contentType: 'application/pdf' });
+  it('Should reject a file over the configured size limit', async () => {
+
+    // Antes esta prueba iba envuelta en `if(Config.max_file_size <= 5242880)`,
+    // que con el valor por defecto (50 MB) NUNCA se cumplia: el limite de
+    // tamano no estaba cubierto y, al ser un `if` y no un it.skip, Jest ni
+    // siquiera lo reportaba como omitido.
+    //
+    // El cuerpo se genera por streaming en lugar de materializar el fichero
+    // completo en memoria, de modo que la prueba corre con cualquier
+    // MAX_FILE_SIZE sin cargar decenas de MB en el proceso de test.
+    const total = Config.max_file_size + 1024;
+    const chunk = Buffer.alloc(64 * 1024, 0x41);
+
+    let sent = 0;
+    const source = new Readable({
+      read() {
+        if(sent === 0) { this.push(Buffer.from('%PDF-')); sent = 5; return; }
+        if(sent >= total) return this.push(null);
+        const size = Math.min(chunk.length, total - sent);
+        sent += size;
+        this.push(size === chunk.length ? chunk : chunk.subarray(0, size));
+      }
+    });
+
+    const form = new FormData();
+    form.append('document', source, {
+      filename: 'grande.pdf',
+      contentType: 'application/pdf',
+      knownLength: total
+    });
+
+    // multer aborta en cuanto se supera el limite, asi que el servidor puede
+    // responder mientras el cliente sigue enviando: la conexion se corta y
+    // axios reporta un error de socket en vez de la respuesta. Ambos desenlaces
+    // confirman el rechazo; lo que no puede ocurrir es un 200.
+    let status:number;
+
+    try {
 
       const response = await api.post('/document', form, {
-        headers: { authorization: tokenOwner, ...form.getHeaders() }
+        headers: { authorization: tokenOwner, ...form.getHeaders() },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity
       });
 
-      expect(response.status).toBe(StatusCodes.REQUEST_TOO_LONG);
-    });
-  }
+      status = response.status;
+
+    } catch(error:any) {
+
+      expect(['ECONNRESET', 'EPIPE', 'ERR_BAD_REQUEST']).toContain(error.code);
+      return;
+    }
+
+    expect(status).toBe(StatusCodes.REQUEST_TOO_LONG);
+  }, 120000);
 });
