@@ -61,9 +61,78 @@ const rmdir = async (path_base:string, directory:string) => {
   }
 }
 
+
+/**
+ * Construye una cabecera Content-Disposition segura.
+ *
+ * El nombre procede del `originalname` que envia el cliente, asi que
+ * interpolarlo tal cual —como se hacia antes— permite inyectar parametros
+ * adicionales en la cabecera (por ejemplo un `filename*` propio) simplemente
+ * subiendo un fichero con comillas, punto y coma o saltos de linea en el
+ * nombre.
+ *
+ * Se emite la forma doble de RFC 6266: `filename` ASCII entrecomillado y con
+ * escape para clientes antiguos, y `filename*` codificado segun RFC 5987 para
+ * los que soportan UTF-8, que es el que prevalece cuando ambos estan presentes.
+ */
+const contentDisposition = (filename:string, type = 'attachment') => {
+
+  // Los caracteres de control romperian la cabecera; el resto de no-ASCII viaja
+  // en el parametro filename*, asi que aqui se sustituyen por un guion bajo.
+  const ascii = filename
+    .replace(/[^\x20-\x7e]/g, '_')
+    .replace(/["\\]/g, '\\$&');
+
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+/**
+ * Borra los temporales de subida que han quedado huerfanos.
+ *
+ * multer escribe en data/tmp antes de que el controlador tome ninguna decision.
+ * En el camino normal el fichero se mueve o se borra, pero un proceso que muere
+ * a mitad de peticion deja el temporal ahi para siempre: sin esta limpieza,
+ * data/tmp crece de forma monotona.
+ */
+const cleanTmp = async (directory:string, maxAgeMs:number) => {
+
+  const exists = await fs.promises.access(directory).then(() => true).catch(() => false);
+
+  if(!exists) return 0;
+
+  const now = Date.now();
+  let removed = 0;
+
+  for(const entry of await fs.promises.readdir(directory)) {
+
+    const file = path.join(directory, entry);
+
+    try {
+
+      const stats = await fs.promises.stat(file);
+
+      if(!stats.isFile() || (now - stats.mtimeMs) < maxAgeMs) continue;
+
+      await fs.promises.unlink(file);
+      removed++;
+
+    } catch(error) {
+      // Una subida en curso puede mover o borrar el fichero entre el readdir y
+      // el stat. No es un fallo: el objetivo de la limpieza ya se cumple.
+      continue;
+    }
+  }
+
+  return removed;
+}
+
 export default {
   pathFile,
+  contentDisposition,
+  cleanTmp,
   mvAsync,
   mkdir,
   rmdir
 }
+
+export { contentDisposition, cleanTmp };

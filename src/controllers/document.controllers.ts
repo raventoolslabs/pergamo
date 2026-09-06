@@ -6,14 +6,77 @@ import archiver from 'archiver';
 
 import log from '../utils/log';
 import Config from "../config";
-import antivirus from "../utils/antivirus";
+import antivirus, { ScannerUnavailableError } from "../utils/antivirus";
 import FilesUtils from "../utils/files";
 import { verifyMimetype } from "../utils/filetype";
-import { metadataValueSchema } from "../utils/validation";
+import { metadataValueSchema, documentListQuerySchema, escapeLike, formatIssues } from "../utils/validation";
 import { sha256File } from "../utils/hash";
 import sequelize, { QueryTypes } from "../utils/db";
 import Document from "../models/document.models";
 import { ValidationError, StatusCodes } from "../middleware/error.middleware";
+
+/**
+ * Ejecuta el analisis antivirico de una subida y traduce el resultado a las
+ * columnas de estado del documento.
+ *
+ * Politica ante escaner NO DISPONIBLE (habilitado pero incapaz de responder):
+ * **aceptar y marcar como pendiente**. El documento se almacena, pero su
+ * descarga queda bloqueada hasta que un reescaneo lo apruebe. Prioriza la
+ * disponibilidad de la subida sin llegar a servir nunca contenido que se
+ * pretendia verificar y no se verifico.
+ *
+ * Con el antivirus DESACTIVADO por configuracion el caso es otro: no hay
+ * intencion de verificar, asi que el documento queda 'clean' con scan_engine
+ * nulo. Marcarlo 'pending' dejaria el despliegue sin descargas y sin salida,
+ * porque el reescaneo tampoco puede correr sin escaner. El scan_engine nulo lo
+ * mantiene en la cola de reescaneo para cuando se active el antivirus, y el
+ * arranque ya avisa por log de que nada se esta analizando.
+ */
+const scanUpload = async (filePath:string, req:any) => {
+
+  if(!Config.enable_antivirus) {
+    return { scan_status: 'clean', scan_signature: null, scan_engine: null, scan_date: null };
+  }
+
+  try {
+
+    const result = await antivirus.scan(filePath, req);
+
+    return {
+      scan_status: 'clean',
+      scan_signature: null,
+      scan_engine: result.engine,
+      scan_date: new Date()
+    };
+
+  } catch(error:any) {
+
+    if(!(error instanceof ScannerUnavailableError)) throw error;
+
+    log.error(`${req.method} ${req.originalUrl} - ${req.id} | Antivirus unavailable, document stored as pending: ${error.message}`);
+
+    return { scan_status: 'pending', scan_signature: null, scan_engine: null, scan_date: null };
+  }
+}
+
+/**
+ * Comprueba que el contenido real corresponde al mimetype declarado.
+ *
+ * Es **fail-closed**: si no hay firma conocida para ese mimetype no se puede
+ * afirmar nada sobre el contenido, y aceptarlo con un simple aviso —como se
+ * hacia antes— convertia VALID_MIMETYPE en una via para almacenar cualquier
+ * cosa. Ampliar VALID_MIMETYPE exige ahora anadir la firma en utils/filetype.ts.
+ */
+const verifyContent = async (filePath:string, mimetype:string, req:any) => {
+
+  const fileType = await verifyMimetype(filePath, mimetype);
+
+  if(!fileType.verifiable) throw new ValidationError(StatusCodes.BAD_REQUEST,
+    'INVALID_MIMETYPE', `No content signature available for mimetype "${mimetype}"`, req);
+
+  if(!fileType.matches) throw new ValidationError(StatusCodes.BAD_REQUEST,
+    'INVALID_MIMETYPE', `File content does not match the declared mimetype "${mimetype}"`, req);
+}
 
 const upload = async (req, res, next) => {
   
@@ -28,19 +91,17 @@ const upload = async (req, res, next) => {
 
     log.debug(`${req.method} ${req.originalUrl} - ${req.id} | Request file: ${JSON.stringify(file)}`);
 
-    if(Config.enable_antivirus) {
-      await antivirus.scan(file.path, req);
-    }
-
+    // La comprobacion de la allowlist va antes del escaneo: no cuesta E/S y
+    // evita transmitir a clamd ficheros que se van a rechazar igualmente.
     if(!Config.valid_mimetype.includes(file.mimetype)) throw new ValidationError(StatusCodes.BAD_REQUEST,
       'INVALID_MIMETYPE', `Invalid mimetype "${file.mimetype}"`, req);
 
-    const fileType = await verifyMimetype(file.path, file.mimetype);
+    const scan = await scanUpload(file.path, req);
 
-    if(fileType.verifiable && !fileType.matches) throw new ValidationError(StatusCodes.BAD_REQUEST,
-      'INVALID_MIMETYPE', `File content does not match the declared mimetype "${file.mimetype}"`, req);
-
-    if(!fileType.verifiable) log.warn(`${req.method} ${req.originalUrl} - ${req.id} | No content signature available for mimetype "${file.mimetype}"`);
+    // La verificacion de contenido va DESPUES del escaneo, para que un fichero
+    // infectado se rechace como infectado y no por un desajuste de firma: de lo
+    // contrario el resultado seria correcto por la razon equivocada.
+    await verifyContent(file.path, file.mimetype, req);
 
     const metadata = {
       name: path.parse(file.originalname).name,
@@ -51,18 +112,40 @@ const upload = async (req, res, next) => {
       tags: []
     }
 
-    const result = await sequelize.query("INSERT INTO pergamo.document(metadata, organization) VALUES (:metadata::jsonb, :organization) RETURNING *;", {
-      replacements: { metadata: JSON.stringify(metadata), organization },
-      type: QueryTypes.INSERT
-    });
+    // La insercion toca dos almacenes (base de datos y disco). Se confirma en
+    // base de datos solo despues de que el fichero este en su sitio: antes, un
+    // fallo del `mv` dejaba una fila describiendo un contenido inexistente.
+    const transaction = await sequelize.transaction();
+    let document:Document;
 
-    const document:Document = result[0][0];
+    try {
+
+      const result = await sequelize.query(
+        `INSERT INTO pergamo.document(metadata, organization, scan_status, scan_signature, scan_engine, scan_date)
+        VALUES (:metadata::jsonb, :organization, :scan_status, :scan_signature, :scan_engine, :scan_date) RETURNING *;`, {
+        replacements: {
+          metadata: JSON.stringify(metadata),
+          organization,
+          ...scan
+        },
+        type: QueryTypes.INSERT,
+        transaction
+      });
+
+      document = result[0][0];
+
+      const filePath = path.join(Config.path_base, organization, document.path);
+
+      await FilesUtils.mvAsync(req.file.path, filePath);
+
+      await transaction.commit();
+
+    } catch(errorInsert) {
+      await transaction.rollback();
+      throw errorInsert;
+    }
 
     log.debug(`${req.method} ${req.originalUrl} - ${req.id} | Document: ${JSON.stringify(document)}`);
-
-    const filePath = path.join(Config.path_base, organization, document.path);
-
-    await FilesUtils.mvAsync(req.file.path, filePath);
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
@@ -82,7 +165,9 @@ const getInfo = async (req:any) => {
 
   const { organization } = req.user;
 
-  const result = await sequelize.query("SELECT path, metadata FROM pergamo.document WHERE organization = :organization AND id = :id;", {
+  const result = await sequelize.query(
+    `SELECT path, metadata, scan_status, scan_signature, scan_engine, scan_date
+    FROM pergamo.document WHERE organization = :organization AND id = :id;`, {
     replacements: { id, organization },
     type: QueryTypes.SELECT
   });
@@ -117,9 +202,23 @@ const getFile = async (req, res, next) => {
 
     const { organization } = req.user;
 
+    // El bloqueo se aplica solo aqui, no en getInfo.
+    //
+    // getInfo lo comparten getMetadata, modifyFile y versionsFile, y los
+    // metadatos de un documento en cuarentena SI deben poder consultarse: es
+    // como el cliente descubre por que esta bloqueado. Lo unico que se corta es
+    // la entrega del contenido no verificado.
+    if(info.scan_status !== 'clean') throw new ValidationError(StatusCodes.LOCKED,
+      'SCAN_NOT_CLEAN',
+      info.scan_status === 'infected' ?
+        `Document is quarantined: detected as ${info.scan_signature}` :
+        `Document is not available for download while its scan status is "${info.scan_status}"`,
+      req);
+
     const filePath = path.join(Config.path_base, organization, info.path);
-    
-    res.setHeader('Content-Disposition', `attachment; filename=${info.metadata.name}.${info.metadata.extension}`);
+
+    res.setHeader('Content-Disposition',
+      FilesUtils.contentDisposition(`${info.metadata.name}.${info.metadata.extension}`));
     res.status(StatusCodes.OK)
       .set('Content-Type', info.metadata.mimetype)
       .sendFile(filePath);
@@ -148,18 +247,17 @@ const modifyFile = async (req, res, next) => {
 
     log.debug(`${req.method} ${req.originalUrl} - ${req.id} | Request file: ${JSON.stringify(file)}`);
 
-    if(Config.enable_antivirus) {
-      await antivirus.scan(file.path, req);
-    }
+    // La comprobacion de propiedad va PRIMERO. Cuando el escaneo iba delante,
+    // un tenant podia forzar analisis de ficheros de 50 MB contra identificadores
+    // ajenos y recibir el 404 despues, con el coste ya consumido.
     const info = await getInfo(req);
 
     if(file.mimetype !== info.metadata.mimetype)
       throw new ValidationError(StatusCodes.BAD_REQUEST, 'INVALID_MIMETYPE', 'Invalid mimetype', req);
 
-    const fileType = await verifyMimetype(file.path, file.mimetype);
+    const scan = await scanUpload(file.path, req);
 
-    if(fileType.verifiable && !fileType.matches) throw new ValidationError(StatusCodes.BAD_REQUEST,
-      'INVALID_MIMETYPE', `File content does not match the declared mimetype "${file.mimetype}"`, req);
+    await verifyContent(file.path, file.mimetype, req);
 
     const metadata = info.metadata;
     metadata.name = path.parse(file.originalname).name;
@@ -177,11 +275,15 @@ const modifyFile = async (req, res, next) => {
 
     try {
 
+      // El contenido cambia, luego el veredicto anterior deja de aplicar: el
+      // estado de analisis se reescribe con el del fichero nuevo.
       const result = await sequelize.query(
         `UPDATE pergamo.document
-        SET metadata = :metadata ,modification_date = CURRENT_TIMESTAMP
+        SET metadata = :metadata, modification_date = CURRENT_TIMESTAMP,
+            scan_status = :scan_status, scan_signature = :scan_signature,
+            scan_engine = :scan_engine, scan_date = :scan_date
         WHERE organization = :organization AND id = :id RETURNING *;`, {
-        replacements: { metadata: JSON.stringify(metadata), organization, id },
+        replacements: { metadata: JSON.stringify(metadata), organization, id, ...scan },
         type: QueryTypes.INSERT,
         transaction
       });
@@ -379,8 +481,115 @@ const remove = async (req, res, next) => {
   }
 };
 
+
+const list = async (req, res, next) => {
+
+  try {
+
+    const { organization } = req.user;
+
+    // El token master no lleva organizacion. Sin este corte, la consulta
+    // filtraria por undefined y devolveria una lista vacia: el master creeria
+    // que no hay documentos, cuando lo que ocurre es que su token no da acceso
+    // a ninguno.
+    if(!organization) throw new ValidationError(StatusCodes.BAD_REQUEST,
+      'ORGANIZATION_REQUIRED', 'A master token has no organization: log in as an organization to list documents', req);
+
+    const query = documentListQuerySchema.safeParse(req.query);
+
+    if(!query.success) throw new ValidationError(StatusCodes.BAD_REQUEST,
+      'INVALID_QUERY', formatIssues(query.error), req);
+
+    const { limit, offset, name, tag, scan_status, sort, order } = query.data;
+
+    const replacements:any = { organization, limit, offset };
+    const conditions:string[] = [];
+
+    if(name) {
+      conditions.push(`clean_str(metadata->>'name') ILIKE clean_str(:name)`);
+      replacements.name = `%${escapeLike(name)}%`;
+    }
+
+    if(tag) {
+      // Contencion jsonb sobre el array de tags: es la forma que aprovecha el
+      // indice GIN idx_document_metadata_tags.
+      conditions.push(`metadata->'tags' @> :tag::jsonb`);
+      replacements.tag = JSON.stringify([tag]);
+    }
+
+    if(scan_status) {
+      conditions.push(`scan_status = :scan_status`);
+      replacements.scan_status = scan_status;
+    }
+
+    const where = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
+
+    // COUNT(*) OVER() devuelve el total sin paginar en la misma pasada: evita
+    // una segunda consulta que, ademas, podria ver un corpus distinto.
+    //
+    // sort y order se interpolan porque un identificador de columna no admite
+    // parametro enlazado. Solo pueden valer lo que declara el enum del schema.
+    const result:any = await sequelize.query(
+      `SELECT id, creation_date, modification_date, scan_status, scan_signature, metadata,
+        COUNT(*) OVER() AS total
+      FROM pergamo.document
+      WHERE organization = :organization${where}
+      ORDER BY ${sort} ${order.toUpperCase()}
+      LIMIT :limit OFFSET :offset;`, {
+      replacements,
+      type: QueryTypes.SELECT
+    });
+
+    // 'path' es la ruta en disco: no sale nunca al cliente.
+    const documents = result.map(({ total, ...document }:any) => document);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({
+        total: result.length ? Number.parseInt(result[0].total) : 0,
+        limit,
+        offset,
+        documents
+      }));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Estado del analisis antivirico de un documento.
+ *
+ * Va en su propio endpoint y no dentro de getMetadata porque el cuerpo de
+ * getMetadata es el JSONB de metadatos tal cual: anadirle claves cambiaria un
+ * contrato que ya consumen otros clientes. Aqui el estado se sirve aparte, que
+ * ademas es coherente con la razon por la que vive en columnas propias.
+ */
+const scanInfo = async (req, res, next) => {
+
+  try {
+
+    const info = await getInfo(req);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({
+        scan_status: info.scan_status,
+        scan_signature: info.scan_signature,
+        scan_engine: info.scan_engine,
+        scan_date: info.scan_date
+      }));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 export {
   upload,
+  list,
+  scanInfo,
   getMetadata,
   modifyMetadata,
   getFile,

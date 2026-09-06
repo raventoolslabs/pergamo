@@ -1,4 +1,62 @@
+# Pergamo: escaner antivirico y aplicacion. Dos servicios, no tres.
+#
+# La base de datos NO se declara aqui. Este fichero levantaba antes su propio
+# contenedor de postgres con su propio volumen, y eso creaba una segunda base
+# en maquinas que ya tienen una: el destino sale ahora del .env (DB_HOST,
+# DB_PORT) y se alcanza por la red 'steamfront', que es donde vive el postgres
+# compartido del host.
+#
+# La red es EXTERNA: no la crea este fichero. Si no existe todavia:
+#
+#   docker network create steamfront
+
 services:
+
+  clamav:
+    container_name: "pergamo-clamav"
+    # Version fijada: el motor y el formato de la base de firmas van
+    # emparejados, y un salto de version no anunciado puede dejar a clamd sin
+    # cargar las firmas. Antes se instalaba `apk add clamav` sin fijar nada.
+    #
+    # Debe coincidir con la version que descarga las firmas en el host que las
+    # siembre a mano (ver refresh-clamav.sh del despliegue).
+    image: "clamav/clamav:1.4.4"
+    restart: "always"
+    # El fichero de firmas ignoradas se COPIA al directorio de bases en el
+    # arranque, en lugar de montarse dentro de el. El entrypoint de la imagen
+    # oficial hace un `chown -R clamav:clamav /var/lib/clamav` bajo `set -e`, y
+    # un montaje de solo lectura ahi dentro lo hace fallar antes de arrancar
+    # clamd: el contenedor queda en bucle de reinicio con
+    # «chown: /var/lib/clamav/local.ign2: Read-only file system».
+    entrypoint: ["/bin/sh", "-c", "cp /etc/clamav/local.ign2 /var/lib/clamav/local.ign2 && exec /init"]
+    volumes:
+      # Las firmas persisten entre reinicios: sin esto, cada arranque vuelve a
+      # descargar la base completa desde cero.
+      - "clamav-data:/var/lib/clamav"
+      - "./clamav/clamd.conf:/etc/clamav/clamd.conf:ro"
+      - "./clamav/local.ign2:/etc/clamav/local.ign2:ro"
+    # El puerto NO se publica al host: clamd no autentica, y solo la API
+    # necesita alcanzarlo por la red interna.
+    expose:
+      - "3310"
+    healthcheck:
+      # PING/PONG por TCP: clamd no responde mientras carga las firmas, que es
+      # justo la ventana que antes dejaba a la API devolviendo 500.
+      #
+      # Se pregunta a 127.0.0.1 y no se usa clamdcheck.sh, el script de la
+      # imagen oficial, porque ese consulta `nc localhost 3310` y dentro del
+      # contenedor 'localhost' resuelve primero a ::1: con TCPAddr fijado a IPv4
+      # el script falla siempre y el servicio quedaria eternamente 'unhealthy'.
+      test: ["CMD-SHELL", "echo PING | nc 127.0.0.1 3310 | grep -q PONG"]
+      interval: "30s"
+      timeout: "20s"
+      retries: 10
+      # La primera carga de firmas tarda; hasta agotarlo, un fallo no cuenta
+      # como reintento ni marca el servicio como no sano.
+      start_period: "180s"
+    networks:
+      - "steamfront"
+
   pergamo:
     container_name: "pergamo"
     #image: "pergamo"
@@ -6,9 +64,38 @@ services:
     build:
       context: .
       dockerfile: "Dockerfile"
+    # El 3000 es la puerta de entrada, la misma que usa `npm run dev` para la
+    # interfaz de Vite. Los dos entornos comparten puerto a proposito: el proxy
+    # inverso apunta siempre aqui y no hay que tocarlo al cambiar de uno a otro,
+    # a cambio de que solo pueda correr uno de los dos a la vez.
     ports:
       - "3000:3000"
     volumes:
       - "./data:/usr/src/app/data"
     env_file:
       - ".env"
+    environment:
+      # Sobrescriben lo que venga del .env.
+      #
+      # PORT: dentro de la imagen se escucha SIEMPRE en el 3000. El .env puede
+      # llevar 3001, que es el puerto de la API en desarrollo (ahi el 3000 lo
+      # ocupa Vite), y esa diferencia no debe filtrarse al contenedor.
+      PORT: "3000"
+      # El escaner se alcanza por el nombre del servicio, no por localhost.
+      CLAMAV_HOST: "clamav"
+      CLAMAV_PORT: "3310"
+    depends_on:
+      clamav:
+        # La API espera a que el escaner este sano. Con ENABLE_ANTIVIRUS
+        # desactivado esta espera sigue aplicandose; si no quieres el escaner en
+        # este despliegue, elimina el servicio y esta dependencia.
+        condition: "service_healthy"
+    networks:
+      - "steamfront"
+
+volumes:
+  clamav-data:
+
+networks:
+  steamfront:
+    external: true

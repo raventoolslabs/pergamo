@@ -1,0 +1,73 @@
+/*
+ * Paleta de Pergamo.
+ *
+ * Sale del logotipo (public/img/logo.png), pero con una regla que la separa de
+ * cualquier panel de administracion: el verde NO es el color de los botones,
+ * es el color de un dato concreto —custodia verificada—. Cuando un color
+ * informa no puede gastarse en decoracion, o deja de significar nada.
+ *
+ * Las acciones van en tinta, el negro del propio logotipo.
+ */
+:root {
+  color-scheme: light;
+
+  /* Tinta: texto y acciones. */
+  --tinta: #0e0f0e;
+  --tinta-media: #4a4e4c;
+  --tinta-tenue: #757b78;
+  --tinta-contra: #ffffff;
+
+  /* Papel. Gris frio deliberado: el crema es la marca de la casa de medio
+     internet y no dice nada de un archivo documental. */
+  --pergamino: #f1f2ef;
+  --hoja: #ffffff;
+  --pauta: #dde0da;
+  --pauta-fuerte: #b9beb6;
+
+  /* Veredictos. El tono pleno marca; el oscuro es el unico que se usa sobre
+     papel para texto, porque el pleno no llega a 4.5:1 de contraste. */
+  --verde: #00b85c;
+  --verde-texto: #05713e;
+  --verde-tenue: #e4f6ec;
+
+  --lacre: #b3391f;
+  --lacre-tenue: #fbede9;
+
+  --espera: #9a6300;
+  --espera-tenue: #fbf2e2;
+
+  --sombra-flotante: 0 18px 48px rgba(14, 15, 14, .22);
+  --sombra-aviso: 0 6px 20px rgba(14, 15, 14, .14);
+
+  --texto: 'Archivo Variable', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --tinta: #e9ebe7;
+    --tinta-media: #a6ada7;
+    --tinta-tenue: #838a84;
+    --tinta-contra: #121311;
+
+    --pergamino: #121311;
+    --hoja: #1a1c1a;
+    --pauta: #2c2f2b;
+    --pauta-fuerte: #454a44;
+
+    --verde: #16c96e;
+    --verde-texto: #4fdd97;
+    --verde-tenue: #102b1c;
+
+    --lacre: #ef7a60;
+    --lacre-tenue: #2e1913;
+
+    --espera: #dda13f;
+    --espera-tenue: #2b2113;
+
+    --sombra-flotante: 0 18px 48px rgba(0, 0, 0, .6);
+    --sombra-aviso: 0 6px 20px rgba(0, 0, 0, .5);
+  }
+}

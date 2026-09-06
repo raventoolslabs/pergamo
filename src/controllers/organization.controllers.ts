@@ -5,6 +5,7 @@ import { timingSafeEqualStr } from '../utils/hash';
 import Config from '../config';
 import { ValidationError, StatusCodes } from "../middleware/error.middleware";
 import owasp from 'owasp-password-strength-test';
+import { organizationListQuerySchema, escapeLike, formatIssues } from '../utils/validation';
 
 owasp.config({
   allowPassphrases: true,
@@ -179,9 +180,69 @@ const changePasswordMaster = async (req, res, next) => {
     }
 }
 
+
+/**
+ * Listado de organizaciones. Solo para el master: es el que necesita elegir
+ * sobre cual actuar al cambiar una contrasena.
+ *
+ * La columna 'password' no aparece en el SELECT. Traerla y borrarla despues
+ * —como hace create— deja el hash viajando por el proceso y a un descuido de
+ * distancia de la respuesta.
+ */
+const list = async (req, res, next) => {
+
+  try {
+
+    const query = organizationListQuerySchema.safeParse(req.query);
+
+    if(!query.success) throw new ValidationError(StatusCodes.BAD_REQUEST,
+      'INVALID_QUERY', formatIssues(query.error), req);
+
+    const { limit, offset, name, include_discharged } = query.data;
+
+    const replacements:any = { limit, offset };
+    const conditions:string[] = [];
+
+    if(!include_discharged) conditions.push('discharge_date IS NULL');
+
+    if(name) {
+      conditions.push('clean_str(name) ILIKE clean_str(:name)');
+      replacements.name = `%${escapeLike(name)}%`;
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result:any = await sequelize.query(
+      `SELECT id, name, creation_date, modification_date, discharge_date,
+        COUNT(*) OVER() AS total
+      FROM pergamo.organization
+      ${where}
+      ORDER BY name ASC
+      LIMIT :limit OFFSET :offset;`, {
+      replacements,
+      type: QueryTypes.SELECT
+    });
+
+    const organizations = result.map(({ total, ...organization }:any) => organization);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({
+        total: result.length ? Number.parseInt(result[0].total) : 0,
+        limit,
+        offset,
+        organizations
+      }));
+
+  } catch (error) {
+    next(error);
+  }
+}
+
 export {
   login,
   create,
+  list,
   changePasswordUser,
   changePasswordMaster
 }
