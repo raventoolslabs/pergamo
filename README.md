@@ -2,6 +2,8 @@
 
 Pergamo es una API HTTP de gestión documental multi-organización. Cada organización (tenant) se autentica, sube documentos, los versiona, los etiqueta con metadatos y los descarga, con aislamiento entre organizaciones aplicado en cada consulta. Los ficheros subidos se analizan con ClamAV antes de almacenarse, y el corpus almacenado se reanaliza cuando avanzan las firmas.
 
+Incluye una **interfaz web** que cubre todo lo que ofrece la API y que sirve el propio proceso, en el mismo puerto: no hay que desplegar nada aparte.
+
 Es un **servicio único** (monolito modular ejecutado en un solo proceso Node), no una arquitectura de microservicios.
 
 ## Estructura del proyecto
@@ -14,6 +16,10 @@ Es un **servicio único** (monolito modular ejecutado en un solo proceso Node), 
 * `src/config` — configuración por variables de entorno e `init.sql` (esquema, triggers y funciones).
 * `src/migrations` — migraciones SQL versionadas (ver más abajo).
 * `src/scripts` — tareas de operación: reescaneo del corpus y liberación de falsos positivos.
+* `web` — interfaz web (React + Vite), proyecto npm propio; su build cae en `dist/web`.
+* `dev.js` — arranque de desarrollo: API e interfaz en un solo comando.
+* `e2e` — recorrido en navegador de la interfaz, en contenedor. Proyecto npm propio, fuera de `web/` para que Playwright no entre en el build de la imagen.
+* `public` — logo y favicons, que Vite incorpora al build de la interfaz.
 * `clamav` — configuración del demonio ClamAV (`clamd.conf`) y lista local de firmas ignoradas.
 * `test` — pruebas de integración.
 
@@ -42,15 +48,21 @@ El código TypeScript se compila antes de ejecutarse:
 
 ```
 npm install
-npm run build     # genera dist/ y copia init.sql y las migraciones
+npm run build     # API (dist/) + interfaz web (dist/web)
 npm run init      # crea esquema, organización inicial y claves; aplica migraciones
 npm start         # ejecuta dist/index.js
 
+npm run build:api            # solo la API
+npm run build:web            # solo la interfaz
 npm run rescan               # reanaliza el corpus con las firmas actuales
 npm run scan:release -- <id> # libera un falso positivo de la cuarentena
 ```
 
-Para desarrollo, `npm run dev` ejecuta el código sin compilar mediante ts-node.
+`npm run build` construye también la interfaz, así que necesita acceso a la red para instalar
+las dependencias de `web/`. Si solo interesa la API, `npm run build:api` hace lo de siempre: el
+servidor arranca igual y avisa por log de que se sirve sin interfaz.
+
+Para desarrollo, `npm run dev` ejecuta la API sin compilar mediante ts-node.
 
 ### Despliegue con Docker
 
@@ -67,6 +79,149 @@ ClamAV vive ahora en su propio contenedor por tres motivos: aísla su ~1–1,5 G
 La imagen de la aplicación ejecuta el proceso como usuario `node`: **no corre como root**.
 
 Los límites de `clamav/clamd.conf` (`MaxFileSize`, `MaxScanSize`, `StreamMaxLength`) deben ser siempre mayores o iguales que `MAX_FILE_SIZE`. Están en dos ficheros distintos, así que la prueba `Should scan a file up to MAX_FILE_SIZE` existe precisamente para detectar que se han desalineado. `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, que es el comportamiento contrario al de ClamAV por defecto.
+
+## Interfaz web
+
+La interfaz vive en `web/` (React + Vite) y se compila a `dist/web`, junto al JavaScript de la
+API. Express la sirve en la raíz del mismo puerto, así que `http://localhost:3000` abre la
+aplicación y `http://localhost:3000/document` sigue siendo la API. Si `dist/web` no existe —por
+ejemplo tras un `npm run build:api` a secas— el arranque lo advierte por log y el servicio
+funciona igual, solo que sin interfaz.
+
+Qué permite hacer, según con quién se entre:
+
+| Sesión | Puede |
+|---|---|
+| Organización | Listar, buscar y filtrar documentos; subirlos (varios a la vez, con arrastrar y soltar); ver la ficha completa; editar los metadatos que permita `VALID_METADATA_MODIFY`; descargar; reemplazar el fichero; consultar las versiones; eliminar; y cambiar su propia contraseña. |
+| Master | Crear organizaciones, listarlas y cambiar la contraseña de cualquiera de ellas. |
+
+El token master **no pertenece a ninguna organización**, así que con él no se puede operar sobre
+documentos: la interfaz lo dice de forma explícita en lugar de mostrar una bandeja vacía.
+
+La paleta sale del logo de `public/img/logo.png` (verde `#00B85C`, negro y grises), y la interfaz
+se adapta al tema claro u oscuro del sistema.
+
+### El diseño
+
+La interfaz no es un panel de administración con una tabla: es un **registro de custodia**. El
+rasgo que distingue a Pergamo de un almacén de ficheros no es guardar, es responder de lo que
+guarda —huella SHA-256, veredicto del antivirus, versiones al sobrescribir—, y eso es lo que la
+pantalla pone por delante.
+
+* **El verde del logotipo significa una cosa y solo una: custodia verificada.** No es el color de
+  los botones. Las acciones van en tinta, el negro del propio logotipo. Un color que informa deja
+  de informar en cuanto se usa de adorno.
+* **El registro lleva la marca del veredicto en el margen**, así que el estado del fondo entero se
+  lee bajando la vista por esa columna. Nunca va sola: todo lo que no está verificado lleva además
+  su palabra, porque el color no puede ser el único portador de la información.
+* **La ficha gasta la audacia en un solo sitio: el sello.** El SHA-256 es lo único que acredita que
+  el contenido no ha cambiado desde que se depositó, así que se compone como un sello y no como
+  una línea gris al fondo de una tabla. Cambia de color con el veredicto.
+* **En cuarentena el botón de descarga no está deshabilitado: no está.** En su lugar hay una frase
+  que dice qué pasó y qué puede hacerse. Un botón que no responde obliga a adivinar por qué.
+* Tipografías auto-alojadas: **Archivo** —una grotesca pensada para impresión institucional— para
+  todo el texto, e **IBM Plex Mono** solo donde la precisión carácter a carácter es funcional, que
+  son las huellas y los identificadores. Ninguna petición a terceros.
+
+### Desarrollo
+
+```
+npm run dev
+```
+
+Un solo comando: aplica las migraciones pendientes y levanta la API con recarga en caliente y la
+interfaz con Vite, ya enlazadas entre sí.
+
+| | |
+|---|---|
+| Interfaz | `http://127.0.0.1:5173` |
+| API | `http://127.0.0.1:3001` |
+
+El 3001 y no el 3000 porque el 3000 suele tenerlo un despliegue en marcha. El proxy de Vite
+redirige `/organization`, `/document`, `/version` y `/config` a esa API, así que se trabaja contra
+datos reales; `PERGAMO_API` apunta a otro destino si hace falta.
+
+Un `Ctrl+C` cierra las dos cosas. Cada proceso se lanza en su propio grupo y se mata el grupo
+entero: `ts-node` y `vite` son envoltorios que lanzan a su vez el node de verdad, y una señal al
+proceso directo dejaría al nieto escuchando en el puerto, con el siguiente arranque fallando por
+«puerto ocupado» sin que se vea quién lo tiene.
+
+Si un puerto está pillado o la base no responde, el arranque se detiene con el motivo y el comando
+para resolverlo, en vez de dejar caer una traza de `sequelize`.
+
+**Preparación, una sola vez:**
+
+```
+cp .env.dev.example .env
+```
+
+Después hay que rellenar `DB_PASSWORD` y crear la base de desarrollo. El propio
+`.env.dev.example` lleva el SQL: un rol `pergamo_dev`, su base, y las extensiones `uuid-ossp`,
+`pgcrypto` y `unaccent` creadas **por el superusuario** —no son «trusted», así que el rol de la
+aplicación no puede instalarlas—. Es la misma convención que siguen las demás bases del host.
+
+Otros comandos, por si se quieren las piezas por separado:
+
+```
+npm run dev:api    # solo la API
+npm run dev:web    # solo la interfaz
+npm run dev:init   # solo esquema, claves y migraciones
+```
+
+`PERGAMO_DEV_HOST=0.0.0.0 npm run dev` escucha en todas las interfaces, para abrir la interfaz
+desde otro equipo. No basta con eso: el firewall del host tiene política `DROP` y hay que permitir
+los puertos además.
+
+### Revisión visual y recorrido en navegador
+
+```
+npm run test:e2e
+```
+
+Levanta una pila **desechable y aislada** —base de datos propia en un contenedor propio,
+`DIR_DATA` en un temporal y la API en su propio puerto—, recorre la interfaz y la desmonta al
+terminar. No toca ningún despliegue existente. Con `E2E_KEEP=1` la deja en pie para inspeccionarla.
+
+El navegador va **dentro de un contenedor**: la imagen oficial de Playwright trae Chromium con
+todas sus dependencias, así que el recorrido funciona en un servidor sin entorno gráfico y sin
+instalar nada en la máquina. `--network host` le da acceso al servidor local. La versión de
+`@playwright/test` y la etiqueta de la imagen deben coincidir; `e2e/run.sh` lo comprueba y aborta
+con un mensaje claro si no es así, porque el desajuste produce errores incomprensibles.
+
+Cada prueba afirma comportamiento **y** captura la pantalla, en claro, oscuro y móvil: las
+capturas quedan en `e2e/screenshots/` y el informe en `e2e/playwright-report/`. Cualquier
+excepción de JavaScript de la página tumba la prueba, que es lo que distingue revisar una interfaz
+de fotografiarla: un fallo puede dejar una pantalla que se ve bien y no hace nada.
+
+Los estados que no se pueden provocar desde fuera se fuerzan en la base de datos de prueba: sin un
+ClamAV con firmas reales no hay forma de conseguir un documento en cuarentena, y la cuarentena es
+justo la pantalla que más importa revisar.
+
+El recorrido **no** está en el workflow de GitHub Actions, que hoy solo construye y publica la
+imagen: añadirlo exigiría un servicio de base de datos en CI.
+
+### Sesión y token
+
+El token se guarda en `sessionStorage`: sobrevive a recargar la página pero no a cerrar la
+pestaña. La interfaz lee la caducidad del propio JWT y cierra la sesión al vencer, y cualquier
+`401` la cierra también. El JWT se decodifica en el navegador **solo** para decidir qué pintar
+(menú de master, nombre, caducidad); quien decide lo que se puede hacer sigue siendo el backend,
+que verifica la firma en cada petición.
+
+### Endpoints que añade
+
+La API no tenía forma de enumerar nada, así que una interfaz obligaba a pegar identificadores a
+mano. Estos cuatro endpoints cubren ese hueco y son de solo lectura:
+
+| Endpoint | Quién | Qué devuelve |
+|---|---|---|
+| `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status`, y orden por `creation_date` o `modification_date`. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
+| `GET /document/:id/scan` | Organización | `scan_status`, `scan_signature`, `scan_engine` y `scan_date` del documento. Va aparte de `GET /document/:id` porque el cuerpo de ese endpoint es el JSONB de metadatos tal cual, y añadirle claves rompería a quien ya lo consume. |
+| `GET /organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
+| `GET /config` | Autenticado | Límites del despliegue: `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir en lugar de duplicar la configuración. |
+
+El aislamiento por organización se aplica igual que en el resto: el `WHERE organization` de
+`GET /document` es incondicional, y `path` —la ruta en disco— no sale nunca al cliente.
 
 ## Migraciones de base de datos
 
@@ -163,7 +318,7 @@ Añade `scan_status`, `scan_signature`, `scan_engine` y `scan_date` a `pergamo.d
 
 ### 9. Pendiente
 
-* Decidir sobre los índices de `init.sql` para hash, descripción y etiquetas: no los usa ninguna consulta actual, a la espera de una funcionalidad de búsqueda.
+* Decidir sobre los índices de `init.sql` para hash y descripción: no los usa ninguna consulta. El de etiquetas (`idx_document_metadata_tags`) sí lo aprovecha ya el filtro `tag` de `GET /document`; la búsqueda por nombre, en cambio, es un `ILIKE '%…%'` que ningún índice B-tree puede servir.
 * Aviso `uuid <11.1.1` en `npm audit`: no afecta a este proyecto (requiere pasar `buf` a v3/v5/v6, y aquí solo se usa `v4()` sin ese argumento). Corregirlo exige un salto mayor de versión en `sequelize`.
 
 ## Pruebas
@@ -184,6 +339,7 @@ Cada suite abre su propio puerto libre, así que pueden ejecutarse en paralelo.
 * `test/02-document.test.ts` — ciclo de vida del documento, detección de virus, preservación byte a byte de un PDF firmado y análisis hasta `MAX_FILE_SIZE`.
 * `test/03-isolation.test.ts` — aislamiento entre organizaciones, rechazo de tokens manipulados y validaciones de fichero y metadatos.
 * `test/04-quarantine.test.ts` — bloqueo de descarga con `423`, acceso a metadatos en cuarentena y cabeceras de respuesta.
+* `test/05-listing.test.ts` — listados de documentos y organizaciones: filtros, paginación, rechazo de parámetros inválidos, aislamiento entre organizaciones y que el hash de contraseña no se expone.
 
 Las pruebas que necesitan un veredicto real del escáner usan `it.skip` cuando el antivirus está desactivado, de modo que Jest **las reporta como omitidas**. Antes iban envueltas en un `if`, que desaparecía del informe y daba la impresión de una cobertura inexistente.
 
