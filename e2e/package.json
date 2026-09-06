@@ -1,0 +1,15 @@
+{
+  "name": "pergamo-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Recorrido en navegador de la interfaz de Pergamo",
+  "license": "MIT",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.1"
+  }
+}

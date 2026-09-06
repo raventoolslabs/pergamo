@@ -23,6 +23,10 @@ const authLimiter = rateLimit({
   }
 });
 
+// Sin authLimiter: no es un endpoint de credenciales, y compartir el contador
+// con /login haria que consultar el listado agotase los intentos de acceso.
+router.get('/', Middleware.authMaster, Controllers.list);
+
 router.post('/login', authLimiter, Controllers.login);
 router.post('/changePassword', authLimiter, Middleware.auth, Controllers.changePasswordUser);
 router.post('/master/create', authLimiter, Middleware.authMaster,Controllers.create);

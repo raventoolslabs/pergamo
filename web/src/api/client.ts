@@ -1,0 +1,208 @@
+import type {
+  DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion,
+  Organization, OrganizationList, ScanInfo, ServerConfig
+} from './types';
+
+const TOKEN_KEY = 'pergamo.token';
+
+/**
+ * Error de la API con el codigo HTTP a la vista.
+ *
+ * Las pantallas necesitan distinguir casos concretos —423 cuarentena, 429 rate
+ * limit, 413 fichero demasiado grande— y no solo mostrar un mensaje: sin el
+ * status, todos acabarian como "ha fallado algo".
+ */
+export class ApiError extends Error {
+  status: number;
+  retryAfter?: number;
+
+  constructor(status: number, message: string, retryAfter?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
+
+/**
+ * El token se guarda en sessionStorage: sobrevive a un F5 pero no a cerrar la
+ * pestana, que es el compromiso razonable para una herramienta de gestion.
+ */
+export const tokenStore = {
+  get: () => {
+    try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
+  },
+  set: (token: string) => {
+    try { sessionStorage.setItem(TOKEN_KEY, token); } catch { /* modo privado */ }
+  },
+  clear: () => {
+    try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* modo privado */ }
+  }
+};
+
+/**
+ * Se avisa al resto de la aplicacion cuando la sesion deja de ser valida, para
+ * que el proveedor de sesion cierre y redirija sin que cada llamada tenga que
+ * ocuparse del 401 por su cuenta.
+ */
+type Listener = () => void;
+const unauthorizedListeners = new Set<Listener>();
+
+export const onUnauthorized = (listener: Listener) => {
+  unauthorizedListeners.add(listener);
+  return () => { unauthorizedListeners.delete(listener); };
+};
+
+const authHeaders = (): Record<string, string> => {
+  const token = tokenStore.get();
+  // La cabecera va con el JWT crudo, SIN prefijo 'Bearer': el authHandler del
+  // backend pasa el valor entero a jwt.verify.
+  return token ? { authorization: token } : {};
+};
+
+const parseError = async (response: Response) => {
+  const retryAfterHeader = response.headers.get('retry-after');
+  const retryAfter = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : undefined;
+
+  let message = `Error ${response.status}`;
+
+  try {
+    const body = await response.json();
+    if (body && typeof body.error === 'string') message = body.error;
+  } catch {
+    // Una respuesta sin JSON (un 502 de un proxy, por ejemplo) deja el mensaje
+    // generico en lugar de reventar aqui.
+  }
+
+  return new ApiError(response.status, message, Number.isFinite(retryAfter) ? retryAfter : undefined);
+};
+
+const handle = async (response: Response) => {
+  if (response.status === 401) {
+    tokenStore.clear();
+    unauthorizedListeners.forEach((listener) => listener());
+  }
+  if (!response.ok) throw await parseError(response);
+  return response;
+};
+
+const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  const response = await handle(await fetch(path, {
+    ...init,
+    headers: { ...authHeaders(), ...(init.headers || {}) }
+  }));
+
+  if (response.status === 204) return undefined as T;
+
+  return await response.json() as T;
+};
+
+const json = (body: unknown): RequestInit => ({
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body)
+});
+
+const query = (params: Record<string, unknown>) => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    search.set(key, String(value));
+  });
+  const qs = search.toString();
+  return qs ? `?${qs}` : '';
+};
+
+/**
+ * Nombre de fichero anunciado por el servidor. Se prefiere la forma RFC 5987
+ * (filename*=UTF-8''...) porque es la que conserva los acentos.
+ */
+const filenameFrom = (disposition: string | null, fallback: string) => {
+  if (!disposition) return fallback;
+
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (encoded) {
+    try { return decodeURIComponent(encoded[1]); } catch { /* cae al plano */ }
+  }
+
+  const plain = /filename="?([^";]+)"?/i.exec(disposition);
+  return plain ? plain[1] : fallback;
+};
+
+export const api = {
+  version: () => request<{ version: string }>('/version'),
+
+  config: () => request<ServerConfig>('/config'),
+
+  login: (name: string, password: string) =>
+    request<{ token: string }>('/organization/login', json({ name, password })),
+
+  changePassword: (password: string) =>
+    request<{ message: string }>('/organization/changePassword', json({ password })),
+
+  organizations: (params: { name?: string; limit?: number; offset?: number; include_discharged?: boolean } = {}) =>
+    request<OrganizationList>(`/organization${query(params)}`),
+
+  createOrganization: (body: { name: string; password: string; id?: string }) =>
+    request<Organization>('/organization/master/create', json(body)),
+
+  changeOrganizationPassword: (organization: string, password: string) =>
+    request<{ message: string }>('/organization/master/changePassword', json({ organization, password })),
+
+  documents: (params: DocumentQuery = {}) =>
+    request<DocumentList>(`/document${query(params as Record<string, unknown>)}`),
+
+  document: (id: string) => request<DocumentMetadata>(`/document/${encodeURIComponent(id)}`),
+
+  scan: (id: string) => request<ScanInfo>(`/document/${encodeURIComponent(id)}/scan`),
+
+  versions: (id: string) => request<DocumentVersion[]>(`/document/${encodeURIComponent(id)}/versions`),
+
+  updateMetadata: (id: string, metadata: Record<string, unknown>) =>
+    request<DocumentMetadata>(`/document/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(metadata)
+    }),
+
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append('document', file);
+    // Sin content-type explicito: lo pone el navegador con el boundary del
+    // multipart, que es justo lo que multer necesita para parsearlo.
+    return request<DocumentMetadata>('/document', { method: 'POST', body: form });
+  },
+
+  replaceFile: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('document', file);
+    return request<DocumentMetadata>(`/document/${encodeURIComponent(id)}/file`, { method: 'PUT', body: form });
+  },
+
+  remove: (id: string) =>
+    request<{ message: string }>(`/document/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /**
+   * Descarga el contenido. Pasa por fetch y no por un enlace directo porque la
+   * ruta exige la cabecera de autorizacion, que un <a href> no puede enviar.
+   */
+  download: async (id: string, fallbackName: string) => {
+    const response = await handle(await fetch(`/document/${encodeURIComponent(id)}/file`, {
+      headers: authHeaders()
+    }));
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = filenameFrom(response.headers.get('content-disposition'), fallbackName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    // Se libera en el siguiente tick: revocar antes de que el navegador haya
+    // iniciado la descarga la cancela.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+};

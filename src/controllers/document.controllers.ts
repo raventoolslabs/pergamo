@@ -9,7 +9,7 @@ import Config from "../config";
 import antivirus, { ScannerUnavailableError } from "../utils/antivirus";
 import FilesUtils from "../utils/files";
 import { verifyMimetype } from "../utils/filetype";
-import { metadataValueSchema } from "../utils/validation";
+import { metadataValueSchema, documentListQuerySchema, escapeLike, formatIssues } from "../utils/validation";
 import { sha256File } from "../utils/hash";
 import sequelize, { QueryTypes } from "../utils/db";
 import Document from "../models/document.models";
@@ -166,7 +166,7 @@ const getInfo = async (req:any) => {
   const { organization } = req.user;
 
   const result = await sequelize.query(
-    `SELECT path, metadata, scan_status, scan_signature
+    `SELECT path, metadata, scan_status, scan_signature, scan_engine, scan_date
     FROM pergamo.document WHERE organization = :organization AND id = :id;`, {
     replacements: { id, organization },
     type: QueryTypes.SELECT
@@ -481,8 +481,115 @@ const remove = async (req, res, next) => {
   }
 };
 
+
+const list = async (req, res, next) => {
+
+  try {
+
+    const { organization } = req.user;
+
+    // El token master no lleva organizacion. Sin este corte, la consulta
+    // filtraria por undefined y devolveria una lista vacia: el master creeria
+    // que no hay documentos, cuando lo que ocurre es que su token no da acceso
+    // a ninguno.
+    if(!organization) throw new ValidationError(StatusCodes.BAD_REQUEST,
+      'ORGANIZATION_REQUIRED', 'A master token has no organization: log in as an organization to list documents', req);
+
+    const query = documentListQuerySchema.safeParse(req.query);
+
+    if(!query.success) throw new ValidationError(StatusCodes.BAD_REQUEST,
+      'INVALID_QUERY', formatIssues(query.error), req);
+
+    const { limit, offset, name, tag, scan_status, sort, order } = query.data;
+
+    const replacements:any = { organization, limit, offset };
+    const conditions:string[] = [];
+
+    if(name) {
+      conditions.push(`clean_str(metadata->>'name') ILIKE clean_str(:name)`);
+      replacements.name = `%${escapeLike(name)}%`;
+    }
+
+    if(tag) {
+      // Contencion jsonb sobre el array de tags: es la forma que aprovecha el
+      // indice GIN idx_document_metadata_tags.
+      conditions.push(`metadata->'tags' @> :tag::jsonb`);
+      replacements.tag = JSON.stringify([tag]);
+    }
+
+    if(scan_status) {
+      conditions.push(`scan_status = :scan_status`);
+      replacements.scan_status = scan_status;
+    }
+
+    const where = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
+
+    // COUNT(*) OVER() devuelve el total sin paginar en la misma pasada: evita
+    // una segunda consulta que, ademas, podria ver un corpus distinto.
+    //
+    // sort y order se interpolan porque un identificador de columna no admite
+    // parametro enlazado. Solo pueden valer lo que declara el enum del schema.
+    const result:any = await sequelize.query(
+      `SELECT id, creation_date, modification_date, scan_status, scan_signature, metadata,
+        COUNT(*) OVER() AS total
+      FROM pergamo.document
+      WHERE organization = :organization${where}
+      ORDER BY ${sort} ${order.toUpperCase()}
+      LIMIT :limit OFFSET :offset;`, {
+      replacements,
+      type: QueryTypes.SELECT
+    });
+
+    // 'path' es la ruta en disco: no sale nunca al cliente.
+    const documents = result.map(({ total, ...document }:any) => document);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({
+        total: result.length ? Number.parseInt(result[0].total) : 0,
+        limit,
+        offset,
+        documents
+      }));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Estado del analisis antivirico de un documento.
+ *
+ * Va en su propio endpoint y no dentro de getMetadata porque el cuerpo de
+ * getMetadata es el JSONB de metadatos tal cual: anadirle claves cambiaria un
+ * contrato que ya consumen otros clientes. Aqui el estado se sirve aparte, que
+ * ademas es coherente con la razon por la que vive en columnas propias.
+ */
+const scanInfo = async (req, res, next) => {
+
+  try {
+
+    const info = await getInfo(req);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({
+        scan_status: info.scan_status,
+        scan_signature: info.scan_signature,
+        scan_engine: info.scan_engine,
+        scan_date: info.scan_date
+      }));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 export {
   upload,
+  list,
+  scanInfo,
   getMetadata,
   modifyMetadata,
   getFile,
