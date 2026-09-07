@@ -1,7 +1,7 @@
 # Etapa de compilacion: produce dist/ a partir del codigo TypeScript.
 # Version exacta para que el build sea reproducible (fija tambien la release de
 # Alpine, y con ella el conjunto de paquetes apk disponibles).
-FROM node:20.20.2-alpine AS build
+FROM node:24.20.0-alpine AS build
 
 WORKDIR /usr/src/app
 
@@ -22,7 +22,7 @@ COPY web ./web
 RUN npm run build
 
 # Etapa final: solo dependencias de produccion y el JavaScript ya compilado.
-FROM node:20.20.2-alpine
+FROM node:24.20.0-alpine
 
 WORKDIR /usr/src/app
 
