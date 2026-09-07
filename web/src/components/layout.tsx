@@ -2,16 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useSession } from '../auth/session';
+import { t } from '../i18n';
 
-const IconoUsuario = ({ tamano = 19 }: { tamano?: number }) => (
-  <svg width={tamano} height={tamano} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+const UserIcon = ({ size = 19 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
     <circle cx="12" cy="8.5" r="3.6" />
     <path d="M4.8 20c.9-3.6 3.7-5.4 7.2-5.4s6.3 1.8 7.2 5.4" />
   </svg>
 );
 
-const IconoSalir = () => (
+const LogoutIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
     <path d="M15 4.5h3a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-3" />
@@ -21,94 +22,88 @@ const IconoSalir = () => (
 );
 
 /**
- * Membrete del registro.
- *
- * Sustituye a la barra lateral con iconos: para dos destinos, una columna
- * lateral es cromo de plantilla que roba ancho al contenido, que aqui es lo
- * unico que importa.
- *
- * Lo que no es navegacion —la cuenta y la salida— vive en el menu de usuario y
- * no en la barra: son cosas que se hacen una vez, y compitiendo por el mismo
- * espacio hacian que el unico destino real pareciera uno de tres.
+ * Membrete del registro. Para dos destinos, una barra lateral es cromo que roba
+ * ancho al contenido. Lo que no es navegacion —cuenta y salida— vive en el menu
+ * de usuario: son cosas que se hacen una vez.
  */
 export const Layout = () => {
 
   const { session, logout } = useSession();
-  const [abierto, setAbierto] = useState(false);
-  const usuario = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!abierto) return;
+    if (!open) return;
 
-    // Un menu que solo se cierra volviendo a pulsar su boton se queda abierto
-    // por encima de lo que el usuario ha ido a mirar.
-    const alPulsar = (evento: MouseEvent) => {
-      if (!usuario.current?.contains(evento.target as Node)) setAbierto(false);
+    // Un menu que solo se cierra volviendo a pulsar su boton se queda por
+    // encima de lo que se ha ido a mirar.
+    const onClick = (event: MouseEvent) => {
+      if (!menu.current?.contains(event.target as Node)) setOpen(false);
     };
-    const alTeclear = (evento: KeyboardEvent) => { if (evento.key === 'Escape') setAbierto(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
 
-    document.addEventListener('mousedown', alPulsar);
-    document.addEventListener('keydown', alTeclear);
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
 
     return () => {
-      document.removeEventListener('mousedown', alPulsar);
-      document.removeEventListener('keydown', alTeclear);
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
     };
-  }, [abierto]);
+  }, [open]);
 
-  const clase = ({ isActive }: { isActive: boolean }) => (isActive ? 'activo' : undefined);
+  const linkClass = ({ isActive }: { isActive: boolean }) => (isActive ? 'active' : undefined);
 
   return (
     <div className="shell">
-      <header className="membrete">
-        <NavLink to="/" className="membrete__marca">
+      <header className="masthead">
+        <NavLink to="/" className="masthead__brand">
           <img src="/img/logo-without-tittle.png" alt="" />
           <span>pergamo</span>
         </NavLink>
 
-        <nav className="membrete__nav">
-          {/* El token master no lleva organizacion, asi que ninguna ruta de
-              documentos funciona con el: se le ofrece solo lo que puede usar. */}
+        <nav className="masthead__nav">
+          {/* El token master no lleva organizacion: se le ofrece solo lo que
+              puede usar. */}
           {session?.master ? (
-            <NavLink to="/organizaciones" className={clase}>Organizaciones</NavLink>
+            <NavLink to="/organizations" className={linkClass}>{t('masthead.organizations')}</NavLink>
           ) : (
-            <NavLink to="/" end className={clase}>Documentos</NavLink>
+            <NavLink to="/" end className={linkClass}>{t('masthead.documents')}</NavLink>
           )}
         </nav>
 
-        <div className="membrete__hueco" />
+        <div className="masthead__gap" />
 
-        <div className="membrete__sesion">
-          <dl className="membrete__quien">
-            <dt>{session?.master ? 'Sesión' : 'Organización'}</dt>
-            <dd>{session?.master ? 'Master' : session?.name}</dd>
+        <div className="masthead__session">
+          <dl className="masthead__who">
+            <dt>{session?.master ? t('masthead.session') : t('common.organization')}</dt>
+            <dd>{session?.master ? t('masthead.master') : session?.name}</dd>
           </dl>
 
-          <div className="membrete__usuario" ref={usuario}>
+          <div className="masthead__user" ref={menu}>
             <button
               type="button"
-              className="membrete__avatar"
-              onClick={() => setAbierto((estado) => !estado)}
-              aria-label="Menú de usuario"
+              className="masthead__avatar"
+              onClick={() => setOpen((current) => !current)}
+              aria-label={t('a11y.userMenu')}
               aria-haspopup="true"
-              aria-expanded={abierto}
+              aria-expanded={open}
             >
-              <IconoUsuario />
+              <UserIcon />
             </button>
 
-            {abierto ? (
-              <div className="membrete__menu">
+            {open ? (
+              <div className="masthead__menu">
                 {/* El master no tiene organizacion propia: la pantalla de
-                    cuenta cambiaria una contraseña que no es la suya. */}
+                    cuenta cambiaria una contrasena que no es la suya. */}
                 {session?.master ? null : (
-                  <NavLink to="/cuenta" onClick={() => setAbierto(false)}>
-                    <IconoUsuario tamano={15} />
-                    Mi cuenta
+                  <NavLink to="/account" onClick={() => setOpen(false)}>
+                    <UserIcon size={15} />
+                    {t('masthead.account')}
                   </NavLink>
                 )}
                 <button type="button" onClick={logout}>
-                  <IconoSalir />
-                  Salir
+                  <LogoutIcon />
+                  {t('masthead.logout')}
                 </button>
               </div>
             ) : null}
@@ -116,8 +111,8 @@ export const Layout = () => {
         </div>
       </header>
 
-      <main className="pagina">
-        <div className="pagina__interior"><Outlet /></div>
+      <main className="page">
+        <div className="page__inner"><Outlet /></div>
       </main>
     </div>
   );

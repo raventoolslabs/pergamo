@@ -8,6 +8,7 @@ import FormData from 'form-data';
 import mime from 'mime-types';
 
 import { app } from '../src/app';
+import sequelize, { QueryTypes } from '../src/utils/db';
 import Config from '../src/config'
 import { sha256File } from '../src/utils/hash';
 import { verifyMimetype } from '../src/utils/filetype';
@@ -15,10 +16,8 @@ import FilesUtils from "../src/utils/files";
 
 const EICAR = `X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`;
 
-// Las pruebas que necesitan un veredicto real del escaner se declaran con
-// it.skip cuando el antivirus esta desactivado, en lugar de envolverse en un
-// `if`: asi Jest las REPORTA como omitidas. Un bloque `if` desaparece del
-// informe y da la impresion de una cobertura que no existe.
+// it.skip y no un `if` cuando el antivirus esta desactivado: asi Jest las
+// reporta como omitidas en vez de dar una cobertura aparente.
 const itAntivirus = Config.enable_antivirus ? it : it.skip;
 
 const sha256Buffer = (buffer:Buffer) => crypto.createHash('sha256').update(buffer).digest('hex');
@@ -48,6 +47,9 @@ describe('Document Tests', () => {
 
   afterAll(async() => {
     server.close();
+    // La suite abre conexion propia a la base para liberar la cuarentena del
+    // PDF firmado; sin cerrarla, Jest se queda esperando al pool.
+    await sequelize.close();
   });
 
   it('Should upload a document', async () => {
@@ -79,14 +81,12 @@ describe('Document Tests', () => {
 
   itAntivirus('Should not upload a virus', async () => {
 
-    // El contenido es EICAR exacto: la firma de ClamAV para este fichero es un
-    // hash del contenido completo, asi que cualquier byte anadido la anula.
+    // EICAR exacto: la firma de ClamAV es un hash del contenido completo, asi
+    // que cualquier byte anadido la anula.
     //
     // Que llegue al escaner pese a no ser un PDF valido no es casualidad: en
-    // upload el analisis antivirico va DELIBERADAMENTE antes de la verificacion
-    // de contenido. Si fuera al reves, este fichero se rechazaria por firma de
-    // contenido y la prueba pasaria sin haber ejercitado el antivirus, que es
-    // exactamente el defecto que tenia antes con ENABLE_ANTIVIRUS a false.
+    // upload el antivirus va antes de la verificacion de contenido. Al reves,
+    // este fichero se rechazaria por firma y la prueba pasaria sin ejercitarlo.
     const form = new FormData();
     form.append('document', Buffer.from(EICAR), {
       filename: 'virus.pdf',
@@ -114,11 +114,10 @@ describe('Document Tests', () => {
     // completo y —con AlertExceedsMax desactivado— lo da por bueno: la subida
     // devolveria 200 en lugar de 400.
     //
-    // El payload es un ODT (que es un ZIP) de tamano cercano al limite con un
-    // eicar.com dentro. Tiene que ser asi: la firma de EICAR es un hash del
-    // fichero exacto, de modo que rellenar un fichero plano con EICAR al final
-    // no lo detecta nadie. Dentro de un archivo comprimido, en cambio, ClamAV
-    // desempaqueta y encuentra la entrada intacta.
+    // El payload es un ODT (un ZIP) cercano al limite con un eicar.com dentro:
+    // la firma de EICAR es un hash del fichero exacto, asi que rellenar un
+    // fichero plano no lo detecta nadie, pero comprimido ClamAV desempaqueta y
+    // encuentra la entrada intacta.
     const mimetypeOdt = 'application/vnd.oasis.opendocument.text';
 
     if(!Config.valid_mimetype.includes(mimetypeOdt)) {
@@ -184,11 +183,9 @@ describe('Document Tests', () => {
 
   it('Should preserve a signed PDF byte for byte', async () => {
 
-    // Regresion del principio central del diseno: en un archivo, la integridad
-    // del byte original es un requisito, no una preferencia. Cualquier etapa que
-    // reescriba el documento (un saneador de PDF, una "normalizacion") invalida
-    // la firma electronica y rompe metadata.hash, que es la identidad de
-    // registro. Este fichero lleva a proposito lo que un CDR eliminaria:
+    // En un archivo la integridad del byte original es un requisito: cualquier
+    // etapa que reescriba el documento invalida su firma electronica y rompe
+    // metadata.hash. Este fichero lleva a proposito lo que un CDR eliminaria:
     // /ByteRange, /Contents, /AcroForm con /SigFlags, un /EmbeddedFile y una
     // actualizacion incremental con dos %%EOF.
     const pathSigned = path.join(__dirname, 'assets', 'signed.pdf');
@@ -205,6 +202,26 @@ describe('Document Tests', () => {
     expect(upload.data.hash).toBe(await sha256File(pathSigned));
 
     const signedId = upload.data.uuid;
+
+    // Entra en cuarentena por contenido activo, y es el falso positivo que hay
+    // que tener delante al leer esa politica: un PDF firmado lleva ficheros
+    // embebidos por norma. La valvula es
+    // MALICIOUS_ACTIVE_CONTENT_IGNORE=EmbeddedFile.
+    //
+    // Se libera como lo haria un operador porque lo que aqui se vigila es otra
+    // cosa: que el fichero se devuelva byte a byte.
+    const scan = await api.get(`/document/${signedId}/scan`, { headers: { 'authorization': token } });
+
+    if(scan.data.scan_status === 'malicious') {
+
+      expect(scan.data.scan_signature).toContain('EmbeddedFile');
+
+      await sequelize.query(
+        "UPDATE pergamo.document SET scan_status = 'clean' WHERE id = :id;", {
+        replacements: { id: signedId },
+        type: QueryTypes.UPDATE
+      });
+    }
 
     const download = await api.get(`/document/${signedId}/file`, {
       headers: { 'authorization': token },
@@ -227,8 +244,7 @@ describe('Document Tests', () => {
 
   it('Should upload an OpenDocument text file', async () => {
 
-    // Hasta ahora no habia ningun .odt en test/assets, de modo que la rama
-    // isOpenDocument de utils/filetype.ts no se ejercitaba nunca.
+    // Ejercita la rama isOpenDocument de utils/filetype.ts.
     const pathOdt = path.join(__dirname, 'assets', 'test.odt');
     const mimetypeOdt = 'application/vnd.oasis.opendocument.text';
 
@@ -252,13 +268,9 @@ describe('Document Tests', () => {
 
   it('Should reject a permitted mimetype that has no content signature', async () => {
 
-    // verifyMimetype es ahora fail-closed: un mimetype presente en
-    // VALID_MIMETYPE pero sin firma conocida ya no se acepta con un simple
-    // aviso, porque de su contenido no se puede afirmar nada.
-    //
-    // Solo tiene sentido si la configuracion de este entorno incluye alguno; en
-    // caso contrario se informa y se omite, en vez de dar por probado algo que
-    // no se ha ejercitado.
+    // verifyMimetype es fail-closed: un mimetype de VALID_MIMETYPE sin firma
+    // conocida no se acepta, porque de su contenido no se puede afirmar nada.
+    // Sin ninguno en esta configuracion se informa y se omite.
     const tmp = path.join(Config.tmp_base, `signature-probe-${Date.now()}`);
     fs.writeFileSync(tmp, 'contenido arbitrario');
 
@@ -361,8 +373,7 @@ describe('Document Tests', () => {
 
   itAntivirus('Should not replace a file with an infected one', async () => {
 
-    // PUT /document/:id/file no tenia ninguna cobertura con contenido
-    // infectado, pese a ser la segunda via de entrada de ficheros al sistema.
+    // El reemplazo es la segunda via de entrada de ficheros al sistema.
     const form = new FormData();
     form.append('document', Buffer.from(EICAR), {
       filename: 'virus.pdf',

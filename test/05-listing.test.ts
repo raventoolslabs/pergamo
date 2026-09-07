@@ -236,7 +236,7 @@ describe('Listing endpoints', () => {
     });
 
     expect(response.status).toBe(StatusCodes.OK);
-    expect(['pending', 'clean', 'infected', 'error']).toContain(response.data.scan_status);
+    expect(['pending', 'clean', 'infected', 'error', 'malicious']).toContain(response.data.scan_status);
     expect(response.data).toHaveProperty('scan_signature');
   });
 

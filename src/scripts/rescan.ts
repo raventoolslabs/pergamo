@@ -7,20 +7,14 @@ import sequelize, { QueryTypes } from '../utils/db';
 import antivirus, { ScannerUnavailableError } from '../utils/antivirus';
 
 /**
- * Reescaneo del corpus almacenado.
+ * Reescaneo del corpus almacenado, tras cada actualizacion de firmas.
  *
- * Es la pieza que cierra la mayor brecha estructural del diseno anterior: se
- * escaneaba una sola vez, en la subida. Un fichero limpio hoy puede tener firma
- * dentro de tres dias, y sin este barrido Pergamo seguiria sirviendolo
- * indefinidamente. Ningun motor antivirico resuelve esto por si solo.
+ * Sin este barrido solo se escanearia en la subida, y un fichero limpio hoy
+ * puede tener firma dentro de tres dias.
  *
- * Uso: npm run rescan            (tras cada actualizacion de firmas, freshclam)
- *
- * IMPORTANTE: este proceso MARCA, nunca borra. La garantia es estructural:
- * utils/antivirus.ts fija removeInfected en false, de modo que ClamAV no puede
- * eliminar un documento del archivo por un falso positivo. En un archivo,
- * corromper en silencio un documento valido es peor defecto que dejar pasar un
- * virus.
+ * Este proceso marca, nunca borra: utils/antivirus.ts fija removeInfected en
+ * false, porque corromper en silencio un documento valido es peor defecto que
+ * dejar pasar un virus.
  */
 
 const BATCH_SIZE = 100;
@@ -37,6 +31,7 @@ const pending = async (engine:string, offsetId:string|null):Promise<Row[]> =>
     `SELECT id, organization, path, scan_status
     FROM pergamo.document
     WHERE (scan_engine IS NULL OR scan_engine <> :engine)
+      AND scan_status <> 'malicious'
       AND (:offsetId::varchar IS NULL OR id > :offsetId)
     ORDER BY id
     LIMIT :limit;`, {
@@ -44,6 +39,12 @@ const pending = async (engine:string, offsetId:string|null):Promise<Row[]> =>
     type: QueryTypes.SELECT
   }) as any;
 
+/**
+ * 'malicious' queda fuera de la cola, y eso sostiene la politica entera: esa
+ * cuarentena es por lo que el documento lleva dentro, no por una firma, asi que
+ * el barrido lo encontraria limpio y liberaria en lote lo que se decidio
+ * retener. Se sale por `npm run scan:release -- <id>` y por nada mas.
+ */
 const record = async (id:string, status:string, signature:string|null, engine:string|null) =>
   sequelize.query(
     `UPDATE pergamo.document
@@ -82,14 +83,10 @@ const rescan = async () => {
 
       const filePath = path.join(Config.path_base, row.organization, row.path);
 
-      // El fichero puede faltar (borrado manual, volumen no montado). Se marca
-      // 'error' en vez de 'clean': la ausencia de veredicto nunca debe leerse
-      // como veredicto favorable.
-      //
-      // 'error' es el UNICO caso que lo produce, y es deliberado: significa que
-      // el documento esta roto, no que el analisis no haya podido hacerse. Se
-      // graba con el motor actual porque reintentarlo no arregla nada; sale de
-      // la cola y exige que alguien mire por que falta el fichero.
+      // El fichero puede faltar (borrado manual, volumen no montado): se marca
+      // 'error' y no 'clean', porque la ausencia de veredicto no es un veredicto
+      // favorable. Se graba con el motor actual —reintentarlo no arregla nada—,
+      // sale de la cola y exige que alguien mire por que falta.
       if(!fs.existsSync(filePath)) {
         await record(row.id, 'error', 'FILE_MISSING', engine);
         totals.missing++;
@@ -112,18 +109,14 @@ const rescan = async () => {
 
       } catch(error:any) {
 
-        // Un escaner caido detiene el barrido entero: seguir dejaria el corpus
-        // en un estado que no refleja nada. Se reanuda desde donde quedo en la
-        // siguiente ejecucion, porque la seleccion es por scan_engine y no por
-        // una marca de progreso.
+        // Un escaner caido detiene el barrido entero. Se reanuda solo en la
+        // siguiente ejecucion: la seleccion es por scan_engine, no por una
+        // marca de progreso.
         if(error instanceof ScannerUnavailableError) throw error;
 
-        // El fichero esta, pero este analisis concreto no ha llegado a un
-        // veredicto: eso es exactamente 'pending'. Va con scan_engine NULO a
-        // proposito —la cola de reescaneo selecciona por scan_engine—, de modo
-        // que el proximo barrido vuelva a intentarlo. Grabarlo con el motor
-        // actual, como se hacia antes, lo sacaba de la cola y lo dejaba sin
-        // analizar y sin descarga para siempre.
+        // El fichero esta pero no hay veredicto: eso es 'pending'. Con
+        // scan_engine nulo a proposito, para que el proximo barrido vuelva a
+        // intentarlo en vez de sacarlo de la cola sin analizar.
         await record(row.id, 'pending', null, null);
         totals.retry++;
         log.error(`Document ${row.id}: ${error.message}`);
@@ -139,9 +132,19 @@ const rescan = async () => {
     log.warn(`${totals.infected} document(s) are quarantined and no longer downloadable (423). Review them before releasing: npm run scan:release -- <id>`);
   }
 
+  // La cuarentena por contenido activo no se cuenta arriba porque el barrido ni
+  // la mira: solo sale por revision, y sin este aviso no aparece en ningun sitio.
+  const withheld:any = await sequelize.query(
+    "SELECT COUNT(*)::int AS total FROM pergamo.document WHERE scan_status = 'malicious';", {
+    type: QueryTypes.SELECT
+  });
+
+  if(withheld[0]?.total > 0) {
+    log.warn(`${withheld[0].total} document(s) are quarantined for active content and were NOT rescanned: that state is not cleared by a scan. Review and release with: npm run scan:release -- <id>`);
+  }
+
   // Un fichero que falta no se arregla con otro barrido: no se vuelve a mirar
-  // hasta que cambie la version del motor, asi que si no se avisa aqui nadie se
-  // entera de que el archivo tiene un hueco.
+  // hasta que cambie la version del motor.
   if(totals.missing > 0) {
     log.warn(`${totals.missing} document(s) have no file on disk (scan_status "error", signature FILE_MISSING). Check the storage volume: they cannot be downloaded and a rescan will not fix them.`);
   }

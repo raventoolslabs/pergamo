@@ -5,13 +5,8 @@ import type {
 
 const TOKEN_KEY = 'pergamo.token';
 
-/**
- * Error de la API con el codigo HTTP a la vista.
- *
- * Las pantallas necesitan distinguir casos concretos —423 cuarentena, 429 rate
- * limit, 413 fichero demasiado grande— y no solo mostrar un mensaje: sin el
- * status, todos acabarian como "ha fallado algo".
- */
+// Con el codigo HTTP a la vista: las pantallas distinguen casos concretos (423
+// cuarentena, 429 rate limit, 413 demasiado grande) y no solo el mensaje.
 export class ApiError extends Error {
   status: number;
   retryAfter?: number;
@@ -24,10 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * El token se guarda en sessionStorage: sobrevive a un F5 pero no a cerrar la
- * pestana, que es el compromiso razonable para una herramienta de gestion.
- */
+// sessionStorage: el token sobrevive a un F5 pero no a cerrar la pestana.
 export const tokenStore = {
   get: () => {
     try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
@@ -40,11 +32,8 @@ export const tokenStore = {
   }
 };
 
-/**
- * Se avisa al resto de la aplicacion cuando la sesion deja de ser valida, para
- * que el proveedor de sesion cierre y redirija sin que cada llamada tenga que
- * ocuparse del 401 por su cuenta.
- */
+// Se avisa a la aplicacion cuando la sesion caduca, para que ninguna llamada
+// tenga que ocuparse del 401 por su cuenta.
 type Listener = () => void;
 const unauthorizedListeners = new Set<Listener>();
 
@@ -55,8 +44,8 @@ export const onUnauthorized = (listener: Listener) => {
 
 const authHeaders = (): Record<string, string> => {
   const token = tokenStore.get();
-  // La cabecera va con el JWT crudo, SIN prefijo 'Bearer': el authHandler del
-  // backend pasa el valor entero a jwt.verify.
+  // JWT crudo, sin prefijo 'Bearer': el backend pasa el valor entero a
+  // jwt.verify.
   return token ? { authorization: token } : {};
 };
 
@@ -70,8 +59,7 @@ const parseError = async (response: Response) => {
     const body = await response.json();
     if (body && typeof body.error === 'string') message = body.error;
   } catch {
-    // Una respuesta sin JSON (un 502 de un proxy, por ejemplo) deja el mensaje
-    // generico en lugar de reventar aqui.
+    // Una respuesta sin JSON (un 502 de un proxy) deja el mensaje generico.
   }
 
   return new ApiError(response.status, message, Number.isFinite(retryAfter) ? retryAfter : undefined);
@@ -113,16 +101,14 @@ const query = (params: Record<string, unknown>) => {
   return qs ? `?${qs}` : '';
 };
 
-/**
- * Nombre de fichero anunciado por el servidor. Se prefiere la forma RFC 5987
- * (filename*=UTF-8''...) porque es la que conserva los acentos.
- */
+// Se prefiere la forma RFC 5987 (filename*=UTF-8''...): es la que conserva los
+// acentos.
 const filenameFrom = (disposition: string | null, fallback: string) => {
   if (!disposition) return fallback;
 
   const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
   if (encoded) {
-    try { return decodeURIComponent(encoded[1]); } catch { /* cae al plano */ }
+    try { return decodeURIComponent(encoded[1]); } catch { /* cae a la forma plana */ }
   }
 
   const plain = /filename="?([^";]+)"?/i.exec(disposition);
@@ -168,8 +154,8 @@ export const api = {
   upload: (file: File) => {
     const form = new FormData();
     form.append('document', file);
-    // Sin content-type explicito: lo pone el navegador con el boundary del
-    // multipart, que es justo lo que multer necesita para parsearlo.
+    // Sin content-type explicito: lo pone el navegador con el boundary que
+    // multer necesita.
     return request<DocumentMetadata>('/document', { method: 'POST', body: form });
   },
 
@@ -182,10 +168,8 @@ export const api = {
   remove: (id: string) =>
     request<{ message: string }>(`/document/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  /**
-   * Descarga el contenido. Pasa por fetch y no por un enlace directo porque la
-   * ruta exige la cabecera de autorizacion, que un <a href> no puede enviar.
-   */
+  // Por fetch y no por un enlace directo: la ruta exige la cabecera de
+  // autorizacion, que un <a href> no puede enviar.
   download: async (id: string, fallbackName: string) => {
     const response = await handle(await fetch(`/document/${encodeURIComponent(id)}/file`, {
       headers: authHeaders()
@@ -201,8 +185,7 @@ export const api = {
     link.click();
     link.remove();
 
-    // Se libera en el siguiente tick: revocar antes de que el navegador haya
-    // iniciado la descarga la cancela.
+    // Revocar antes de que el navegador arranque la descarga la cancela.
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 };

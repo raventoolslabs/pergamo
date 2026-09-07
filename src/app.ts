@@ -3,6 +3,7 @@ import Routes from './routes';
 import Config from './config';
 import log from './utils/log';
 import antivirus from './utils/antivirus';
+import { activeContentRules } from './utils/activecontent';
 import FilesUtils from './utils/files';
 import express from 'express';
 import path from 'path';
@@ -17,14 +18,11 @@ const bodyParser = require('body-parser')
 const API_PREFIXES = ['/organization', '/document', '/version', '/config'];
 
 /**
- * Sirve la interfaz web compilada, si existe.
+ * Sirve la interfaz compilada, si existe. Vite deja el resultado en dist/web,
+ * junto al JavaScript de la API, de modo que una sola imagen sirve ambas cosas.
  *
- * El build de Vite deja el resultado en dist/web, junto al JavaScript de la
- * API, de modo que una sola imagen sirve ambas cosas en el mismo puerto.
- *
- * La comprobacion de existencia no es cosmetica: con ts-node (npm run dev) y en
- * las pruebas no hay ningun build de frontend, y sin ella el fallback
- * responderia a cualquier ruta con un sendFile a un fichero inexistente.
+ * Con ts-node y en las pruebas no hay build de frontend: sin comprobarlo, el
+ * fallback responderia a cualquier ruta con un sendFile a un fichero que falta.
  */
 const serveWeb = (app:express.Express) => {
 
@@ -36,10 +34,8 @@ const serveWeb = (app:express.Express) => {
     return;
   }
 
-  // Solo /assets lleva hash en el nombre: ahi la cache agresiva es segura
-  // porque un contenido nuevo estrena URL. El logo y los favicons conservan su
-  // nombre entre despliegues, asi que una cache de un ano dejaria a los
-  // navegadores con la imagen vieja hasta 2027.
+  // Solo /assets lleva hash en el nombre, asi que solo ahi la cache agresiva es
+  // segura: el logo conserva el suyo entre despliegues.
   app.use('/assets', express.static(path.join(webRoot, 'assets'), {
     index: false,
     immutable: true,
@@ -48,10 +44,8 @@ const serveWeb = (app:express.Express) => {
 
   app.use(express.static(webRoot, { index: false, maxAge: '1h' }));
 
-  // Express 5 (path-to-regexp v8) ya no admite el comodin '*' sin nombrar: hay
-  // que darle un nombre al parametro, aunque no se use. Las llaves son
-  // necesarias ademas: '/*splat' no casa la raiz '/', solo lo que cuelga de
-  // ella; '/{*splat}' (comodin dentro de un grupo opcional) casa las dos cosas.
+  // Express 5 exige nombrar el comodin, y las llaves hacen falta: '/*splat' no
+  // casa la raiz '/', y '/{*splat}' casa las dos cosas.
   app.get('/{*splat}', (req, res, next) => {
     if(API_PREFIXES.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) return next();
     res.setHeader('Cache-Control', 'no-cache');
@@ -63,12 +57,18 @@ const serveWeb = (app:express.Express) => {
 // lugar de competir todas por el mismo puerto fijo.
 export const app = async (port:any = Config.port) => {
 
-  // Se conecta con clamd ANTES de escuchar. Es el readiness gate: sin esto la
-  // aplicacion aceptaba trafico mientras clamd seguia cargando firmas, y cada
-  // subida en esa ventana devolvia un 500 opaco.
-  //
-  // El arranque sin antivirus se registra de forma explicita: antes un
-  // despliegue podia estar corriendo sin escaneo alguno y nada lo indicaba.
+  // Una regla inexistente en MALICIOUS_ACTIVE_CONTENT_IGNORE no ignora nada, que
+  // es lo contrario de lo que cree quien la escribio: se para el arranque en vez
+  // de cuarentenar lo que su operador daba por exceptuado.
+  const rules = activeContentRules().map((rule) => rule.name);
+  const unknown = Config.malicious_active_content_ignore.filter((name) => !rules.includes(name));
+
+  if(unknown.length) throw new Error(
+    `MALICIOUS_ACTIVE_CONTENT_IGNORE contains unknown rule(s): ${unknown.join(', ')}. Valid rules: ${rules.join(', ')}`);
+
+  // Se conecta con clamd antes de escuchar: sin este readiness gate, cada subida
+  // hecha mientras clamd carga firmas devolvia un 500 opaco.
+
   if(Config.enable_antivirus) {
     await antivirus.init();
   } else {
@@ -88,14 +88,13 @@ export const app = async (port:any = Config.port) => {
   });
 
   // Limites del despliegue que la interfaz necesita para validar antes de
-  // enviar: que mimetypes se admiten, cuanto puede pesar un fichero y que
-  // campos de metadatos son editables. Viven en variables de entorno, asi que
-  // la alternativa era duplicarlos en el frontend y verlos divergir.
-  //
-  // Va autenticado: describe la configuracion de la instalacion y no hay
-  // motivo para ofrecerlo a quien no ha entrado.
+  // enviar. Viven en variables de entorno: la alternativa era duplicarlos en el
+  // frontend y verlos divergir. Va autenticado porque describe la instalacion.
   app.get('/config', Middleware.auth, (req, res) => {
     res.status(200).json({
+      // La interfaz lo necesita para no prometer un analisis que no va a
+      // ocurrir; no revela nada que scan_engine no diga ya.
+      enable_antivirus: Config.enable_antivirus,
       valid_mimetype: Config.valid_mimetype,
       valid_metadata_modify: Config.valid_metadata_modify,
       max_file_size: Config.max_file_size,
@@ -112,9 +111,8 @@ export const app = async (port:any = Config.port) => {
 
   const server = app.listen(port);
 
-  // Se espera al evento 'listening'. Sin esto, un fallo al abrir el puerto
-  // (ocupado, sin permisos) pasaba inadvertido: la funcion devolvia el servidor
-  // y la aplicacion continuaba como si hubiera arrancado.
+  // Sin esperar a 'listening', un fallo al abrir el puerto pasaba inadvertido y
+  // la aplicacion continuaba como si hubiera arrancado.
   await new Promise<void>((resolve, reject) => {
 
     const onError = (error:any) => {
@@ -134,8 +132,7 @@ export const app = async (port:any = Config.port) => {
   log.info(`Server running on port ${(server.address() as any).port}`);
 
   // Barrido de temporales huerfanos. unref() para que el intervalo no mantenga
-  // vivo el proceso: en las pruebas, cada suite cierra su servidor y debe poder
-  // terminar.
+  // vivo el proceso: cada suite de pruebas cierra su servidor y debe terminar.
   const cleanup = setInterval(() => {
     FilesUtils.cleanTmp(Config.tmp_base, Config.tmp_max_age_ms)
       .then((removed) => { if(removed) log.info(`Removed ${removed} orphaned upload temp file(s)`); })

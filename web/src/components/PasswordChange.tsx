@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 
-import { comprobaciones, contrasenaValida, nivelDeFuerza } from './PasswordFields';
-import { AvisoDeError } from './ui';
+import { t } from '../i18n';
+import { isPasswordValid, passwordRules, strengthLevel } from './PasswordFields';
+import { ErrorNotice } from './ui';
 
-const IconoCandado = () => (
+const LockIcon = () => (
   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
     <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.4" />
@@ -13,7 +14,7 @@ const IconoCandado = () => (
   </svg>
 );
 
-const IconoOjo = () => (
+const EyeIcon = () => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
     <path d="M2.6 12S6 5.8 12 5.8 21.4 12 21.4 12 18 18.2 12 18.2 2.6 12 2.6 12z" />
@@ -21,14 +22,14 @@ const IconoOjo = () => (
   </svg>
 );
 
-const IconoCheck = () => (
+const CheckIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M5 12.6l4.4 4.4L19 7.4" />
   </svg>
 );
 
-const IconoCheckCirculo = () => (
+const CheckCircleIcon = () => (
   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="12" cy="12" r="8.4" />
@@ -36,14 +37,14 @@ const IconoCheckCirculo = () => (
   </svg>
 );
 
-const IconoMarca = () => (
+const TickIcon = () => (
   <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M4.5 12.6l5 5 10-11" />
   </svg>
 );
 
-const IconoAviso = () => (
+const WarnIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M12 3.5 21.5 20h-19L12 3.5z" />
@@ -52,236 +53,225 @@ const IconoAviso = () => (
   </svg>
 );
 
-const MENSAJE_ESTADO = {
-  coincide: 'Las contraseñas coinciden.',
-  'no-coincide': 'Las contraseñas no coinciden.'
+const MATCH_MESSAGE = {
+  match: t('password.match'),
+  mismatch: t('password.mismatch')
 } as const;
 
 /**
- * Campo de contraseña con boton de mostrar/ocultar.
+ * Campo de contrasena con boton de mostrar/ocultar.
  *
- * Independiente por campo a proposito: el de repetir tiene ademas su propio
- * indicador de coincidencia, que este componente no conoce. Va dentro del
- * campo —tick verde o aviso ambar, junto al ojo— y no en una linea aparte:
- * con el campo ya teñido de borde, repetirlo en texto justo debajo era decir
- * lo mismo dos veces.
+ * El indicador de coincidencia va dentro del campo, junto al ojo: con el borde
+ * ya tenido, repetirlo en texto justo debajo era decir lo mismo dos veces.
  */
-const CampoContrasena = ({ id, etiqueta, placeholder, value, onChange, mostrar, onMostrar, autoFocus, estado, describedBy }: {
+const PasswordField = ({ id, label, placeholder, value, onChange, visible, onToggle, autoFocus, match, describedBy }: {
   id: string;
-  etiqueta: string;
+  label: string;
   placeholder: string;
   value: string;
-  onChange: (valor: string) => void;
-  mostrar: boolean;
-  onMostrar: () => void;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
   autoFocus?: boolean;
-  /** Solo lo usa el campo de repetición: tiñe el borde, activa el indicador. */
-  estado?: 'coincide' | 'no-coincide';
+  /** Solo lo usa el campo de repeticion: tine el borde y activa el indicador. */
+  match?: 'match' | 'mismatch';
   describedBy?: string;
 }) => {
 
-  const idEstado = `${id}-estado`;
+  const matchId = `${id}-match`;
 
   return (
-    <div className="campo">
-      <label htmlFor={id}>{etiqueta}</label>
-      <div className={`campo-contrasena${estado ? ` campo-contrasena--${estado}` : ''}`}>
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <div className={`password-field${match ? ` password-field--${match}` : ''}`}>
         <input
           id={id}
-          type={mostrar ? 'text' : 'password'}
+          type={visible ? 'text' : 'password'}
           autoComplete="new-password"
           autoFocus={autoFocus}
           maxLength={128}
           placeholder={placeholder}
           value={value}
-          aria-invalid={estado === 'no-coincide' || undefined}
-          aria-describedby={[describedBy, estado ? idEstado : null].filter(Boolean).join(' ') || undefined}
-          onChange={(evento) => onChange(evento.target.value)}
+          aria-invalid={match === 'mismatch' || undefined}
+          aria-describedby={[describedBy, match ? matchId : null].filter(Boolean).join(' ') || undefined}
+          onChange={(event) => onChange(event.target.value)}
         />
-        {estado ? (
-          <span className="campo-contrasena__indicador">
-            {estado === 'coincide' ? <IconoCheck /> : <IconoAviso />}
+        {match ? (
+          <span className="password-field__indicator">
+            {match === 'match' ? <CheckIcon /> : <WarnIcon />}
           </span>
         ) : null}
         <button
           type="button"
-          className="campo-contrasena__ojo"
-          onClick={onMostrar}
-          aria-pressed={mostrar}
-          aria-label={mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+          className="password-field__eye"
+          onClick={onToggle}
+          aria-pressed={visible}
+          aria-label={visible ? t('a11y.hidePassword') : t('a11y.showPassword')}
         >
-          <IconoOjo />
+          <EyeIcon />
         </button>
       </div>
-      {/* El icono basta a la vista; quien usa lector de pantalla necesita la
-          misma informacion en texto, asi que va aqui, oculta visualmente. */}
-      {estado ? <span id={idEstado} className="sr-only" aria-live="polite">{MENSAJE_ESTADO[estado]}</span> : null}
+      {/* El icono basta a la vista; con lector de pantalla hace falta la misma
+          informacion en texto. */}
+      {match ? <span id={matchId} className="sr-only" aria-live="polite">{MATCH_MESSAGE[match]}</span> : null}
     </div>
   );
 };
 
-interface CambiarContrasenaProps {
-  /** Por defecto "Cambiar la contraseña"; la sesion master lo usa para nombrar la organización. */
-  titulo?: string;
-  descripcion?: ReactNode;
-  onSubmit: (contrasena: string) => Promise<unknown>;
+interface PasswordChangeProps {
+  /** La sesion master lo usa para nombrar la organizacion. */
+  title?: string;
+  description?: ReactNode;
+  onSubmit: (password: string) => Promise<unknown>;
   /** Ademas de limpiar los campos, que es lo que hace siempre Cancelar. Sin ella
-      (Mi cuenta) el boton solo limpia; con ella (un dialogo) tambien cierra. */
+      el boton solo limpia; con ella tambien cierra. */
   onCancel?: () => void;
-  textoEnvio?: string;
+  submitText?: string;
   autoFocus?: boolean;
-  /** La nota de seguridad bajo la tarjeta. false la quita cuando el contexto ya la da (poco frecuente). */
-  nota?: boolean;
+  /** La nota de seguridad bajo la tarjeta. */
+  note?: boolean;
   /** Sin fondo, borde ni radio propios: para cuando ya hay una superficie de
-      sobra alrededor, como el `.seccion` de Mi cuenta. El dialogo del master
-      SI necesita la tarjeta —es lo unico que le da forma de dialogo, via
-      `Dialogo desnudo`— asi que ese uso deja esta prop en su valor por
-      defecto. */
-  desnudo?: boolean;
+      sobra alrededor, como la seccion de Mi cuenta. */
+  bare?: boolean;
 }
 
 /**
- * Formulario de cambio de contraseña con validacion en vivo: medidor de
- * fortaleza, checklist de requisitos, coincidencia y mostrar/ocultar en ambos
- * campos.
- *
- * Es la misma tarjeta en "Mi cuenta" (cambia la propia) y en el dialogo de
- * organizaciones que ve el master (cambia la de otra): las reglas del servidor
- * son las mismas y no hay razon para que la interfaz que las explica sea
- * distinta. Lo que cambia entre un sitio y otro es solo texto, via props.
+ * Es la misma tarjeta en Mi cuenta (cambia la propia) y en el dialogo del
+ * master (cambia la de otra): las reglas del servidor son las mismas, asi que
+ * entre un sitio y otro solo cambia el texto.
  */
-export const CambiarContrasena = ({
-  titulo = 'Cambiar la contraseña', descripcion, onSubmit, onCancel,
-  textoEnvio = 'Cambiar contraseña', autoFocus = true, nota = true, desnudo = false
-}: CambiarContrasenaProps) => {
+export const PasswordChange = ({
+  title = t('password.change'), description, onSubmit, onCancel,
+  submitText = t('password.submit'), autoFocus = true, note = true, bare = false
+}: PasswordChangeProps) => {
 
-  const [contrasena, setContrasena] = useState('');
-  const [repetida, setRepetida] = useState('');
-  const [mostrar1, setMostrar1] = useState(false);
-  const [mostrar2, setMostrar2] = useState(false);
-  const [hecho, setHecho] = useState(false);
+  const [password, setPassword] = useState('');
+  const [repeated, setRepeated] = useState('');
+  const [showFirst, setShowFirst] = useState(false);
+  const [showSecond, setShowSecond] = useState(false);
+  const [done, setDone] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [enviando, setEnviando] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  const reglas = comprobaciones(contrasena).filter((regla) => regla.visible);
-  const cumplidas = reglas.filter((regla) => regla.ok).length;
-  const nivel = nivelDeFuerza(contrasena);
+  const rules = passwordRules(password).filter((rule) => rule.visible);
+  const met = rules.filter((rule) => rule.ok).length;
+  const level = strengthLevel(password);
 
-  const coincide = contrasena.length > 0 && contrasena === repetida;
-  const noCoincide = repetida.length > 0 && !coincide;
-  const lista = contrasenaValida(contrasena) && coincide;
+  const matches = password.length > 0 && password === repeated;
+  const mismatches = repeated.length > 0 && !matches;
+  const ready = isPasswordValid(password) && matches;
 
-  // Cada requisito visible cuenta, y la coincidencia es uno mas: asi la pista
-  // es exacta incluso cuando faltan varias cosas a la vez, no solo la ultima.
-  const pendientes = (reglas.length - cumplidas) + (coincide ? 0 : 1);
+  // Cada requisito visible cuenta, y la coincidencia es uno mas: asi la pista es
+  // exacta cuando faltan varias cosas a la vez.
+  const missing = (rules.length - met) + (matches ? 0 : 1);
 
-  const cambiar = (setter: (valor: string) => void) => (valor: string) => {
-    setter(valor);
-    setHecho(false);
+  const change = (setter: (value: string) => void) => (value: string) => {
+    setter(value);
+    setDone(false);
   };
 
-  const enviar = async (evento: FormEvent) => {
-    evento.preventDefault();
-    if (!lista) return;
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!ready) return;
 
     setError(null);
-    setEnviando(true);
+    setSending(true);
 
     try {
-      await onSubmit(contrasena);
-      setContrasena('');
-      setRepetida('');
-      setHecho(true);
-    } catch (fallo) {
-      setError(fallo);
+      await onSubmit(password);
+      setPassword('');
+      setRepeated('');
+      setDone(true);
+    } catch (failure) {
+      setError(failure);
     } finally {
-      setEnviando(false);
+      setSending(false);
     }
   };
 
-  const cancelar = () => {
-    setContrasena('');
-    setRepetida('');
-    setHecho(false);
+  const cancel = () => {
+    setPassword('');
+    setRepeated('');
+    setDone(false);
     setError(null);
     onCancel?.();
   };
 
-  const cuerpo = (
+  const body = (
     <>
-      <div className="tarjeta-contrasena__cabecera">
-        <div className="tarjeta-contrasena__icono"><IconoCandado /></div>
+      <div className="password-card__header">
+        <div className="password-card__icon"><LockIcon /></div>
         <div>
-          <h2>{titulo}</h2>
-          {descripcion ? <p>{descripcion}</p> : null}
+          <h2>{title}</h2>
+          {description ? <p>{description}</p> : null}
         </div>
       </div>
 
-      <form onSubmit={enviar} className="formulario">
-        {hecho ? (
-          <div className="tarjeta-contrasena__exito">
-            <IconoCheckCirculo />
-            <span>Contraseña actualizada correctamente.</span>
+      <form onSubmit={submit} className="form">
+        {done ? (
+          <div className="password-card__success">
+            <CheckCircleIcon />
+            <span>{t('password.updated')}</span>
           </div>
         ) : null}
 
-        <AvisoDeError error={error} />
+        <ErrorNotice error={error} />
 
-        <CampoContrasena
-          id="contrasena-nueva"
-          etiqueta="Contraseña nueva"
-          placeholder="Mínimo 10 caracteres"
-          value={contrasena}
-          onChange={cambiar(setContrasena)}
-          mostrar={mostrar1}
-          onMostrar={() => setMostrar1((estado) => !estado)}
+        <PasswordField
+          id="password-new"
+          label={t('password.newLabel')}
+          placeholder={t('password.newPlaceholder')}
+          value={password}
+          onChange={change(setPassword)}
+          visible={showFirst}
+          onToggle={() => setShowFirst((current) => !current)}
           autoFocus={autoFocus}
-          describedBy="contrasena-requisitos"
+          describedBy="password-requirements"
         />
 
-        <div className={`medidor${nivel ? ` medidor--${nivel.clave}` : ''}`}>
-          <div className="medidor__pista">
-            {reglas.map((_, indice) => (
+        <div className={`meter${level ? ` meter--${level.key}` : ''}`}>
+          <div className="meter__track">
+            {rules.map((_, index) => (
               <div
-                key={indice}
-                className={`medidor__segmento${nivel && indice < cumplidas ? ' medidor__segmento--activo' : ''}`}
+                key={index}
+                className={`meter__segment${level && index < met ? ' meter__segment--active' : ''}`}
               />
             ))}
           </div>
-          <span className="medidor__etiqueta">{nivel ? nivel.etiqueta : '—'}</span>
+          <span className="meter__label">{level ? level.label : t('common.none')}</span>
         </div>
 
-        <div className="requisitos" id="contrasena-requisitos" aria-live="polite">
-          {reglas.map((regla) => (
-            <div className={`requisito${regla.ok ? ' requisito--cumple' : ''}`} key={regla.texto}>
-              <span className="requisito__marca">{regla.ok ? <IconoMarca /> : null}</span>
-              {regla.texto}
+        <div className="requirements" id="password-requirements" aria-live="polite">
+          {rules.map((rule) => (
+            <div className={`requirement${rule.ok ? ' requirement--met' : ''}`} key={rule.text}>
+              <span className="requirement__mark">{rule.ok ? <TickIcon /> : null}</span>
+              {rule.text}
             </div>
           ))}
         </div>
 
-        <CampoContrasena
-          id="contrasena-repetida"
-          etiqueta="Repetir contraseña"
-          placeholder="Vuelve a escribirla"
-          value={repetida}
-          onChange={cambiar(setRepetida)}
-          mostrar={mostrar2}
-          onMostrar={() => setMostrar2((estado) => !estado)}
-          estado={noCoincide ? 'no-coincide' : coincide ? 'coincide' : undefined}
+        <PasswordField
+          id="password-repeated"
+          label={t('password.repeatLabel')}
+          placeholder={t('password.repeatPlaceholder')}
+          value={repeated}
+          onChange={change(setRepeated)}
+          visible={showSecond}
+          onToggle={() => setShowSecond((current) => !current)}
+          match={mismatches ? 'mismatch' : matches ? 'match' : undefined}
         />
 
-        <div className="tarjeta-contrasena__acciones">
-          <button type="submit" className="btn btn--principal" disabled={!lista || enviando}>
-            {enviando
-              ? <><span className="girando" aria-hidden="true" /> Guardando…</>
-              : <><IconoCheck />{textoEnvio}</>}
+        <div className="password-card__actions">
+          <button type="submit" className="btn btn--primary" disabled={!ready || sending}>
+            {sending
+              ? <><span className="spinner" aria-hidden="true" /> {t('common.saving')}</>
+              : <><CheckIcon />{submitText}</>}
           </button>
-          {/* Sin onCancel (Mi cuenta) no hay de que "salir": el formulario no
-              cierra nada, y un boton que solo limpia campos ya escritos sobra. */}
-          {onCancel ? <button type="button" className="btn" onClick={cancelar}>Cancelar</button> : null}
-          <span className="tarjeta-contrasena__pista">
-            {lista ? '' : `Falta${pendientes === 1 ? '' : 'n'} ${pendientes} requisito${pendientes === 1 ? '' : 's'} por cumplir`}
+          {/* Sin onCancel no hay de que salir: un boton que solo limpia campos
+              ya escritos sobra. */}
+          {onCancel ? <button type="button" className="btn" onClick={cancel}>{t('common.cancel')}</button> : null}
+          <span className="password-card__hint">
+            {ready ? '' : t('password.pending', { count: missing })}
           </span>
         </div>
       </form>
@@ -290,14 +280,9 @@ export const CambiarContrasena = ({
 
   return (
     <>
-      {desnudo ? cuerpo : <div className="tarjeta-contrasena">{cuerpo}</div>}
+      {bare ? body : <div className="password-card">{body}</div>}
 
-      {nota ? (
-        <p className="tarjeta-contrasena__nota">
-          Usa una contraseña que no reutilices en otros servicios. Si sospechas de un acceso
-          indebido, cierra sesión en todos los dispositivos después de cambiarla.
-        </p>
-      ) : null}
+      {note ? <p className="password-card__note">{t('password.note')}</p> : null}
     </>
   );
 };

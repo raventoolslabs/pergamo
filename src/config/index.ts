@@ -11,6 +11,8 @@ const valid_metadata_modify:string[] = process.env.VALID_METADATA_MODIFY ?
   process.env.VALID_METADATA_MODIFY.split(';').map((value) => value.trim()) : [];
 const valid_mimetype:string[] = process.env.VALID_MIMETYPE ?
   process.env.VALID_MIMETYPE.split(';').map((value) => value.trim()) : [];
+const malicious_active_content_ignore:string[] = process.env.MALICIOUS_ACTIVE_CONTENT_IGNORE ?
+  process.env.MALICIOUS_ACTIVE_CONTENT_IGNORE.split(';').map((value) => value.trim()).filter(Boolean) : [];
 
 const config = {
   path_base,
@@ -18,10 +20,8 @@ const config = {
   enable_antivirus: parseBoolean(process.env.ENABLE_ANTIVIRUS, false, 'ENABLE_ANTIVIRUS'),
   debug: parseBoolean(process.env.DEBUG, false, 'DEBUG'),
   remove_file_disk: parseBoolean(process.env.REMOVE_FILE_DISK, true, 'REMOVE_FILE_DISK'),
-  // Datos de conexion con clamd. Sin esto NodeClam usa sus defaults
-  // (socket/host/port a false), que hacen que ejecute el binario clamdscan
-  // local en lugar de abrir conexion: con clamd en su propio contenedor eso no
-  // funciona en absoluto.
+  // Sin esto NodeClam ejecuta el binario clamdscan local en vez de abrir
+  // conexion, y con clamd en su propio contenedor eso no funciona.
   antivirus: {
     host: process.env.CLAMAV_HOST,
     port: process.env.CLAMAV_PORT ? Number.parseInt(process.env.CLAMAV_PORT) : 3310,
@@ -36,6 +36,11 @@ const config = {
   tmp_cleanup_interval_ms: process.env.TMP_CLEANUP_INTERVAL_MS ? Number.parseInt(process.env.TMP_CLEANUP_INTERVAL_MS) : 900000,
   valid_metadata_modify,
   valid_mimetype,
+  // Reglas de contenido activo que este despliegue no aplica: el equivalente de
+  // clamav/local.ign2 para el detector propio. Un archivo de facturas firmadas
+  // lleva ficheros embebidos por norma y sin esta valvula queda en cuarentena
+  // entero. Se anota siempre por que se ignora.
+  malicious_active_content_ignore,
   max_version_file: process.env.MAX_VERSION_FILES ? Number.parseInt(process.env.MAX_VERSION_FILES) : 1,
   max_file_size: process.env.MAX_FILE_SIZE ? Number.parseInt(process.env.MAX_FILE_SIZE) : 52428800,
   port: process.env.PORT || 3000,
@@ -58,9 +63,8 @@ const config = {
   }
 }
 
-// Se valida al cargar la configuracion para que un .env incompleto o mal
-// escrito falle en el arranque, y no mas tarde con un NaN o un undefined
-// viajando hasta la primera consulta.
+// Se valida al cargar para que un .env mal escrito falle en el arranque, y no
+// con un NaN viajando hasta la primera consulta.
 const validation = configSchema.safeParse(config);
 
 if(!validation.success) {

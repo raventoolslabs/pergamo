@@ -10,50 +10,45 @@ html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  font-family: var(--texto);
+  font-family: var(--font);
   font-size: 15px;
   line-height: 1.55;
-  color: var(--tinta);
-  background: var(--pergamino);
+  color: var(--ink);
+  background: var(--parchment);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/*
- * Escala corta y deliberada. El titular no cambia de familia: cambia de ajuste
- * —peso y tracking negativo—, que es exactamente lo que hace el logotipo.
- */
+/* El titular no cambia de familia: cambia de ajuste —peso y tracking
+   negativo—, que es lo que hace el logotipo. */
 h1, h2, h3 { margin: 0; font-weight: 600; }
 h1 { font-size: 38px; font-weight: 500; line-height: 1.15; letter-spacing: -.025em; }
 h2 { font-size: 21px; line-height: 1.25; letter-spacing: -.02em; }
 h3 { font-size: 15px; letter-spacing: -.01em; }
 p { margin: 0; }
 
-a { color: inherit; text-decoration-color: var(--pauta-fuerte); text-underline-offset: 3px; }
+a { color: inherit; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
 a:hover { text-decoration-color: currentColor; }
 
-:focus-visible { outline: 2px solid var(--tinta); outline-offset: 2px; border-radius: 2px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 2px; }
 
 .mono { font-family: var(--mono); font-size: .92em; letter-spacing: -.01em; }
-.suave { color: var(--tinta-media); }
-.tenue { color: var(--tinta-tenue); }
-.prosa { max-width: 62ch; }
-.separado { margin-top: 24px; }
-.formulario { display: flex; flex-direction: column; gap: 16px; max-width: 620px; }
+.muted { color: var(--ink-mid); }
+.faint { color: var(--ink-faint); }
+.prose { max-width: 62ch; }
+.spaced { margin-top: 24px; }
+.form { display: flex; flex-direction: column; gap: 16px; max-width: 620px; }
 
 /* ============================================================ estructura == */
 
 .shell { display: flex; flex-direction: column; min-height: 100%; }
 
 /*
- * Membrete: el verde de marca, y el unico sitio donde ese verde cubre
- * superficie. Aqui no informa de nada —no hay documento que calificar—, asi que
- * no compite con el verde del veredicto, que solo aparece en el contenido.
- *
- * Sobre el verde no se escribe en blanco: la tinta es el verde oscuro del
- * propio logotipo, que es lo que da contraste suficiente.
+ * Unico sitio donde el verde de marca cubre superficie: aqui no informa de
+ * nada, asi que no compite con el verde del veredicto. Encima no se escribe en
+ * blanco, sino en el verde oscuro del propio logotipo.
  */
-.membrete {
+.masthead {
   position: sticky;
   top: 0;
   z-index: 20;
@@ -62,17 +57,17 @@ a:hover { text-decoration-color: currentColor; }
   gap: 28px;
   padding: 0 32px;
   height: 64px;
-  background: var(--marca);
+  background: var(--brand);
   border-bottom: 1px solid rgba(0, 0, 0, .14);
-  color: var(--marca-tinta);
+  color: var(--brand-ink);
 }
 
 /* El contorno global es claro y sobre el verde se pierde: aqui el foco va en la
    misma tinta con la que esta escrita la barra. */
-.membrete :focus-visible { outline-color: var(--marca-tinta); }
+.masthead :focus-visible { outline-color: var(--brand-ink); }
 
-.membrete__marca { display: flex; align-items: center; gap: 11px; text-decoration: none; }
-.membrete__marca img {
+.masthead__brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+.masthead__brand img {
   width: 34px;
   height: 34px;
   padding: 4px;
@@ -80,10 +75,10 @@ a:hover { text-decoration-color: currentColor; }
   background: #fff;
   object-fit: contain;
 }
-.membrete__marca span { font-size: 19px; font-weight: 600; letter-spacing: -.015em; }
+.masthead__brand span { font-size: 19px; font-weight: 600; letter-spacing: -.015em; }
 
-.membrete__nav { display: flex; gap: 4px; margin-left: 14px; }
-.membrete__nav a {
+.masthead__nav { display: flex; gap: 4px; margin-left: 14px; }
+.masthead__nav a {
   padding: 8px 13px;
   border-radius: 8px;
   color: inherit;
@@ -91,22 +86,22 @@ a:hover { text-decoration-color: currentColor; }
   font-size: 14.5px;
   font-weight: 600;
 }
-.membrete__nav a:hover { background: rgba(255, 255, 255, .3); }
-.membrete__nav a.activo { background: rgba(255, 255, 255, .55); }
+.masthead__nav a:hover { background: rgba(255, 255, 255, .3); }
+.masthead__nav a.active { background: rgba(255, 255, 255, .55); }
 
-.membrete__hueco { flex: 1; }
-.membrete__sesion { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.masthead__gap { flex: 1; }
+.masthead__session { display: flex; align-items: center; gap: 14px; min-width: 0; }
 
 /* Etiqueta y valor, no solo el nombre: quien administra varias organizaciones
    necesita ver de cual es la sesion sin deducirlo. */
-.membrete__quien { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; min-width: 0; }
-.membrete__quien dt {
+.masthead__who { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; min-width: 0; }
+.masthead__who dt {
   font-size: 9.5px;
   letter-spacing: .13em;
   text-transform: uppercase;
   color: rgba(8, 42, 25, .62);
 }
-.membrete__quien dd {
+.masthead__who dd {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
@@ -116,8 +111,8 @@ a:hover { text-decoration-color: currentColor; }
   white-space: nowrap;
 }
 
-.membrete__usuario { position: relative; display: flex; }
-.membrete__avatar {
+.masthead__user { position: relative; display: flex; }
+.masthead__avatar {
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -130,9 +125,9 @@ a:hover { text-decoration-color: currentColor; }
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
 }
-.membrete__avatar:hover { background: #fff; border-color: #fff; }
+.masthead__avatar:hover { background: #fff; border-color: #fff; }
 
-.membrete__menu {
+.masthead__menu {
   position: absolute;
   top: 46px;
   right: 0;
@@ -142,9 +137,9 @@ a:hover { text-decoration-color: currentColor; }
   border: 1px solid rgba(242, 241, 238, .12);
   border-radius: 11px;
   background: var(--menu);
-  box-shadow: var(--sombra-menu);
+  box-shadow: var(--shadow-menu);
 }
-.membrete__menu a, .membrete__menu button {
+.masthead__menu a, .masthead__menu button {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -153,36 +148,36 @@ a:hover { text-decoration-color: currentColor; }
   border: 0;
   border-radius: 7px;
   background: none;
-  color: var(--tinta);
+  color: var(--ink);
   font: inherit;
   font-size: 13.5px;
   text-align: left;
   text-decoration: none;
   cursor: pointer;
 }
-.membrete__menu a:hover, .membrete__menu button:hover { background: rgba(242, 241, 238, .07); }
+.masthead__menu a:hover, .masthead__menu button:hover { background: rgba(242, 241, 238, .07); }
 
-.pagina { flex: 1; padding: 44px 32px 64px; }
-.pagina__interior { max-width: 1240px; margin: 0 auto; }
+.page { flex: 1; padding: 44px 32px 64px; }
+.page__inner { max-width: 1240px; margin: 0 auto; }
 
-.encabezado { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 30px; }
-.encabezado__texto { flex: 1; min-width: 260px; }
-.encabezado__texto h1 { margin-bottom: 6px; }
-.encabezado__texto p { color: var(--tinta-media); }
-.encabezado__acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.pagehead { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 30px; }
+.pagehead__text { flex: 1; min-width: 260px; }
+.pagehead__text h1 { margin-bottom: 6px; }
+.pagehead__text p { color: var(--ink-mid); }
+.pagehead__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-.volver {
+.back {
   display: inline-block;
   margin-bottom: 14px;
   font-size: 14px;
-  color: var(--tinta-media);
+  color: var(--ink-mid);
   text-decoration: none;
 }
-.volver:hover { color: var(--tinta); text-decoration: underline; }
+.back:hover { color: var(--ink); text-decoration: underline; }
 
-.seccion { margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--pauta); }
-.seccion > h2 { margin-bottom: 4px; }
-.seccion__nota { color: var(--tinta-media); font-size: 14px; margin-bottom: 18px; }
+.section { margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--rule); }
+.section > h2 { margin-bottom: 4px; }
+.section__note { color: var(--ink-mid); font-size: 14px; margin-bottom: 18px; }
 
 /* =============================================================== botones == */
 
@@ -192,10 +187,10 @@ a:hover { text-decoration-color: currentColor; }
   justify-content: center;
   gap: 7px;
   padding: 9px 15px;
-  border: 1px solid var(--pauta-fuerte);
+  border: 1px solid var(--rule-strong);
   border-radius: 8px;
   background: transparent;
-  color: var(--tinta);
+  color: var(--ink);
   font: inherit;
   font-size: 14px;
   font-weight: 500;
@@ -204,47 +199,47 @@ a:hover { text-decoration-color: currentColor; }
   white-space: nowrap;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.btn:hover:not(:disabled) { background: var(--roce); border-color: var(--tinta-tenue); }
-.btn:disabled { cursor: not-allowed; color: var(--tinta-tenue); border-color: var(--pauta); background: transparent; }
+.btn:hover:not(:disabled) { background: var(--hover); border-color: var(--ink-faint); }
+.btn:disabled { cursor: not-allowed; color: var(--ink-faint); border-color: var(--rule); background: transparent; }
 
-.btn--principal {
+.btn--primary {
   padding: 12px 18px;
   border-radius: 9px;
-  background: var(--tinta);
-  border-color: var(--tinta);
-  color: var(--tinta-contra);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--ink-contrast);
 }
-.btn--principal:hover:not(:disabled) { background: #fff; border-color: #fff; }
-.btn--principal:disabled { background: transparent; }
+.btn--primary:hover:not(:disabled) { background: #fff; border-color: #fff; }
+.btn--primary:disabled { background: transparent; }
 
-.btn--riesgo { color: var(--lacre); }
-.btn--riesgo:hover:not(:disabled) { background: var(--lacre-tenue); border-color: var(--lacre); }
+.btn--danger { color: var(--seal); }
+.btn--danger:hover:not(:disabled) { background: var(--seal-soft); border-color: var(--seal); }
 
-.btn--plano { border-color: transparent; background: transparent; }
-.btn--plano:hover:not(:disabled) { background: var(--roce); border-color: transparent; }
+.btn--flat { border-color: transparent; background: transparent; }
+.btn--flat:hover:not(:disabled) { background: var(--hover); border-color: transparent; }
 
 /* Boton de solo icono: cuadrado, con el nombre en aria-label. */
-.btn--icono { width: 36px; height: 36px; padding: 0; flex: none; }
-.btn--icono:hover:not(:disabled) { background: var(--verde); border-color: var(--verde); color: var(--tinta-contra); }
+.btn--icon { width: 36px; height: 36px; padding: 0; flex: none; }
+.btn--icon:hover:not(:disabled) { background: var(--green); border-color: var(--green); color: var(--ink-contrast); }
 
 /* Pill: una accion menor que no debe pesar como un boton. */
-.btn--pill { padding: 5px 10px; border-radius: 99px; border-color: rgba(242, 241, 238, .16); color: var(--tinta-media); font-size: 12px; font-weight: 400; }
-.btn--pill:hover:not(:disabled) { background: transparent; color: var(--tinta); border-color: rgba(242, 241, 238, .35); }
+.btn--pill { padding: 5px 10px; border-radius: 99px; border-color: rgba(242, 241, 238, .16); color: var(--ink-mid); font-size: 12px; font-weight: 400; }
+.btn--pill:hover:not(:disabled) { background: transparent; color: var(--ink); border-color: rgba(242, 241, 238, .35); }
 
-.btn--menudo { padding: 5px 11px; font-size: 13px; }
-.btn--ancho { width: 100%; }
+.btn--tiny { padding: 5px 11px; font-size: 13px; }
+.btn--wide { width: 100%; }
 
 /* ================================================================ campos == */
 
-.campo { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.campo > label { font-size: 13px; font-weight: 500; color: var(--tinta-media); }
-.campo input, .campo select, .campo textarea {
+.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.field > label { font-size: 13px; font-weight: 500; color: var(--ink-mid); }
+.field input, .field select, .field textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--pauta-fuerte);
+  border: 1px solid var(--rule-strong);
   border-radius: 8px;
-  background: var(--hoja);
-  color: var(--tinta);
+  background: var(--sheet);
+  color: var(--ink);
   font: inherit;
   font-size: 13.5px;
   outline: none;
@@ -252,63 +247,60 @@ a:hover { text-decoration-color: currentColor; }
 /* El foco tiñe el borde en vez de añadir un anillo: con controles de 8px de
    radio pegados unos a otros, el anillo del resto de la aplicacion se solapaba
    con el campo vecino. */
-.campo input:focus-visible, .campo select:focus-visible, .campo textarea:focus-visible {
+.field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
   outline: none;
-  border-color: var(--verde);
+  border-color: var(--green);
 }
-.campo input::placeholder { color: rgba(242, 241, 238, .32); }
-.campo select { appearance: none; padding-right: 30px; background-image: none; }
-.campo input[type="datetime-local"] { padding: 9px 12px; font-size: 13px; color-scheme: dark; }
-.campo__pista { font-size: 13px; color: var(--tinta-tenue); }
-.campo__pista--error { color: var(--lacre); }
+.field input::placeholder { color: rgba(242, 241, 238, .32); }
+.field select { appearance: none; padding-right: 30px; background-image: none; }
+.field input[type="datetime-local"] { padding: 9px 12px; font-size: 13px; color-scheme: dark; }
+.field__hint { font-size: 13px; color: var(--ink-faint); }
+.field__hint--error { color: var(--seal); }
 
-.etiquetas-campo {
+.tags-field {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 5px;
-  border: 1px solid var(--pauta-fuerte);
+  border: 1px solid var(--rule-strong);
   border-radius: 4px;
-  background: var(--hoja);
+  background: var(--sheet);
 }
-.etiquetas-campo:focus-within { outline: 2px solid var(--tinta); outline-offset: 2px; }
-.etiquetas-campo input { flex: 1 1 140px; border: 0; padding: 3px 6px; background: none; color: inherit; font: inherit; font-size: 14px; outline: none; }
+.tags-field:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
+.tags-field input { flex: 1 1 140px; border: 0; padding: 3px 6px; background: none; color: inherit; font: inherit; font-size: 14px; outline: none; }
 
-.etiqueta {
+.tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 4px 9px;
   border-radius: 99px;
-  background: var(--relleno);
+  background: var(--fill);
   color: rgba(242, 241, 238, .75);
   font-size: 12.5px;
 }
-.etiqueta button { border: 0; background: none; padding: 0; color: inherit; cursor: pointer; line-height: 1; }
-.etiquetas { display: flex; flex-wrap: wrap; gap: 5px; }
+.tag button { border: 0; background: none; padding: 0; color: inherit; cursor: pointer; line-height: 1; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; }
 
 /* ================================================================ filtros == */
 
-/*
- * Los filtros van en un panel propio y no sueltos sobre el fondo: son cinco
- * controles, y sin una superficie que los agrupe compiten con la tabla por ser
- * lo primero que se lee.
- */
-.filtros {
+/* Panel propio y no sueltos sobre el fondo: son cinco controles, y sin una
+   superficie que los agrupe compiten con la tabla por leerse antes. */
+.filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
   padding: 18px;
   margin-bottom: 22px;
-  border: 1px solid var(--pauta);
+  border: 1px solid var(--rule);
   border-radius: 12px;
-  background: var(--hoja);
+  background: var(--sheet);
 }
 
 /* Dentro del panel el control se hunde: sobre la superficie de la tabla, un
    campo del mismo tono desapareceria. */
-.filtros .campo input, .filtros .campo select { background: var(--pergamino); }
-.filtros .campo > label {
+.filters .field input, .filters .field select { background: var(--parchment); }
+.filters .field > label {
   font-size: 10.5px;
   font-weight: 400;
   letter-spacing: .11em;
@@ -316,33 +308,30 @@ a:hover { text-decoration-color: currentColor; }
   color: rgba(242, 241, 238, .42);
 }
 
-.resultado { display: flex; align-items: center; gap: 14px; min-height: 26px; margin-bottom: 10px; }
-.resultado__cuenta { font-size: 12.5px; color: var(--tinta-tenue); }
+.results { display: flex; align-items: center; gap: 14px; min-height: 26px; margin-bottom: 10px; }
+.results__count { font-size: 12.5px; color: var(--ink-faint); }
 
 /* =============================================================== registro == */
 
-/*
- * El registro es una tabla: cabecera de columnas y filas que comparten la misma
- * rejilla. La version anterior era una lista sin cabecera, y obligaba a deducir
- * que era cada cosa documento a documento.
- */
-.registro {
-  border: 1px solid var(--pauta);
+/* Cabecera de columnas y filas sobre la misma rejilla: una lista sin cabecera
+   obliga a deducir que es cada cosa documento a documento. */
+.ledger {
+  border: 1px solid var(--rule);
   border-radius: 12px;
-  background: var(--hoja);
+  background: var(--sheet);
   overflow: hidden;
 }
 
-.registro__cabecera, .entrada {
+.ledger__header, .record {
   display: grid;
   grid-template-columns: 1.9fr .9fr .9fr 1fr 44px;
   gap: 16px;
   align-items: center;
 }
 
-.registro__cabecera {
+.ledger__header {
   padding: 12px 20px;
-  border-bottom: 1px solid var(--pauta);
+  border-bottom: 1px solid var(--rule);
   background: rgba(242, 241, 238, .025);
   font-size: 10.5px;
   letter-spacing: .11em;
@@ -350,15 +339,15 @@ a:hover { text-decoration-color: currentColor; }
   color: rgba(242, 241, 238, .4);
 }
 
-.entrada {
+.record {
   padding: 15px 20px;
-  border-bottom: 1px solid var(--relleno);
+  border-bottom: 1px solid var(--fill);
 }
-.entrada:last-child { border-bottom: 0; }
-.entrada:hover { background: var(--roce); }
+.record:last-child { border-bottom: 0; }
+.record:hover { background: var(--hover); }
 
-.entrada__titulo { min-width: 0; }
-.entrada__titulo a {
+.record__title { min-width: 0; }
+.record__title a {
   display: block;
   font-size: 14.5px;
   font-weight: 500;
@@ -367,9 +356,9 @@ a:hover { text-decoration-color: currentColor; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.entrada__titulo a:hover { text-decoration: underline; }
+.record__title a:hover { text-decoration: underline; }
 
-.entrada__pie {
+.record__foot {
   display: flex;
   align-items: baseline;
   gap: 9px;
@@ -379,160 +368,171 @@ a:hover { text-decoration-color: currentColor; }
   color: rgba(242, 241, 238, .4);
 }
 
-.entrada__fecha {
+.record__date {
   font-size: 13px;
-  color: var(--tinta-media);
+  color: var(--ink-mid);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.entrada .etiquetas { justify-self: start; }
+.record .tags { justify-self: start; }
 
 /* Una organizacion dada de baja sigue en la lista: se marca, no se esconde. */
-.baja {
+.discharged {
   display: inline-block;
   margin-top: 4px;
   padding: 3px 9px;
   border-radius: 99px;
-  background: var(--lacre-tenue);
-  color: var(--lacre);
+  background: var(--seal-soft);
+  color: var(--seal);
   font-size: 12px;
   font-weight: 500;
 }
 
-/*
- * Veredicto: icono y palabra, siempre juntos. El color solo nunca ha bastado
- * —ni para quien no lo distingue, ni para quien no conoce el codigo—, y con la
- * palabra al lado el icono deja de ser un acertijo.
- */
-.veredicto { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.veredicto svg { flex: none; }
-.veredicto span { font-size: 12.5px; color: rgba(242, 241, 238, .55); white-space: nowrap; }
-.veredicto--clean svg { color: var(--verde); }
-.veredicto--pending svg { color: var(--tinta-tenue); }
-.veredicto--infected svg, .veredicto--error svg { color: var(--espera); }
+/* Icono y palabra, siempre juntos: el color solo no basta, ni para quien no lo
+   distingue ni para quien no conoce el codigo. */
+.verdict { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.verdict svg { flex: none; }
+.verdict span { font-size: 12.5px; color: rgba(242, 241, 238, .55); white-space: nowrap; }
+.verdict--clean svg { color: var(--green); }
+/* Sin analizar no es un aviso: el documento se entrega. Va en el gris del papel
+   —ni verde de aprobado ni ambar de espera—, que es lo que significa no tener
+   veredicto. */
+.verdict--unscanned svg { color: var(--ink-faint); }
+.verdict--pending svg { color: var(--pending); }
+/* Ambar: retenido, alguien tiene que decidir. Lacre: roto, alguien tiene que
+   arreglarlo. Son dos trabajos distintos y no se pintan igual. */
+.verdict--infected svg, .verdict--malicious svg { color: var(--pending); }
+.verdict--error svg { color: var(--seal); }
 
 /* ============================================================= paginacion == */
 
-.paginacion { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 18px; }
+.pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 18px; }
 /* El recuento empuja el resto a la derecha: es lo primero que se lee y lo unico
    que no es un control. */
-.paginacion__cuenta { flex: 1; font-size: 12.5px; color: var(--tinta-tenue); }
-.paginacion__paginas { display: flex; align-items: center; gap: 6px; }
-.paginacion__hueco { padding: 0 2px; color: var(--tinta-tenue); font-size: 13px; }
+.pagination__count { flex: 1; font-size: 12.5px; color: var(--ink-faint); }
+.pagination__pages { display: flex; align-items: center; gap: 6px; }
+.pagination__gap { padding: 0 2px; color: var(--ink-faint); font-size: 13px; }
 
-.paginacion__paginas .btn {
+.pagination__pages .btn {
   min-width: 34px;
   height: 34px;
   padding: 0 9px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  color: var(--tinta-media);
+  color: var(--ink-mid);
 }
 /* El :not() no es cosmetico: sin el, el roce gana en especificidad a la pagina
    actual —tiene un pseudo mas— y su numero pasa a papel sobre papel, es decir,
    desaparece justo al apuntarlo. */
-.paginacion__paginas .btn:hover:not(:disabled):not([aria-current="page"]) { color: var(--tinta); }
-.paginacion__paginas .btn[aria-current="page"],
-.paginacion__paginas .btn[aria-current="page"]:hover {
-  background: var(--tinta);
-  border-color: var(--tinta);
-  color: var(--tinta-contra);
+.pagination__pages .btn:hover:not(:disabled):not([aria-current="page"]) { color: var(--ink); }
+.pagination__pages .btn[aria-current="page"],
+.pagination__pages .btn[aria-current="page"]:hover {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--ink-contrast);
 }
 
-.paginacion__por-pagina { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tinta-tenue); }
-.paginacion__por-pagina select {
+.pagination__per-page { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-faint); }
+.pagination__per-page select {
   padding: 7px 10px;
-  border: 1px solid var(--pauta-fuerte);
+  border: 1px solid var(--rule-strong);
   border-radius: 8px;
-  background: var(--pergamino);
-  color: var(--tinta);
+  background: var(--parchment);
+  color: var(--ink);
   font: inherit;
   font-size: 13px;
   outline: none;
 }
-.paginacion__por-pagina select:focus-visible { outline: none; border-color: var(--verde); }
+.pagination__per-page select:focus-visible { outline: none; border-color: var(--green); }
 
 /* ================================================================== sello == */
 
-/*
- * El SHA-256 es literalmente el sello de integridad del documento: es lo unico
- * que acredita que el contenido no ha cambiado. Se compone como tal en lugar de
- * esconderse en una linea gris, y es el unico sitio donde este diseño levanta
- * la voz.
- */
-.ficha { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 40px; align-items: start; }
+/* El SHA-256 es lo unico que acredita que el contenido no ha cambiado: se
+   compone como un sello y no como una linea gris. */
+.detail { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 40px; align-items: start; }
 
-.sello {
+.seal {
   padding: 18px 20px 20px;
-  border: 1px solid var(--verde);
+  border: 1px solid var(--green);
   border-radius: 2px;
-  background: var(--verde-tenue);
+  background: var(--green-soft);
 }
-.sello__huella {
+.seal__fingerprint {
   font-family: var(--mono);
   font-size: 28px;
   font-weight: 500;
   letter-spacing: -.02em;
   line-height: 1.1;
-  color: var(--tinta);
+  color: var(--ink);
 }
-.sello__veredicto { margin-top: 8px; font-size: 14px; font-weight: 500; color: var(--verde-texto); }
-.sello__detalle { margin-top: 2px; font-size: 13px; color: var(--tinta-media); }
-.sello__completo {
+.seal__verdict { margin-top: 8px; font-size: 14px; font-weight: 500; color: var(--green-text); }
+.seal__detail { margin-top: 2px; font-size: 13px; color: var(--ink-mid); }
+.seal__full {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid var(--verde);
+  border-top: 1px solid var(--green);
   font-family: var(--mono);
   font-size: 11.5px;
   line-height: 1.5;
-  color: var(--tinta-media);
+  color: var(--ink-mid);
   word-break: break-all;
 }
 
-.sello--infected, .sello--error { border-color: var(--lacre); background: var(--lacre-tenue); }
-.sello--infected .sello__veredicto, .sello--error .sello__veredicto { color: var(--lacre); }
-.sello--infected .sello__completo, .sello--error .sello__completo { border-top-color: var(--lacre); }
+.seal--infected, .seal--error, .seal--malicious { border-color: var(--seal); background: var(--seal-soft); }
+.seal--infected .seal__verdict, .seal--error .seal__verdict,
+.seal--malicious .seal__verdict { color: var(--seal); }
+.seal--infected .seal__full, .seal--error .seal__full,
+.seal--malicious .seal__full { border-top-color: var(--seal); }
+/* En la ficha el sello de 'error' comparte el lacre con la cuarentena —los dos
+   dicen "esto no se entrega"—, pero la palabra que lleva encima ya no es la
+   misma, que es lo que distingue una decision pendiente de una averia. */
 
-.sello--pending { border-color: var(--espera); background: var(--espera-tenue); }
-.sello--pending .sello__veredicto { color: var(--espera); }
-.sello--pending .sello__completo { border-top-color: var(--espera); }
+/* El sello de lo no analizado conserva la forma pero pierde el color: la huella
+   sigue acreditando el contenido, y lo que falta es el veredicto. */
+.seal--unscanned { border-color: var(--rule-strong); background: var(--hover); }
+.seal--unscanned .seal__verdict { color: var(--ink-mid); }
+.seal--unscanned .seal__full { border-top-color: var(--rule-strong); }
+
+.seal--pending { border-color: var(--pending); background: var(--pending-soft); }
+.seal--pending .seal__verdict { color: var(--pending); }
+.seal--pending .seal__full { border-top-color: var(--pending); }
 
 /* ================================================================ campos == */
 
-.datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 32px; margin: 0; }
-.dato { min-width: 0; }
-.dato dt { font-size: 13px; color: var(--tinta-tenue); }
-.dato dd { margin: 0; min-width: 0; word-break: break-word; }
+.data { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 32px; margin: 0; }
+.datum { min-width: 0; }
+.datum dt { font-size: 13px; color: var(--ink-faint); }
+.datum dd { margin: 0; min-width: 0; word-break: break-word; }
 
 /* ================================================================ avisos == */
 
-.aviso {
+.notice {
   padding: 12px 15px;
-  border-left: 3px solid var(--tinta-tenue);
-  background: var(--hoja);
+  border-left: 3px solid var(--ink-faint);
+  background: var(--sheet);
   font-size: 14px;
   max-width: 68ch;
 }
-.aviso strong { display: block; font-weight: 600; }
-.aviso--error { border-left-color: var(--lacre); background: var(--lacre-tenue); color: var(--lacre); }
-.aviso--warn { border-left-color: var(--espera); background: var(--espera-tenue); color: var(--espera); }
-.aviso--exito { border-left-color: var(--verde); background: var(--verde-tenue); color: var(--verde-texto); }
-.aviso--info { border-left-color: var(--pauta-fuerte); color: var(--tinta-media); }
+.notice strong { display: block; font-weight: 600; }
+.notice--error { border-left-color: var(--seal); background: var(--seal-soft); color: var(--seal); }
+.notice--warn { border-left-color: var(--pending); background: var(--pending-soft); color: var(--pending); }
+.notice--success { border-left-color: var(--green); background: var(--green-soft); color: var(--green-text); }
+.notice--info { border-left-color: var(--rule-strong); color: var(--ink-mid); }
 
-.vacio { padding: 56px 0; max-width: 46ch; }
-.vacio h2 { margin-bottom: 6px; }
-.vacio p { color: var(--tinta-media); }
+.empty { padding: 56px 0; max-width: 46ch; }
+.empty h2 { margin-bottom: 6px; }
+.empty p { color: var(--ink-mid); }
 
 /* Dentro de un contenedor que ya es la lista, el vacio ocupa su sitio: alineado
    a la izquierda quedaria colgando de una cabecera de columnas vacia. */
-.vacio--centrado { padding: 52px 20px; max-width: none; text-align: center; }
-.vacio--centrado h2 { font-size: 15px; font-weight: 500; }
-.vacio--centrado p { font-size: 13px; color: var(--tinta-tenue); }
+.empty--centered { padding: 52px 20px; max-width: none; text-align: center; }
+.empty--centered h2 { font-size: 15px; font-weight: 500; }
+.empty--centered p { font-size: 13px; color: var(--ink-faint); }
 
-.cargando { display: flex; align-items: center; gap: 10px; padding: 40px 0; color: var(--tinta-media); font-size: 14px; }
+.loading { display: flex; align-items: center; gap: 10px; padding: 40px 0; color: var(--ink-mid); font-size: 14px; }
 
-.girando {
+.spinner {
   width: 14px;
   height: 14px;
   border: 2px solid currentColor;
@@ -544,26 +544,26 @@ a:hover { text-decoration-color: currentColor; }
 
 /* ================================================================ flotante == */
 
-.avisos { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; flex-direction: column; gap: 8px; max-width: min(400px, calc(100vw - 40px)); }
-.flotante {
+.notices { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; flex-direction: column; gap: 8px; max-width: min(400px, calc(100vw - 40px)); }
+.toast {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
   border-radius: 4px;
-  border-left: 3px solid var(--verde);
-  background: var(--hoja);
-  box-shadow: var(--sombra-aviso);
+  border-left: 3px solid var(--green);
+  background: var(--sheet);
+  box-shadow: var(--shadow-notice);
   font-size: 14px;
   animation: entrar .16s ease-out;
 }
-.flotante--error { border-left-color: var(--lacre); }
-.flotante--warn { border-left-color: var(--espera); }
-.flotante p { flex: 1; }
-.flotante button { border: 0; background: none; padding: 0; color: var(--tinta-tenue); cursor: pointer; line-height: 1; }
+.toast--error { border-left-color: var(--seal); }
+.toast--warn { border-left-color: var(--pending); }
+.toast p { flex: 1; }
+.toast button { border: 0; background: none; padding: 0; color: var(--ink-faint); cursor: pointer; line-height: 1; }
 @keyframes entrar { from { opacity: 0; transform: translateY(6px); } }
 
-.telon {
+.backdrop {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -573,74 +573,71 @@ a:hover { text-decoration-color: currentColor; }
   padding: 24px;
   background: rgba(14, 15, 14, .42);
 }
-.dialogo {
+.dialog {
   width: 100%;
   max-width: 520px;
   max-height: calc(100vh - 48px);
   overflow-y: auto;
-  background: var(--hoja);
+  background: var(--sheet);
   border-radius: 8px;
-  box-shadow: var(--sombra-flotante);
+  box-shadow: var(--shadow-toast);
 }
-.dialogo__cabeza { display: flex; align-items: center; gap: 14px; padding: 18px 20px 14px; }
-.dialogo__cabeza h2 { flex: 1; }
-.dialogo__cuerpo { display: flex; flex-direction: column; gap: 16px; padding: 0 20px 20px; }
-.dialogo__pie { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--pauta); }
+.dialog__head { display: flex; align-items: center; gap: 14px; padding: 18px 20px 14px; }
+.dialog__head h2 { flex: 1; }
+.dialog__body { display: flex; flex-direction: column; gap: 16px; padding: 0 20px 20px; }
+.dialog__foot { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--rule); }
 
-/* Un hijo que ya es una tarjeta completa —como la de cambiar contraseña— no
-   necesita el fondo, la cabecera ni el pie del dialogo generico: solo el
-   telon, el foco atrapado y el cierre con Escape. El radio se iguala al de esa
-   tarjeta para que la sombra la abrace sin dejar una esquina cuadrada asomando. */
-.dialogo--desnudo { background: none; border-radius: 14px; }
+/* Un hijo que ya es una tarjeta completa solo necesita el telon, el foco
+   atrapado y el cierre con Escape. El radio se iguala al suyo para que la
+   sombra no deje una esquina cuadrada asomando. */
+.dialog--bare { background: none; border-radius: 14px; }
 
 /* ================================================================= subida == */
 
-.soltar {
+.dropzone {
   display: flex;
   flex-direction: column;
   gap: 4px;
   align-items: center;
   padding: 34px 20px;
-  border: 1px dashed var(--pauta-fuerte);
+  border: 1px dashed var(--rule-strong);
   border-radius: 4px;
-  background: var(--pergamino);
-  color: var(--tinta-media);
+  background: var(--parchment);
+  color: var(--ink-mid);
   text-align: center;
   cursor: pointer;
   font-size: 14px;
 }
-.soltar strong { color: var(--tinta); font-size: 15px; }
-.soltar.encima { border-color: var(--verde); border-style: solid; background: var(--verde-tenue); color: var(--verde-texto); }
+.dropzone strong { color: var(--ink); font-size: 15px; }
+.dropzone.over { border-color: var(--green); border-style: solid; background: var(--green-soft); color: var(--green-text); }
 
-.cola { display: flex; flex-direction: column; }
-.cola__item {
+.queue { display: flex; flex-direction: column; }
+.queue__item {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 9px 2px;
-  border-bottom: 1px solid var(--pauta);
+  border-bottom: 1px solid var(--rule);
   font-size: 14px;
 }
-.cola__item:first-child { border-top: 1px solid var(--pauta); }
-.cola__nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cola__estado { font-size: 13px; color: var(--tinta-tenue); }
-.cola__item--error .cola__estado { color: var(--lacre); }
-.cola__item--done .cola__estado { color: var(--verde-texto); }
+.queue__item:first-child { border-top: 1px solid var(--rule); }
+.queue__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue__status { font-size: 13px; color: var(--ink-faint); }
+.queue__item--error .queue__status { color: var(--seal); }
+.queue__item--done .queue__status { color: var(--green-text); }
 
 /* ================================================================= listas == */
 
 /*
- * La tabla vive dentro de .registro y comparte su lenguaje con el registro de
- * documentos: misma cabecera en versalitas, mismas pautas y el mismo roce al
- * pasar por encima. Aqui si es un <table> de verdad —cuatro columnas de datos
- * homogeneos, sin la fila de dos alturas del fondo documental—, y renunciar a
- * la semantica para que se parezca por dentro no arreglaria nada.
+ * Dentro de .ledger, y comparte su lenguaje con el registro de documentos:
+ * misma cabecera en versalitas, mismas pautas y el mismo roce. Aqui si es un
+ * <table> de verdad, porque son cuatro columnas de datos homogeneos.
  */
-.tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
-.tabla th, .tabla td { text-align: left; padding: 15px 20px; border-bottom: 1px solid var(--relleno); }
-.tabla th {
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th, .table td { text-align: left; padding: 15px 20px; border-bottom: 1px solid var(--fill); }
+.table th {
   padding: 12px 20px;
-  border-bottom: 1px solid var(--pauta);
+  border-bottom: 1px solid var(--rule);
   background: rgba(242, 241, 238, .025);
   font-size: 10.5px;
   font-weight: 400;
@@ -649,89 +646,85 @@ a:hover { text-decoration-color: currentColor; }
   color: rgba(242, 241, 238, .4);
   white-space: nowrap;
 }
-.tabla td:last-child, .tabla th:last-child { text-align: right; }
-.tabla tbody tr:last-child td { border-bottom: 0; }
-.tabla tbody tr:hover { background: var(--roce); }
+.table td:last-child, .table th:last-child { text-align: right; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover { background: var(--hover); }
 
-.tabla__nombre { font-size: 14.5px; font-weight: 500; }
-.tabla__fecha { color: var(--tinta-media); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.desliza { overflow-x: auto; }
+.table__name { font-size: 14.5px; font-weight: 500; }
+.table__date { color: var(--ink-mid); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.scroller { overflow-x: auto; }
 
-.comprobacion { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--tinta-tenue); }
-.comprobacion li::before { content: '·  '; }
-.comprobacion li.cumple { color: var(--verde-texto); }
-.comprobacion li.cumple::before { content: '✓  '; }
+.checklist { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--ink-faint); }
+.checklist li::before { content: '·  '; }
+.checklist li.met { color: var(--green-text); }
+.checklist li.met::before { content: '✓  '; }
 
 /* ======================================================= cambiar contraseña == */
 
 /*
- * La tarjeta de "Cambiar la contraseña": misma pieza en Mi cuenta (cambia la
- * propia, en la pagina) y en el dialogo de organizaciones que ve el master
- * (cambia la de otra, flotando sobre un telon). El fondo, el borde y el radio
- * son los de cualquier superficie de la app (.registro, .filtros); lo que la
- * distingue es el candado de cabecera y la validacion en vivo de debajo.
+ * Misma pieza en Mi cuenta y en el dialogo del master. Fondo, borde y radio son
+ * los de cualquier superficie (.ledger, .filters); lo que la distingue es el
+ * candado de cabecera y la validacion en vivo.
  */
-.tarjeta-contrasena {
+.password-card {
   width: 100%;
   max-width: 560px;
   padding: 28px 28px 24px;
-  border: 1px solid var(--pauta);
+  border: 1px solid var(--rule);
   border-radius: 14px;
-  background: var(--hoja);
+  background: var(--sheet);
 }
-.tarjeta-contrasena__cabecera { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 22px; }
-.tarjeta-contrasena__icono {
+.password-card__header { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 22px; }
+.password-card__icon {
   width: 38px;
   height: 38px;
   flex: none;
   border-radius: 10px;
-  background: var(--verde-tenue);
-  color: var(--verde);
+  background: var(--green-soft);
+  color: var(--green);
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.tarjeta-contrasena__cabecera h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -.015em; }
-.tarjeta-contrasena__cabecera p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--tinta-media); text-wrap: pretty; }
+.password-card__header h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -.015em; }
+.password-card__header p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--ink-mid); text-wrap: pretty; }
 
-.tarjeta-contrasena__exito {
+.password-card__success {
   display: flex;
   align-items: center;
   gap: 11px;
   padding: 14px 15px;
-  border: 1px solid var(--verde);
+  border: 1px solid var(--green);
   border-radius: 10px;
-  background: var(--verde-tenue);
-  color: var(--verde);
+  background: var(--green-soft);
+  color: var(--green);
 }
-.tarjeta-contrasena__exito span { font-size: 13.5px; color: var(--tinta); }
+.password-card__success span { font-size: 13.5px; color: var(--ink); }
 
-.tarjeta-contrasena__acciones { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.tarjeta-contrasena__pista { font-size: 12px; color: var(--tinta-tenue); }
+.password-card__actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.password-card__hint { font-size: 12px; color: var(--ink-faint); }
 
-.tarjeta-contrasena__nota {
+.password-card__note {
   /* Sin max-width propio: dentro de la tarjeta ya la acota el contenedor
      (560px); fuera de ella —Mi cuenta, sin tarjeta— tiene todo el ancho de la
      pagina para si y no hay motivo para cortarla antes de tiempo. */
   margin: 14px 2px 0;
   font-size: 12.5px;
   line-height: 1.5;
-  color: var(--tinta-tenue);
+  color: var(--ink-faint);
   text-wrap: pretty;
 }
 
-/* Campo con el boton de mostrar/ocultar superpuesto: espacio de sobra a la
-   derecha del texto para que no se solapen. Con estado (coincide / no
-   coincide) hay ademas un indicador propio a la izquierda del ojo, y el hueco
-   crece para darle sitio a los dos. */
-.campo-contrasena { position: relative; display: flex; align-items: center; }
-.campo-contrasena input { padding-right: 44px; }
-.campo-contrasena--coincide input { border-color: var(--verde); }
-.campo-contrasena--no-coincide input { border-color: var(--espera); }
-.campo-contrasena--coincide input,
-.campo-contrasena--no-coincide input { padding-right: 74px; }
+/* Boton de mostrar/ocultar superpuesto: hueco a la derecha del texto para que
+   no se solapen, y mas cuando el indicador de coincidencia lo acompana. */
+.password-field { position: relative; display: flex; align-items: center; }
+.password-field input { padding-right: 44px; }
+.password-field--match input { border-color: var(--green); }
+.password-field--mismatch input { border-color: var(--pending); }
+.password-field--match input,
+.password-field--mismatch input { padding-right: 74px; }
 
-.campo-contrasena__indicador {
+.password-field__indicator {
   position: absolute;
   right: 40px;
   width: 24px;
@@ -741,10 +734,10 @@ a:hover { text-decoration-color: currentColor; }
   justify-content: center;
   pointer-events: none;
 }
-.campo-contrasena--coincide .campo-contrasena__indicador { color: var(--verde); }
-.campo-contrasena--no-coincide .campo-contrasena__indicador { color: var(--espera); }
+.password-field--match .password-field__indicator { color: var(--green); }
+.password-field--mismatch .password-field__indicator { color: var(--pending); }
 
-.campo-contrasena__ojo {
+.password-field__eye {
   position: absolute;
   right: 6px;
   width: 32px;
@@ -752,13 +745,13 @@ a:hover { text-decoration-color: currentColor; }
   border: none;
   border-radius: 7px;
   background: transparent;
-  color: var(--tinta-tenue);
+  color: var(--ink-faint);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
-.campo-contrasena__ojo:hover { color: var(--tinta); background: var(--roce); }
+.password-field__eye:hover { color: var(--ink); background: var(--hover); }
 
 /* Oculto a la vista, presente para quien usa lector de pantalla: el mismo
    dato que aqui da un icono (o, en otros sitios, un color) hace falta en
@@ -778,37 +771,35 @@ a:hover { text-decoration-color: currentColor; }
 /* Medidor de fortaleza: cinco segmentos que se llenan con el color del nivel
    alcanzado, igual que el veredicto de un documento —el color nunca va solo,
    la etiqueta de al lado dice lo mismo con palabras. */
-.medidor { display: flex; align-items: center; gap: 10px; }
-.medidor__pista { display: flex; flex: 1; gap: 4px; }
-.medidor__segmento { height: 4px; flex: 1; border-radius: 99px; background: var(--pauta-fuerte); transition: background 120ms ease; }
-.medidor__etiqueta { font-size: 11.5px; min-width: 66px; text-align: right; color: var(--tinta-tenue); }
+.meter { display: flex; align-items: center; gap: 10px; }
+.meter__track { display: flex; flex: 1; gap: 4px; }
+.meter__segment { height: 4px; flex: 1; border-radius: 99px; background: var(--rule-strong); transition: background 120ms ease; }
+.meter__label { font-size: 11.5px; min-width: 66px; text-align: right; color: var(--ink-faint); }
 
-.medidor--muy-debil .medidor__segmento--activo { background: var(--lacre); }
-.medidor--muy-debil .medidor__etiqueta { color: var(--lacre); }
-.medidor--debil .medidor__segmento--activo,
-.medidor--aceptable .medidor__segmento--activo { background: var(--espera); }
-.medidor--debil .medidor__etiqueta,
-.medidor--aceptable .medidor__etiqueta { color: var(--espera); }
-.medidor--buena .medidor__segmento--activo,
-.medidor--excelente .medidor__segmento--activo { background: var(--verde); }
-.medidor--buena .medidor__etiqueta,
-.medidor--excelente .medidor__etiqueta { color: var(--verde); }
+.meter--very-weak .meter__segment--active { background: var(--seal); }
+.meter--very-weak .meter__label { color: var(--seal); }
+.meter--weak .meter__segment--active,
+.meter--fair .meter__segment--active { background: var(--pending); }
+.meter--weak .meter__label,
+.meter--fair .meter__label { color: var(--pending); }
+.meter--good .meter__segment--active,
+.meter--excellent .meter__segment--active { background: var(--green); }
+.meter--good .meter__label,
+.meter--excellent .meter__label { color: var(--green); }
 
-/* Checklist de requisitos: dos columnas, marca redonda por regla. A diferencia
-   de .comprobacion (la lista plana que usa el alta de organizaciones) esta
-   lleva un indicador propio por item, pensada para leerse de un vistazo sin
-   contar viñetas. */
-.requisitos {
+/* Dos columnas y marca redonda por regla. A diferencia de .checklist —la lista
+   plana del alta— lleva un indicador por item, para leerse de un vistazo. */
+.requirements {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px 14px;
   padding: 13px 14px;
-  border: 1px solid var(--pauta);
+  border: 1px solid var(--rule);
   border-radius: 10px;
-  background: var(--roce);
+  background: var(--hover);
 }
-.requisito { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tinta-tenue); }
-.requisito__marca {
+.requirement { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-faint); }
+.requirement__mark {
   width: 14px;
   height: 14px;
   flex: none;
@@ -816,28 +807,26 @@ a:hover { text-decoration-color: currentColor; }
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 1px solid var(--pauta-fuerte);
-  color: var(--verde);
+  border: 1px solid var(--rule-strong);
+  color: var(--green);
 }
-.requisito--cumple { color: var(--verde); }
-.requisito--cumple .requisito__marca { border-color: var(--verde); }
+.requirement--met { color: var(--green); }
+.requirement--met .requirement__mark { border-color: var(--green); }
 
 @media (max-width: 480px) {
-  .requisitos { grid-template-columns: 1fr; }
+  .requirements { grid-template-columns: 1fr; }
 }
 
 /* ================================================================= acceso == */
 
 /*
- * El acceso es la unica pantalla que ve alguien que todavia no ha entrado, asi
- * que es la unica que puede permitirse hablar de la casa antes que del trabajo:
- * un panel de marca a la izquierda y el formulario a la derecha.
+ * Unica pantalla que ve quien todavia no ha entrado, y la unica que puede
+ * hablar de la casa antes que del trabajo.
  *
- * Es tambien la unica que se sale de la paleta de tokens.css: aqui el verde si
- * es el color de la accion, tal como llego el diseño. Por eso los colores viven
- * en variables con ambito .acceso y no tocan el resto de la aplicacion.
+ * Es tambien la unica que se sale de tokens.css: aqui el verde si es el color
+ * de la accion, asi que sus colores viven en variables con ambito .login.
  */
-.acceso {
+.login {
   --acceso-verde: #0bb563;
   --acceso-verde-fuerte: #09a259;
   --acceso-verde-texto: #ffffff;
@@ -853,35 +842,35 @@ a:hover { text-decoration-color: currentColor; }
   display: flex;
   align-items: stretch;
   min-height: 100%;
-  font-family: 'Plus Jakarta Sans Variable', var(--texto);
+  font-family: 'Plus Jakarta Sans Variable', var(--font);
   background: var(--acceso-fondo);
 }
 
 @media (prefers-color-scheme: dark) {
-  .acceso {
+  .login {
     --acceso-verde: #16c96e;
     --acceso-verde-fuerte: #33d886;
     /* Blanco sobre este verde no llega a contraste: en oscuro el boton se lee
        en tinta, que es lo unico que cambia respecto al diseño original. */
     --acceso-verde-texto: #0b0f0d;
-    --acceso-fondo: var(--pergamino);
-    --acceso-hoja: var(--hoja);
-    --acceso-titulo: var(--tinta);
-    --acceso-suave: var(--tinta-media);
-    --acceso-etiqueta: var(--tinta-media);
-    --acceso-pauta: var(--pauta-fuerte);
+    --acceso-fondo: var(--parchment);
+    --acceso-hoja: var(--sheet);
+    --acceso-titulo: var(--ink);
+    --acceso-suave: var(--ink-mid);
+    --acceso-etiqueta: var(--ink-mid);
+    --acceso-pauta: var(--rule-strong);
     --acceso-anillo: rgba(22, 201, 110, .22);
-    --acceso-roce: var(--pergamino);
+    --acceso-roce: var(--parchment);
   }
 }
 
 /* El anillo verde sustituye al contorno en tinta del resto de la aplicacion,
    que sobre el panel oscuro y sobre el boton verde apenas se distingue. */
-.acceso :focus-visible { outline: 2px solid var(--acceso-verde); outline-offset: 2px; }
+.login :focus-visible { outline: 2px solid var(--acceso-verde); outline-offset: 2px; }
 
 /* ---- panel de marca ---- */
 
-.acceso__marca {
+.login__brand {
   position: relative;
   flex: 1 1 52%;
   min-width: 0;
@@ -894,12 +883,12 @@ a:hover { text-decoration-color: currentColor; }
   overflow: hidden;
 }
 
-.acceso__velo {
+.login__veil {
   position: absolute;
   inset: 0;
   background: radial-gradient(120% 90% at 8% 8%, #10c169 0%, #059352 42%, #063f2c 78%, #0b0f0d 100%);
 }
-.acceso__trama {
+.login__weave {
   position: absolute;
   inset: -10% -10%;
   opacity: .16;
@@ -908,7 +897,7 @@ a:hover { text-decoration-color: currentColor; }
 }
 @keyframes deriva { to { transform: translate3d(0, -40px, 0); } }
 
-.acceso__filigrana {
+.login__watermark {
   position: absolute;
   right: -14%;
   bottom: -16%;
@@ -922,7 +911,7 @@ a:hover { text-decoration-color: currentColor; }
   mask: url('/img/logo-without-tittle.png') center / contain no-repeat;
 }
 
-.acceso__chapa {
+.login__badge {
   position: relative;
   align-self: flex-start;
   display: inline-flex;
@@ -932,16 +921,16 @@ a:hover { text-decoration-color: currentColor; }
   background: #fff;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
 }
-.acceso__chapa img { display: block; height: 36px; width: auto; }
+.login__badge img { display: block; height: 36px; width: auto; }
 
-.acceso__discurso {
+.login__pitch {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 22px;
   max-width: 520px;
 }
-.acceso__discurso h1 {
+.login__pitch h1 {
   font-size: clamp(30px, 3.4vw, 50px);
   font-weight: 800;
   line-height: 1.06;
@@ -949,7 +938,7 @@ a:hover { text-decoration-color: currentColor; }
   color: #fff;
   text-wrap: pretty;
 }
-.acceso__discurso p {
+.login__pitch p {
   max-width: 44ch;
   font-size: 16px;
   line-height: 1.6;
@@ -957,11 +946,11 @@ a:hover { text-decoration-color: currentColor; }
   text-wrap: pretty;
 }
 
-.acceso__pauta { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
-.acceso__pauta span { width: 10px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .45); }
-.acceso__pauta span:first-child { width: 26px; background: #fff; }
+.login__rules { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.login__rules span { width: 10px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .45); }
+.login__rules span:first-child { width: 26px; background: #fff; }
 
-.acceso__pie {
+.login__footer {
   position: relative;
   font-size: 12.5px;
   font-weight: 500;
@@ -970,7 +959,7 @@ a:hover { text-decoration-color: currentColor; }
 
 /* ---- columna del formulario ---- */
 
-.acceso__panel {
+.login__panel {
   flex: 1 1 480px;
   min-width: 0;
   display: flex;
@@ -980,7 +969,7 @@ a:hover { text-decoration-color: currentColor; }
   padding: 40px 24px 32px;
 }
 
-.acceso__hoja {
+.login__sheet {
   width: 100%;
   max-width: 392px;
   display: flex;
@@ -988,28 +977,28 @@ a:hover { text-decoration-color: currentColor; }
   gap: 28px;
 }
 
-.acceso__logo-movil { display: none; height: 78px; width: auto; align-self: flex-start; }
+.login__logo-mobile { display: none; height: 78px; width: auto; align-self: flex-start; }
 
-.acceso__encabezado { display: flex; flex-direction: column; gap: 8px; }
-.acceso__encabezado h2 {
+.login__heading { display: flex; flex-direction: column; gap: 8px; }
+.login__heading h2 {
   font-size: 27px;
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -.025em;
   color: var(--acceso-titulo);
 }
-.acceso__encabezado p { font-size: 14.5px; line-height: 1.5; color: var(--acceso-suave); }
+.login__heading p { font-size: 14.5px; line-height: 1.5; color: var(--acceso-suave); }
 
-.acceso__entrada { display: flex; flex-direction: column; gap: 16px; }
+.login__form { display: flex; flex-direction: column; gap: 16px; }
 
-.acceso__hoja .campo { gap: 7px; }
-.acceso__hoja .campo > label {
+.login__sheet .field { gap: 7px; }
+.login__sheet .field > label {
   font-size: 12.5px;
   font-weight: 600;
   letter-spacing: .01em;
   color: var(--acceso-etiqueta);
 }
-.acceso__hoja .campo input {
+.login__sheet .field input {
   height: 48px;
   padding: 0 14px;
   border: 1px solid var(--acceso-pauta);
@@ -1020,15 +1009,15 @@ a:hover { text-decoration-color: currentColor; }
   transition: border-color .15s, box-shadow .15s;
 }
 /* El contorno se quita solo porque el anillo lo reemplaza con mas contraste. */
-.acceso__hoja .campo input:focus {
+.login__sheet .field input:focus {
   outline: none;
   border-color: var(--acceso-verde);
   box-shadow: 0 0 0 3px var(--acceso-anillo);
 }
 
-.acceso__secreto { position: relative; display: flex; }
-.acceso__secreto input { padding-right: 60px; }
-.acceso__secreto button {
+.login__secret { position: relative; display: flex; }
+.login__secret input { padding-right: 60px; }
+.login__secret button {
   position: absolute;
   right: 6px;
   top: 6px;
@@ -1042,9 +1031,9 @@ a:hover { text-decoration-color: currentColor; }
   color: var(--acceso-suave);
   cursor: pointer;
 }
-.acceso__secreto button:hover { background: var(--acceso-roce); color: var(--acceso-titulo); }
+.login__secret button:hover { background: var(--acceso-roce); color: var(--acceso-titulo); }
 
-.acceso__entrar {
+.login__submit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1063,50 +1052,47 @@ a:hover { text-decoration-color: currentColor; }
   box-shadow: 0 1px 2px rgba(6, 60, 34, .28);
   transition: background .15s, transform .06s;
 }
-.acceso__entrar:hover:not(:disabled) { background: var(--acceso-verde-fuerte); }
-.acceso__entrar:active:not(:disabled) { transform: translateY(1px); }
-.acceso__entrar:disabled { opacity: .55; box-shadow: none; cursor: not-allowed; }
+.login__submit:hover:not(:disabled) { background: var(--acceso-verde-fuerte); }
+.login__submit:active:not(:disabled) { transform: translateY(1px); }
+.login__submit:disabled { opacity: .55; box-shadow: none; cursor: not-allowed; }
 
 /* ---- sin sitio para el panel ---- */
 
 @media (max-width: 900px) {
-  .acceso__marca { display: none; }
-  .acceso__logo-movil { display: block; }
+  .login__brand { display: none; }
+  .login__logo-mobile { display: block; }
 }
 
 /* ================================================================ estrecho == */
 
 @media (max-width: 900px) {
-  .ficha { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .detail { grid-template-columns: minmax(0, 1fr); gap: 26px; }
 
-  /*
-   * La tabla se deshace en tarjetas: cinco columnas en un movil dejan el nombre
-   * del documento en dos letras y una elipsis, que es justo el dato por el que
-   * se entra aqui.
-   */
-  .registro__cabecera { display: none; }
-  .entrada {
+  /* La tabla se deshace en tarjetas: cinco columnas en un movil dejan el nombre
+     del documento en dos letras y una elipsis. */
+  .ledger__header { display: none; }
+  .record {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px 16px;
     padding: 16px 18px;
   }
-  .entrada__titulo { grid-column: 1 / -1; }
-  .entrada .etiquetas { grid-column: 1; }
-  .veredicto { grid-column: 2; justify-self: end; }
-  .entrada__fecha { grid-column: 1; align-self: center; }
-  .entrada__accion { grid-column: 2; justify-self: end; }
+  .record__title { grid-column: 1 / -1; }
+  .record .tags { grid-column: 1; }
+  .verdict { grid-column: 2; justify-self: end; }
+  .record__date { grid-column: 1; align-self: center; }
+  .record__action { grid-column: 2; justify-self: end; }
 }
 
 @media (max-width: 640px) {
   h1 { font-size: 29px; }
-  .membrete { padding: 0 16px; gap: 14px; }
-  .membrete__nav { margin-left: 0; }
-  .membrete__quien { display: none; }
-  .pagina { padding: 26px 16px 56px; }
-  .filtros { grid-template-columns: 1fr 1fr; padding: 14px; }
-  .filtros .campo:first-child { grid-column: 1 / -1; }
-  .encabezado { margin-bottom: 24px; }
-  .paginacion__cuenta { flex: 1 0 100%; }
+  .masthead { padding: 0 16px; gap: 14px; }
+  .masthead__nav { margin-left: 0; }
+  .masthead__who { display: none; }
+  .page { padding: 26px 16px 56px; }
+  .filters { grid-template-columns: 1fr 1fr; padding: 14px; }
+  .filters .field:first-child { grid-column: 1 / -1; }
+  .pagehead { margin-bottom: 24px; }
+  .pagination__count { flex: 1 0 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

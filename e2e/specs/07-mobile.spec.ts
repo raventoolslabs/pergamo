@@ -1,17 +1,17 @@
-import { test, expect, shot, login, menuUsuario } from '../helpers';
+import { test, expect, shot, login, openUserMenu } from '../helpers';
 
-test.describe('En móvil', () => {
+test.describe('On mobile', () => {
 
-  test('el acceso cabe en la pantalla', async ({ page }) => {
+  test('Should fit the sign-in screen', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('button', { name: /entrar/i })).toBeVisible();
-    await shot(page, 'acceso');
+    await shot(page, 'login');
   });
 
-  test('el menú de usuario se abre y se cierra', async ({ page }) => {
+  test('Should open and close the user menu', async ({ page }) => {
     await login(page);
     await expect(page.getByRole('button', { name: /subir documento/i })).toBeVisible();
-    await shot(page, 'fondo');
+    await shot(page, 'documents');
 
     const menu = page.getByRole('button', { name: /menú de usuario/i });
     await expect(menu).toBeVisible();
@@ -25,29 +25,29 @@ test.describe('En móvil', () => {
     await expect(page.getByRole('link', { name: /mi cuenta/i })).toHaveCount(0);
   });
 
-  test('no hay desbordamiento horizontal', async ({ page }) => {
+  test('Should not overflow horizontally', async ({ page }) => {
     await login(page);
 
     // Un scroll horizontal en movil es siempre un fallo de maquetacion.
-    const desborda = await page.evaluate(() =>
+    const overflows = await page.evaluate(() =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
 
-    expect(desborda, 'la página no debe desbordarse en horizontal').toBe(false);
+    expect(overflows, 'the page must not overflow horizontally').toBe(false);
   });
 
-  test('la tarjeta de cambiar contraseña cabe en la pantalla', async ({ page }) => {
+  test('Should fit the password card on screen', async ({ page }) => {
     await login(page);
-    await menuUsuario(page);
+    await openUserMenu(page);
     await page.getByRole('link', { name: /mi cuenta/i }).click();
 
-    // Es la pantalla con mas densidad de la app (medidor, checklist en grid,
-    // dos campos con boton superpuesto): si algo se desborda, es aqui.
+    // Es la pantalla con mas densidad (medidor, checklist en grid, dos campos
+    // con boton superpuesto): si algo se desborda, es aqui.
     await expect(page.getByText('10 caracteres o más')).toBeVisible();
-    await shot(page, 'cuenta');
+    await shot(page, 'account');
 
-    const desborda = await page.evaluate(() =>
+    const overflows = await page.evaluate(() =>
       document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
 
-    expect(desborda, 'la tarjeta de contraseña no debe desbordarse en horizontal').toBe(false);
+    expect(overflows, 'the password card must not overflow horizontally').toBe(false);
   });
 });

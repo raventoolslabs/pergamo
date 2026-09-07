@@ -56,6 +56,7 @@
     "dev:api": "npx ts-node src/index.ts",
     "dev:web": "npm --prefix web run dev",
     "dev:init": "npx ts-node src/init.ts",
+    "dev:seed": "npx ts-node src/scripts/seed.ts",
     "test": "npx jest --detectOpenHandles",
     "test:e2e": "./e2e/run.sh"
   }

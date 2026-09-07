@@ -6,11 +6,8 @@ import log from "./log";
 
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'migrations');
 
-/**
- * Identificador reservado para el esquema que crea config/init.sql. Las
- * instalaciones anteriores al runner ya lo tienen aplicado, asi que se marca
- * como tal en vez de intentar ejecutarlo de nuevo.
- */
+// Esquema que crea config/init.sql. Las instalaciones anteriores al runner ya
+// lo tienen aplicado, asi que se marca en vez de volver a ejecutarlo.
 const BASELINE_ID = '001_init';
 
 const ensureMigrationsTable = async () => {
@@ -53,12 +50,11 @@ const markApplied = async (id:string, transaction?:any) => {
 }
 
 /**
- * Aplica en orden las migraciones pendientes de src/migrations. Cada una se
- * ejecuta dentro de su propia transaccion junto con su registro, de modo que
- * una migracion o se aplica entera o no deja rastro.
+ * Aplica en orden las migraciones pendientes, cada una en su propia transaccion
+ * junto con su registro: o se aplica entera o no deja rastro.
  *
- * Debe invocarse tambien en instalaciones ya inicializadas: es el unico camino
- * por el que una base de datos existente recibe cambios de esquema.
+ * Se invoca tambien en instalaciones ya inicializadas: es el unico camino por
+ * el que una base existente recibe cambios de esquema.
  */
 export const runMigrations = async () => {
 

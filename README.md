@@ -17,11 +17,24 @@ Es un **servicio único** (monolito modular ejecutado en un solo proceso Node), 
 * `src/migrations` — migraciones SQL versionadas (ver más abajo).
 * `src/scripts` — tareas de operación: reescaneo del corpus y liberación de falsos positivos.
 * `web` — interfaz web (React + Vite), proyecto npm propio; su build cae en `dist/web`.
+* `web/src/i18n` — catálogo de la interfaz: clave en inglés, texto en español. Ningún literal de cara al usuario vive suelto en el JSX.
 * `dev.js` — arranque de desarrollo: API e interfaz en un solo comando.
 * `e2e` — recorrido en navegador de la interfaz, en contenedor. Proyecto npm propio, fuera de `web/` para que Playwright no entre en el build de la imagen.
 * `public` — logo y favicons, que Vite incorpora al build de la interfaz.
 * `clamav` — configuración del demonio ClamAV (`clamd.conf`) y lista local de firmas ignoradas.
 * `test` — pruebas de integración.
+
+## Convenciones de código
+
+El código va **en inglés** —identificadores, tipos, nombres de fichero, clases CSS, rutas de la URL,
+mensajes de commit— y los comentarios **en español**, breves y explicando el *porqué*: si un
+comentario se limita a traducir a prosa la línea de debajo, sobra. El texto que ve el usuario vive en
+`web/src/i18n`, con la clave en inglés y la traducción en español. Los `.md` del proyecto, este
+incluido, se escriben en español.
+
+La regla completa, junto al flujo de git que envuelve cualquier tarea de código (actualizar contra
+`development`, trabajar en una rama propia, terminar con push y PR contra `development`), está en la
+skill `write-code` (`.claude/skills/write-code/SKILL.md`).
 
 ## Configuración
 
@@ -188,7 +201,16 @@ Otros comandos, por si se quieren las piezas por separado:
 npm run dev:api    # solo la API
 npm run dev:web    # solo la interfaz
 npm run dev:init   # solo esquema, claves y migraciones
+npm run dev:seed   # cuatro documentos de ejemplo, uno por estado de análisis
 ```
+
+`dev:seed` deposita cinco documentos, uno por estado de análisis —analizado, análisis pendiente,
+cuarentena por firma, cuarentena por contenido activo y sin fichero en disco—, para poder mirar las
+pantallas que producen. El script sube los ficheros **por la propia API** y solo fuerza por SQL lo
+que no se puede provocar desde fuera sin un ClamAV con firmas reales; el de contenido activo no se
+fuerza en absoluto, lo pone el propio depósito. Se niega a correr si `DB_NAME` no acaba en `_dev`,
+`_test` o `_local` (`--force` lo salta, `--clean` retira lo sembrado y `--org=<nombre>` elige otra
+organización).
 
 `PERGAMO_DEV_HOST=0.0.0.0 npm run dev` escucha en todas las interfaces, para abrir la interfaz
 desde otro equipo. No basta con eso: el firewall del host tiene política `DROP` y hay que permitir
@@ -237,10 +259,10 @@ mano. Estos cuatro endpoints cubren ese hueco y son de solo lectura:
 
 | Endpoint | Quién | Qué devuelve |
 |---|---|---|
-| `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status` (uno o varios separados por comas: `scan_status=infected,error`), `from` y `to` (franja inclusiva de fecha de depósito, instantes ISO), y orden por `creation_date` o `modification_date`. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
+| `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis —incluido `scan_engine`, que es lo que distingue un documento analizado de uno depositado sin análisis—. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status` (uno o varios separados por comas: `scan_status=infected,malicious`), `from` y `to` (franja inclusiva de fecha de depósito, instantes ISO), y orden por `creation_date` o `modification_date`. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
 | `GET /document/:id/scan` | Organización | `scan_status`, `scan_signature`, `scan_engine` y `scan_date` del documento. Va aparte de `GET /document/:id` porque el cuerpo de ese endpoint es el JSONB de metadatos tal cual, y añadirle claves rompería a quien ya lo consume. |
 | `GET /organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
-| `GET /config` | Autenticado | Límites del despliegue: `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir en lugar de duplicar la configuración. |
+| `GET /config` | Autenticado | Límites del despliegue: `enable_antivirus`, `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir —y no prometer un análisis que este despliegue no hace— en lugar de duplicar la configuración. |
 
 El aislamiento por organización se aplica igual que en el resto: el `WHERE organization` de
 `GET /document` es incondicional, y `path` —la ruta en disco— no sale nunca al cliente.
@@ -356,12 +378,18 @@ Las pruebas son de **integración**: levantan la aplicación real y necesitan
 * `RATE_LIMIT_MAX` suficientemente alto para no toparse con el límite de intentos;
 * `USER_MASTER` distinto del nombre de la organización `pergamo`, y `PASSWORD_MASTER` **entrecomillado** en el `.env` si contiene `#` (dotenv trataría el resto de la línea como comentario).
 
-Cada suite abre su propio puerto libre, así que pueden ejecutarse en paralelo.
+Cada suite abre su propio puerto libre, pero **corren en serie** (`maxWorkers: 1` en
+`jest.config.js`): todas hablan con la misma base de datos y con la misma organización `pergamo`, a
+la que `01-organization.test.ts` le cambia la contraseña a mitad de recorrido. En paralelo,
+cualquier otra suite que entrase en esa ventana recibía un `401` que no tenía nada que ver con lo
+que estaba probando. La batería entera baja de cinco segundos, así que el paralelismo no compraba
+nada.
 
 * `test/02-document.test.ts` — ciclo de vida del documento, detección de virus, preservación byte a byte de un PDF firmado y análisis hasta `MAX_FILE_SIZE`.
 * `test/03-isolation.test.ts` — aislamiento entre organizaciones, rechazo de tokens manipulados y validaciones de fichero y metadatos.
 * `test/04-quarantine.test.ts` — bloqueo de descarga con `423`, acceso a metadatos en cuarentena y cabeceras de respuesta.
 * `test/05-listing.test.ts` — listados de documentos y organizaciones: filtros, paginación, rechazo de parámetros inválidos, aislamiento entre organizaciones y que el hash de contraseña no se expone.
+* `test/06-payloads.test.ts` — corpus de PDF con contenido activo (`test/assets/payloads/`): dónde está el límite de cada capa, que la cuarentena por contenido activo retiene sin rechazar el depósito y solo se levanta a mano, y que lo que se almacena se entrega siempre como adjunto y byte a byte.
 
 Las pruebas que necesitan un veredicto real del escáner usan `it.skip` cuando el antivirus está desactivado, de modo que Jest **las reporta como omitidas**. Antes iban envueltas en un `if`, que desaparecía del informe y daba la impresión de una cobertura inexistente.
 
@@ -373,7 +401,9 @@ ClamAV está basado en firmas, así que su rendimiento sobre muestras nuevas o d
 
 Lo que ningún motor resuelve por sí solo es que **se analizaba una sola vez, en la subida**. Un fichero limpio hoy puede tener firma dentro de tres días. De ahí el estado de análisis por documento y el reescaneo del corpus.
 
-Pergamo nunca abre los documentos que almacena: lee 128 bytes de cabecera, calcula un SHA-256 por streaming y mueve el fichero. No hay parser de PDF ni motor de JavaScript en el proceso. El riesgo que se gestiona no es la ejecución local, sino que Pergamo es un **punto de distribución**: lo que entra se sirve después con el aval implícito de la organización.
+**Medido, no supuesto.** `test/assets/payloads/` es el corpus de [PayloadsAllThePDFs](https://github.com/luigigubello/PayloadsAllThePDFs): once PDF estructuralmente válidos con JavaScript, anotaciones, URI `data:` y formularios dentro. De los once, ClamAV 1.4.3 (firmas 28116, septiembre de 2026) reconoce **uno**: `payload1.pdf`. Ninguna casilla de `clamd.conf` cambia eso: un `/OpenAction` con `app.alert()` no es código malicioso conocido, es un PDF haciendo lo que el formato permite. Esa medida es la que motivó la segunda capa —**contenido activo**, más abajo—, que retiene nueve de los diez restantes; el que se escapa de las dos, `payload8.pdf`, también está en las pruebas. `test/06-payloads.test.ts` fija los tres hechos por escrito en lugar de dejarlos en una expectativa cómoda.
+
+Lo que sí depende de Pergamo es no convertirse en el visor: el contenido activo es inocuo mientras nadie lo renderice. Pergamo nunca abre los documentos que almacena: lee 128 bytes de cabecera, calcula un SHA-256 por streaming y mueve el fichero. No hay parser de PDF ni motor de JavaScript en el proceso. El riesgo que se gestiona no es la ejecución local, sino que Pergamo es un **punto de distribución**: lo que entra se sirve después con el aval implícito de la organización.
 
 ### Estado de análisis por documento
 
@@ -381,16 +411,63 @@ Cada documento lleva `scan_status`, `scan_signature`, `scan_engine` y `scan_date
 
 | Estado | Significado | Descarga |
 |---|---|---|
-| `clean` | Analizado y aprobado (o antivirus desactivado por configuración). | Permitida |
-| `pending` | No hay veredicto todavía: el antivirus estaba habilitado pero no disponible en la subida, o un reescaneo no llegó a completarse sobre ese fichero. Se reintenta solo en el siguiente barrido. | **423** |
+| `clean` | Analizado y aprobado (o antivirus desactivado por configuración: ver abajo). | Permitida |
+| `pending` | No hay veredicto todavía: el antivirus estaba habilitado pero no disponible en la subida, o un reescaneo no llegó a completarse sobre ese fichero. Se reintenta solo en el siguiente barrido. | Permitida |
 | `infected` | Una firma lo señaló, en la subida o en un reescaneo posterior. | **423** |
 | `error` | El fichero no está en disco (`scan_signature` = `FILE_MISSING`). Es el **único** caso que lo produce: no es un análisis pendiente, es un documento roto, y un reescaneo no lo arregla. | **423** |
+| `malicious` | El documento lleva contenido activo: JavaScript, acciones al abrir, ficheros embebidos. Lo decide Pergamo, no el escáner, y **no lo levanta un reescaneo** —solo una liberación manual—. | **423** |
+
+**`clean` no siempre quiere decir «analizado».** Con `ENABLE_ANTIVIRUS` desactivado no hay intención de verificar, así que la subida se guarda como `clean` con **`scan_engine` nulo**; marcarla `pending` dejaría el despliegue sin descargas y sin salida, porque el reescaneo tampoco puede correr sin escáner. `scan_engine` es entonces la única columna que separa un documento aprobado por un motor de uno que nadie miró, y por eso viaja también en el listado (`GET /document`) y `GET /config` publica `enable_antivirus`.
+
+La interfaz usa exactamente esa distinción: un `clean` con motor se llama «Analizado» (verde), y uno sin motor, «Sin analizar», en gris y con la explicación al lado —se entrega, pero nadie ha verificado su contenido—. No comparte palabra con `pending`, que es «Análisis pendiente» y **no** se entrega. Cualquier otro consumidor de la API debería mirar las dos columnas por el mismo motivo: llamar analizado a lo que no lo está es precisamente la afirmación que un archivo no puede permitirse.
 
 El bloqueo se aplica en `GET /document/:id/file` y **no** en `GET /document/:id`: los metadatos de un documento en cuarentena siguen siendo consultables, porque es como el cliente descubre por qué está bloqueado.
 
-**Política ante escáner no disponible**: la subida se acepta y el documento queda `pending`. Prioriza la disponibilidad de la subida sin llegar a servir nunca contenido que se pretendía verificar y no se verificó.
+**Qué retiene y qué no.** El `423` lo disparan `infected`, `malicious` y `error`, y solo esos tres: son los que exigen que alguien intervenga —revisar una firma, revisar contenido activo, buscar un fichero que falta— y ninguno se arregla esperando. `pending` **se entrega**.
 
-`pending` y `error` bloquean los dos la descarga, pero no significan lo mismo y por eso no se han fundido: `pending` se resuelve solo —queda en la cola de reescaneo con `scan_engine` nulo—, mientras que `error` sale de esa cola y exige que alguien mire por qué falta el fichero.
+Es una decisión con su coste, y conviene verlo escrito: un documento `pending` es contenido que se pretendía verificar y no se verificó, y aun así sale del archivo. A cambio, una caída de clamd deja de convertir el archivo en un almacén que no entrega nada, y el coste de esa caída no recae sobre depósitos que en su inmensa mayoría no tienen nada y cuyos autores no hicieron nada mal. El estado no se esconde: la interfaz lo llama «Análisis pendiente» y lo explica en la ficha, y el siguiente barrido lo resuelve sin que nadie tenga que intervenir.
+
+**Política ante escáner no disponible**: la subida se acepta, se entrega y queda `pending`, en la cola del próximo reescaneo.
+
+`pending` y `error` no significan lo mismo y por eso no se han fundido nunca: `pending` se resuelve solo —queda en la cola de reescaneo con `scan_engine` nulo—, mientras que `error` sale de esa cola y exige que alguien mire por qué falta el fichero. De ahí que uno se entregue y el otro no.
+
+Por el mismo motivo la interfaz **no llama cuarentena a `error`**. «En cuarentena» agrupa `infected` y `malicious`, que son documentos íntegros y retenidos a la espera de una decisión sobre su contenido; `error` es un fichero que falta del almacén, se muestra y se filtra como **Error**, y a quien le toca mirarlo es a quien administra el despliegue, no a quien revisa documentos.
+
+### Contenido activo
+
+ClamAV responde a «¿es esto malware conocido?». Un fondo documental tiene además otra pregunta —«¿qué le hace este fichero al programa con el que se abra?»— y esa no tiene firma: un `/OpenAction` que ejecuta JavaScript es el formato haciendo lo que el formato permite. La medida está arriba: de los once PDF de `test/assets/payloads/`, ClamAV reconoce uno.
+
+`src/utils/activecontent.ts` es la capa que cubre esa pregunta. Busca marcadores estructurales sobre los bytes del fichero **y sobre los flujos Flate descomprimidos**, que es donde acaba escondiéndose casi todo:
+
+| Regla | Qué marca |
+|---|---|
+| `JavaScript` | `/JavaScript`, `/JS` |
+| `OpenAction` | acción disparada al abrir el documento |
+| `AdditionalAction` | `/AA` en páginas, campos o anotaciones |
+| `Launch` | lanzamiento de una aplicación externa |
+| `EmbeddedFile` | ficheros embebidos dentro del documento |
+| `RichMedia` | contenido multimedia ejecutable |
+| `RemoteGoTo` | `/GoToR`, `/GoToE`: salto a otro fichero |
+| `SubmitForm` | envío o importación de datos de formulario |
+| `XFA` | formulario XFA, con su propia lógica |
+| `JavaScriptURI` | URI con esquema `javascript:` |
+
+**Política**: a diferencia de una firma antivírica, el contenido activo **no rechaza la subida**. El documento se deposita y queda en `malicious`: se guarda, no se entrega, y de ahí solo sale por `npm run scan:release -- <id>`. En un archivo, el depósito no se pierde; lo que se retiene es la entrega. `npm run rescan` excluye esas filas de forma explícita —un barrido las encontraría limpias y liberaría en lote justo lo que se decidió retener— y avisa al terminar de cuántas hay.
+
+**Lo que no cubre**, escrito aquí para que su ausencia no se lea como una garantía:
+
+* No hay parser de PDF en el proceso, y es deliberado: un parser en la ruta de subida es superficie de ataque. `payload8.pdf` del corpus inyecta su código en un array `/FontMatrix`, sin `/JavaScript` ni `/OpenAction`, y no lo detecta ni ClamAV ni este filtro.
+* Un fichero preparado para esquivarlo lo esquiva. Es un **filtro de contenido activo, no un veredicto de seguridad**.
+* Solo mira PDF. Un ODT con macros pasa sin marca.
+* Lo que exceda los límites de descompresión (8 MB por flujo, 64 MB en total) no se examina.
+
+**Falsos positivos, que aquí son caros**: un PDF firmado lleva ficheros embebidos por norma —PAdES-LTV embebe respuestas OCSP y CRLs; Factur-X embebe el XML de la factura—, así que un archivo de documentos firmados los retendría todos al depositarlos. `MALICIOUS_ACTIVE_CONTENT_IGNORE` desactiva reglas concretas por nombre, separadas por `;`:
+
+```
+MALICIOUS_ACTIVE_CONTENT_IGNORE="EmbeddedFile"
+```
+
+Es el equivalente de `clamav/local.ign2` para esta capa, y se usa igual: se anota siempre por qué se ignora y quién lo decidió. Un nombre que no corresponda a ninguna regla **detiene el arranque**, en lugar de dejar un despliegue cuarentenando lo que su operador daba por exceptuado.
 
 ### Reescaneo del corpus
 
@@ -423,6 +500,8 @@ X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
 ```
 
 Ha de subirse **exacto**: la firma de ClamAV para EICAR es un hash del fichero completo, así que cualquier byte añadido la anula. Para probar la detección dentro de un fichero grande hay que embeberlo como una entrada de un archivo comprimido, que es lo que hace la prueba del límite de tamaño.
+
+EICAR responde a «¿llega el fichero al motor?», que es una pregunta distinta de «¿sirve el motor para esto?». Para la segunda está el corpus de `test/assets/payloads/` (ver su `README.md`), con el detalle de qué reconoce ClamAV en cada fichero y por qué diez de los once no le corresponden. Aviso al clonar: `payload1.pdf` tiene firma, y un antivirus con vigilancia en tiempo real puede llevárselo del directorio de trabajo.
 
 ## Licencia
 

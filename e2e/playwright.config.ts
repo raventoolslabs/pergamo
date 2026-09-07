@@ -29,21 +29,21 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'claro',
-      testIgnore: /07-movil/,
+      name: 'light',
+      testIgnore: /07-mobile/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, colorScheme: 'light' }
     },
     {
-      name: 'oscuro',
-      testIgnore: /07-movil/,
+      name: 'dark',
+      testIgnore: /07-mobile/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, colorScheme: 'dark' }
     },
     {
       // El recorrido movil comprueba lo que solo se rompe en pantalla estrecha
       // —navegacion plegada, desbordes—; repetir en 390 px todo el resto seria
       // duplicar tiempo sin cubrir nada nuevo.
-      name: 'movil',
-      testMatch: /07-movil/,
+      name: 'mobile',
+      testMatch: /07-mobile/,
       use: { ...devices['Pixel 7'], colorScheme: 'light' }
     }
   ]

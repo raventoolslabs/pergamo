@@ -3,162 +3,182 @@ import type { ReactNode } from 'react';
 
 import { ApiError } from '../api/client';
 import type { ScanStatus } from '../api/types';
+import { t } from '../i18n';
 
-/* ============================================================= veredictos == */
+/* =============================================================== verdicts == */
 
 /**
- * Lo que dice cada estado de analisis, en lenguaje de quien custodia el
- * documento y no de quien programo el escaner.
+ * Veredicto tal y como lo cuenta la interfaz, que no coincide con scan_status.
  *
- * La interfaz habla de TRES estados y el backend guarda cuatro: 'error' —el
- * fichero no esta en disco— comparte etiqueta con la cuarentena porque para
- * quien consulta significan lo mismo (no se descarga, alguien tiene que
- * mirarlo) y ninguno de los dos se arregla esperando. La diferencia real se
- * cuenta en la explicacion, que va en el title de la fila y a la vista en la
- * ficha del documento.
+ * El backend guarda 'clean' tanto para lo que el escaner aprobo como para lo
+ * que entro con ENABLE_ANTIVIRUS desactivado, donde nadie lo miro. Los separa
+ * scan_engine, nulo en el segundo caso, y llamar «Analizado» a eso es lo que un
+ * archivo no puede permitirse.
  */
-export const ESTADO: Record<ScanStatus, { etiqueta: string; explicacion: string }> = {
-  clean: {
-    etiqueta: 'Analizado',
-    explicacion: 'Analizado sin hallazgos: se puede descargar.'
-  },
-  pending: {
-    etiqueta: 'Sin analizar',
-    explicacion: 'Todavía no hay veredicto. El próximo análisis lo resuelve, y hasta entonces no se entrega.'
-  },
-  infected: {
-    etiqueta: 'En cuarentena',
-    explicacion: 'El análisis encontró una firma conocida en el fichero, así que Pergamo no lo entrega.'
-  },
-  error: {
-    etiqueta: 'En cuarentena',
-    explicacion: 'El fichero no se encuentra en el almacén. No es un análisis pendiente: hay que revisarlo.'
-  }
+export type VerdictState = ScanStatus | 'unscanned';
+
+// Lo que el backend retiene (423 en getFile). Se declara aqui y no como un
+// `status === 'clean'` repartido por las pantallas: ofrecer una descarga que va
+// a devolver 423 es peor que no ofrecerla.
+const WITHHELD: ScanStatus[] = ['infected', 'malicious', 'error'];
+
+export const isDeliverable = (status: ScanStatus) => !WITHHELD.includes(status);
+
+export const verdictOf = (status: ScanStatus, engine?: string | null): VerdictState =>
+  status === 'clean' && !engine ? 'unscanned' : status;
+
+/**
+ * Ninguno comparte etiqueta con otro: dos estados con la misma palabra son un
+ * estado a efectos de quien mira.
+ *
+ * 'error' no es cuarentena. Los dos bloquean la descarga, pero la cuarentena es
+ * un documento intacto sobre el que hay que decidir y 'error' es un fichero que
+ * falta del almacen: le tocan a personas distintas.
+ *
+ * 'unscanned' y 'pending' tampoco: en el primero no hay antivirus en este
+ * despliegue, en el segundo lo hay y no respondio. Comparten destino, no
+ * explicacion.
+ */
+export const VERDICT: Record<VerdictState, { label: string; detail: string }> = {
+  clean: { label: t('verdict.clean.label'), detail: t('verdict.clean.detail') },
+  unscanned: { label: t('verdict.unscanned.label'), detail: t('verdict.unscanned.detail') },
+  pending: { label: t('verdict.pending.label'), detail: t('verdict.pending.detail') },
+  infected: { label: t('verdict.infected.label'), detail: t('verdict.infected.detail') },
+  malicious: { label: t('verdict.malicious.label'), detail: t('verdict.malicious.detail') },
+  error: { label: t('verdict.error.label'), detail: t('verdict.error.detail') }
 };
 
-const ICONO: Record<ScanStatus, ReactNode> = {
+const VERDICT_ICON: Record<VerdictState, ReactNode> = {
   clean: <><circle cx="12" cy="12" r="8.4" /><path d="M8.4 12.2l2.6 2.6 4.6-5" /></>,
+  // Circulo vacio: no hay veredicto que dibujar. Ni visto ni reloj, porque este
+  // no espera nada.
+  unscanned: <><circle cx="12" cy="12" r="8.4" strokeDasharray="2.6 3.2" /></>,
   pending: <><circle cx="12" cy="12" r="8.4" /><path d="M12 8v4.4l3 1.8" /></>,
   infected: <><path d="M12 3.6l7 3v5c0 4-3 7-7 8.8-4-1.8-7-4.8-7-8.8v-5z" /><path d="M12 9v3.6" /><path d="M12 15.4h.01" /></>,
-  error: <><path d="M12 3.6l7 3v5c0 4-3 7-7 8.8-4-1.8-7-4.8-7-8.8v-5z" /><path d="M12 9v3.6" /><path d="M12 15.4h.01" /></>
+  // Mismo escudo con un rayo dentro: lo que retiene a este no es una firma,
+  // sino lo que el fichero hace al abrirse.
+  malicious: <><path d="M12 3.6l7 3v5c0 4-3 7-7 8.8-4-1.8-7-4.8-7-8.8v-5z" /><path d="M12.8 8.2l-2.4 4h3l-2.2 3.6" /></>,
+  // Aqui no va el escudo: esto no esta retenido, esta roto.
+  error: <><path d="M12 4.2l8 14.4H4z" /><path d="M12 10v3.4" /><path d="M12 16.4h.01" /></>
 };
 
 /**
- * Veredicto de un documento: icono y palabra, nunca uno de los dos solo.
+ * Icono y palabra, nunca uno de los dos solo: el color no puede ser el unico
+ * portador de la informacion.
  *
- * El color no puede ser el unico portador de la informacion —ni para quien no
- * lo distingue, ni para quien no conoce el codigo—, asi que el icono lleva
- * siempre su etiqueta al lado y no hay que aprenderse nada.
+ * `engine` es opcional porque no todas las respuestas de la API lo traen.
  */
-export const Veredicto = ({ status }: { status: ScanStatus }) => (
-  <div className={`veredicto veredicto--${status}`} title={ESTADO[status]?.explicacion}>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {ICONO[status]}
-    </svg>
-    <span>{ESTADO[status]?.etiqueta || status}</span>
-  </div>
-);
+export const Verdict = ({ status, engine }: { status: ScanStatus; engine?: string | null }) => {
 
-/* ============================================================== paginacion == */
+  const state = verdictOf(status, engine);
 
-/** Tamaños de pagina que se ofrecen. El primero es el de partida. */
-export const POR_PAGINA = [8, 12, 24];
+  return (
+    <div className={`verdict verdict--${state}`} title={VERDICT[state]?.detail}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {VERDICT_ICON[state]}
+      </svg>
+      <span>{VERDICT[state]?.label || state}</span>
+    </div>
+  );
+};
 
-const IconoAnterior = () => (
+/* ============================================================= pagination == */
+
+/** Tamanos de pagina que se ofrecen. El primero es el de partida. */
+export const PAGE_SIZES = [8, 12, 24];
+
+const PreviousIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M14 6l-6 6 6 6" /></svg>
 );
 
-const IconoSiguiente = () => (
+const NextIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M10 6l6 6-6 6" /></svg>
 );
 
 /**
- * Paginacion de un listado servido por la API.
+ * Es la misma en documentos y en organizaciones: dos listados paginados en
+ * servidor con los mismos parametros no tienen por que recorrerse distinto.
  *
- * Es la misma en el registro de documentos y en el de organizaciones: dos
- * listados paginados en servidor con los mismos parametros (limit y offset) no
- * tienen por que discrepar en como se recorren.
- *
- * Recibe el total y la pagina, no la lista: quien pagina es el servidor, y este
- * componente solo traduce eso a botones.
+ * Recibe el total y la pagina, no la lista: quien pagina es el servidor.
  */
-export const Paginacion = ({ total, pagina, porPagina, mostrados, ocupado, onPagina, onPorPagina }: {
+export const Pagination = ({ total, page, pageSize, shown, busy, onPage, onPageSize }: {
   total: number;
-  pagina: number;
-  porPagina: number;
+  page: number;
+  pageSize: number;
   /** Filas que han llegado en esta pagina, para el extremo del rango. */
-  mostrados: number;
-  ocupado?: boolean;
-  onPagina: (pagina: number) => void;
-  onPorPagina: (porPagina: number) => void;
+  shown: number;
+  busy?: boolean;
+  onPage: (page: number) => void;
+  onPageSize: (pageSize: number) => void;
 }) => {
 
-  const paginas = Math.max(1, Math.ceil(total / porPagina));
-  const desde = (pagina - 1) * porPagina;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const from = (page - 1) * pageSize;
 
   // Al estrechar el filtro la pagina actual puede quedar mas alla del final.
   useEffect(() => {
-    if (pagina > paginas) onPagina(paginas);
-  }, [pagina, paginas, onPagina]);
+    if (page > pages) onPage(pages);
+  }, [page, pages, onPage]);
 
-  // Ventana de paginas, no la lista entera: un listado de mil filas daria
-  // ciento veinticinco botones, y ninguno de los del medio le sirve a nadie.
-  // Se ven los extremos y la vecindad de la actual, con un hueco entre medias.
-  const numeros = useMemo(() => {
-    const cerca = new Set([1, paginas, pagina - 1, pagina, pagina + 1]);
-    const visibles = [...cerca].filter((numero) => numero >= 1 && numero <= paginas).sort((a, b) => a - b);
+  // Ventana de paginas: un listado de mil filas daria ciento veinticinco
+  // botones y ninguno de los del medio sirve. Extremos y vecindad, con hueco.
+  const numbers = useMemo(() => {
+    const near = new Set([1, pages, page - 1, page, page + 1]);
+    const visible = [...near].filter((number) => number >= 1 && number <= pages).sort((a, b) => a - b);
 
-    return visibles.flatMap((numero, indice) =>
-      indice && numero - visibles[indice - 1] > 1 ? ['…', numero] : [numero]);
-  }, [pagina, paginas]);
+    return visible.flatMap((number, index) =>
+      index && number - visible[index - 1] > 1 ? ['…', number] : [number]);
+  }, [page, pages]);
 
   return (
-    <div className="paginacion">
-      <span className="paginacion__cuenta">
-        {total ? `${desde + 1}–${Math.min(desde + mostrados, total)} de ${total}` : 'Sin resultados'}
+    <div className="pagination">
+      <span className="pagination__count">
+        {total
+          ? t('pagination.range', { from: from + 1, to: Math.min(from + shown, total), total })
+          : t('pagination.empty')}
       </span>
 
-      <div className="paginacion__paginas">
+      <div className="pagination__pages">
         <button
           type="button"
-          className="btn btn--icono"
-          aria-label="Página anterior"
-          onClick={() => onPagina(Math.max(1, pagina - 1))}
-          disabled={pagina === 1 || ocupado}
-        ><IconoAnterior /></button>
+          className="btn btn--icon"
+          aria-label={t('a11y.previousPage')}
+          onClick={() => onPage(Math.max(1, page - 1))}
+          disabled={page === 1 || busy}
+        ><PreviousIcon /></button>
 
-        {numeros.map((numero, indice) => (
-          typeof numero === 'number' ? (
+        {numbers.map((number, index) => (
+          typeof number === 'number' ? (
             <button
               type="button"
               className="btn"
-              key={numero}
-              aria-label={`Página ${numero}`}
-              aria-current={numero === pagina ? 'page' : undefined}
-              onClick={() => onPagina(numero)}
-            >{numero}</button>
+              key={number}
+              aria-label={t('a11y.page', { number })}
+              aria-current={number === page ? 'page' : undefined}
+              onClick={() => onPage(number)}
+            >{number}</button>
           ) : (
-            <span className="paginacion__hueco" key={`hueco-${indice}`} aria-hidden="true">…</span>
+            <span className="pagination__gap" key={`gap-${index}`} aria-hidden="true">…</span>
           )
         ))}
 
         <button
           type="button"
-          className="btn btn--icono"
-          aria-label="Página siguiente"
-          onClick={() => onPagina(Math.min(paginas, pagina + 1))}
-          disabled={pagina >= paginas || ocupado}
-        ><IconoSiguiente /></button>
+          className="btn btn--icon"
+          aria-label={t('a11y.nextPage')}
+          onClick={() => onPage(Math.min(pages, page + 1))}
+          disabled={page >= pages || busy}
+        ><NextIcon /></button>
       </div>
 
-      <label className="paginacion__por-pagina">
-        Por página
-        <select value={porPagina} onChange={(evento) => onPorPagina(Number(evento.target.value))}>
-          {POR_PAGINA.map((cuantos) => (
-            <option value={cuantos} key={cuantos}>{cuantos}</option>
+      <label className="pagination__per-page">
+        {t('pagination.perPage')}
+        <select value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
+          {PAGE_SIZES.map((size) => (
+            <option value={size} key={size}>{size}</option>
           ))}
         </select>
       </label>
@@ -166,106 +186,103 @@ export const Paginacion = ({ total, pagina, porPagina, mostrados, ocupado, onPag
   );
 };
 
-/* ================================================================ mensajes == */
+/* =============================================================== messages == */
 
 /**
- * Traduce un fallo a algo accionable.
- *
- * Los codigos que la API usa de forma deliberada —423 cuarentena, 413 tamaño,
- * 429 limite de intentos— merecen explicacion propia: mostrados como «error
- * 423» no le dicen nada a quien esta delante.
+ * Los codigos que la API usa de forma deliberada —423 cuarentena, 413 tamano,
+ * 429 limite de intentos— merecen explicacion propia: «error 423» no le dice
+ * nada a quien esta delante.
  */
-export const mensajeDeError = (error: unknown): string => {
+export const errorMessage = (error: unknown): string => {
   if (!(error instanceof ApiError)) {
     return error instanceof Error && error.message
       ? error.message
-      : 'No se ha podido contactar con el servidor.';
+      : t('common.serverUnreachable');
   }
 
   if (error.status === 429) {
-    const minutos = error.retryAfter ? Math.ceil(error.retryAfter / 60) : null;
-    return minutos
-      ? `Demasiados intentos seguidos. Vuelve a probar en ${minutos} minuto${minutos === 1 ? '' : 's'}.`
-      : 'Demasiados intentos seguidos. Espera unos minutos antes de volver a probar.';
+    const minutes = error.retryAfter ? Math.ceil(error.retryAfter / 60) : null;
+    return minutes
+      ? t('common.tooManyAttemptsWait', { count: minutes, minutes })
+      : t('common.tooManyAttempts');
   }
 
-  if (error.status === 413) return 'El fichero supera el tamaño máximo que admite el servidor.';
-  if (error.status === 0) return 'No se ha podido contactar con el servidor.';
+  if (error.status === 413) return t('common.tooLarge');
+  if (error.status === 0) return t('common.serverUnreachable');
 
   return error.message;
 };
 
-export const Aviso = ({ tipo = 'info', titulo, children }: {
-  tipo?: 'info' | 'error' | 'warn' | 'exito';
-  titulo?: string;
+export const Notice = ({ kind = 'info', title, children }: {
+  kind?: 'info' | 'error' | 'warn' | 'success';
+  title?: string;
   children: ReactNode;
 }) => (
-  <div className={`aviso aviso--${tipo}`} role={tipo === 'error' ? 'alert' : undefined}>
-    {titulo ? <strong>{titulo}</strong> : null}
+  <div className={`notice notice--${kind}`} role={kind === 'error' ? 'alert' : undefined}>
+    {title ? <strong>{title}</strong> : null}
     {children}
   </div>
 );
 
-export const AvisoDeError = ({ error }: { error: unknown }) =>
-  error ? <Aviso tipo="error">{mensajeDeError(error)}</Aviso> : null;
+export const ErrorNotice = ({ error }: { error: unknown }) =>
+  error ? <Notice kind="error">{errorMessage(error)}</Notice> : null;
 
-export const Cargando = ({ texto = 'Cargando…' }: { texto?: string }) => (
-  <div className="cargando"><span className="girando" aria-hidden="true" /> {texto}</div>
+export const Loading = ({ text = t('common.loading') }: { text?: string }) => (
+  <div className="loading"><span className="spinner" aria-hidden="true" /> {text}</div>
 );
 
 /** Una pantalla vacia es una invitacion a actuar, no un cartel de «no hay nada». */
-export const Vacio = ({ titulo, centrado, children }: {
-  titulo: string;
-  centrado?: boolean;
+export const Empty = ({ title, centered, children }: {
+  title: string;
+  centered?: boolean;
   children?: ReactNode;
 }) => (
-  <div className={`vacio${centrado ? ' vacio--centrado' : ''}`}>
-    <h2>{titulo}</h2>
+  <div className={`empty${centered ? ' empty--centered' : ''}`}>
+    <h2>{title}</h2>
     {children ? <p>{children}</p> : null}
   </div>
 );
 
-/* ================================================================= dialogo == */
+/* ================================================================= dialog == */
 
-export const Dialogo = ({ titulo, ariaLabel, onClose, children, pie, desnudo }: {
-  titulo?: string;
-  /** Solo hace falta si `desnudo` no lleva `titulo` visible que sirva de aria-label. */
+export const Dialog = ({ title, ariaLabel, onClose, children, footer, bare }: {
+  title?: string;
+  /** Solo hace falta si `bare` no lleva `title` visible que sirva de aria-label. */
   ariaLabel?: string;
   onClose: () => void;
   children: ReactNode;
-  pie?: ReactNode;
+  footer?: ReactNode;
   /** Sin fondo, cabecera ni pie propios: para un hijo que ya es una tarjeta
-      completa (como CambiarContrasena) y no debe quedar dentro de otra. Solo
-      aporta el telon, la trampa de foco y el cierre con Escape o clic fuera. */
-  desnudo?: boolean;
+      completa (como PasswordChange) y no debe quedar dentro de otra. */
+  bare?: boolean;
 }) => {
 
-  const caja = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const alPulsar = (evento: KeyboardEvent) => { if (evento.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', alPulsar);
-    caja.current?.focus();
-    return () => document.removeEventListener('keydown', alPulsar);
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    box.current?.focus();
+    return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   return (
-    <div className="telon" onMouseDown={(evento) => { if (evento.target === evento.currentTarget) onClose(); }}>
+    <div className="backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div
-        className={`dialogo${desnudo ? ' dialogo--desnudo' : ''}`}
+        className={`dialog${bare ? ' dialog--bare' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-label={ariaLabel ?? titulo}
+        aria-label={ariaLabel ?? title}
         tabIndex={-1}
-        ref={caja}
+        ref={box}
       >
-        {desnudo ? children : (
+        {bare ? children : (
           <>
-            <div className="dialogo__cabeza">
-              <h2>{titulo}</h2>
+            <div className="dialog__head">
+              <h2>{title}</h2>
             </div>
             {children}
-            {pie ? <div className="dialogo__pie">{pie}</div> : null}
+            {footer ? <div className="dialog__foot">{footer}</div> : null}
           </>
         )}
       </div>
@@ -273,89 +290,91 @@ export const Dialogo = ({ titulo, ariaLabel, onClose, children, pie, desnudo }: 
   );
 };
 
-/* =================================================================== datos == */
+/* =================================================================== data == */
 
-export const formatearFecha = (valor?: string | number | null, conHora = true, separador?: string) => {
-  if (!valor) return '—';
+export const formatDate = (value?: string | number | null, withTime = true, separator?: string) => {
+  if (!value) return t('common.none');
 
   // El backend guarda TIMESTAMP WITHOUT TIME ZONE y lo serializa sin zona: se
   // interpreta como UTC, que es la zona en la que corre el servidor.
-  const bruto = typeof valor === 'string' && !valor.endsWith('Z') && !/[+-]\d\d:?\d\d$/.test(valor)
-    ? `${valor}Z`
-    : valor;
+  const raw = typeof value === 'string' && !value.endsWith('Z') && !/[+-]\d\d:?\d\d$/.test(value)
+    ? `${value}Z`
+    : value;
 
-  const fecha = new Date(bruto);
-  if (Number.isNaN(fecha.getTime())) return String(valor);
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return String(value);
 
-  const texto = fecha.toLocaleDateString('es-ES', {
+  const text = date.toLocaleDateString('es-ES', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-    ...(conHora ? { hour: '2-digit', minute: '2-digit' } : {})
+    ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {})
   });
 
-  // es-ES separa fecha y hora con una coma. En una columna de tabla, donde la
-  // fecha ya es un dato compacto, la coma se lee como parte del numero: el
-  // separador explicito la sustituye alli donde se pide.
-  return separador ? texto.replace(', ', ` ${separador} `) : texto;
+  // es-ES separa fecha y hora con una coma que, en una columna de tabla, se lee
+  // como parte del numero.
+  return separator ? text.replace(', ', ` ${separator} `) : text;
 };
 
-export const formatearTamano = (bytes: number) => {
-  if (!Number.isFinite(bytes)) return '—';
+export const formatSize = (bytes: number) => {
+  if (!Number.isFinite(bytes)) return t('common.none');
 
-  const unidades = ['B', 'KB', 'MB', 'GB'];
-  let valor = bytes;
-  let unidad = 0;
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
 
-  while (valor >= 1024 && unidad < unidades.length - 1) { valor /= 1024; unidad += 1; }
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
 
-  return `${valor % 1 === 0 ? valor : valor.toFixed(1)} ${unidades[unidad]}`;
+  return `${value % 1 === 0 ? value : value.toFixed(1)} ${units[unit]}`;
 };
 
-export const Dato = ({ termino, children }: { termino: string; children: ReactNode }) => (
-  <div className="dato">
-    <dt>{termino}</dt>
+export const Datum = ({ term, children }: { term: string; children: ReactNode }) => (
+  <div className="datum">
+    <dt>{term}</dt>
     <dd>{children}</dd>
   </div>
 );
 
-/* =============================================================== etiquetas == */
+/* =================================================================== tags == */
 
-export const CampoEtiquetas = ({ value, onChange, id }: {
+export const TagsField = ({ value, onChange, id }: {
   value: string[];
-  onChange: (etiquetas: string[]) => void;
+  onChange: (tags: string[]) => void;
   id?: string;
 }) => {
 
-  const anadir = (bruto: string) => {
-    const etiqueta = bruto.trim();
-    // Duplicados fuera: el filtro por etiqueta del registro los trataria como
-    // uno solo de todas formas.
-    if (etiqueta && !value.includes(etiqueta)) onChange([...value, etiqueta]);
+  const add = (raw: string) => {
+    const tag = raw.trim();
+    // Duplicados fuera: el filtro por etiqueta los trataria como uno solo.
+    if (tag && !value.includes(tag)) onChange([...value, tag]);
   };
 
   return (
-    <div className="etiquetas-campo">
-      {value.map((etiqueta) => (
-        <span className="etiqueta" key={etiqueta}>
-          {etiqueta}
-          <button type="button" onClick={() => onChange(value.filter((item) => item !== etiqueta))} aria-label={`Quitar ${etiqueta}`}>✕</button>
+    <div className="tags-field">
+      {value.map((tag) => (
+        <span className="tag" key={tag}>
+          {tag}
+          <button
+            type="button"
+            onClick={() => onChange(value.filter((item) => item !== tag))}
+            aria-label={t('common.remove', { name: tag })}
+          >✕</button>
         </span>
       ))}
       <input
         id={id}
         type="text"
-        placeholder="Añadir etiqueta y pulsar Intro"
-        onKeyDown={(evento) => {
-          if (evento.key === 'Enter' || evento.key === ',') {
-            evento.preventDefault();
-            anadir(evento.currentTarget.value);
-            evento.currentTarget.value = '';
-          } else if (evento.key === 'Backspace' && !evento.currentTarget.value && value.length) {
+        placeholder={t('tags.placeholder')}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault();
+            add(event.currentTarget.value);
+            event.currentTarget.value = '';
+          } else if (event.key === 'Backspace' && !event.currentTarget.value && value.length) {
             onChange(value.slice(0, -1));
           }
         }}
-        onBlur={(evento) => { anadir(evento.currentTarget.value); evento.currentTarget.value = ''; }}
+        onBlur={(event) => { add(event.currentTarget.value); event.currentTarget.value = ''; }}
       />
     </div>
   );

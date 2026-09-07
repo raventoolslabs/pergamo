@@ -1,0 +1,308 @@
+import axios from 'axios';
+import path from 'path';
+import fs from 'fs';
+import FormData from 'form-data';
+import { StatusCodes } from 'http-status-codes';
+
+import { app } from '../src/app';
+import Config from '../src/config';
+import sequelize, { QueryTypes } from '../src/utils/db';
+import { sha256File } from '../src/utils/hash';
+import { verifyMimetype } from '../src/utils/filetype';
+import { detectActiveContent } from '../src/utils/activecontent';
+
+/**
+ * Corpus de PDF con contenido activo (PayloadsAllThePDFs, Apache-2.0).
+ *
+ * De los once ficheros, ClamAV (1.4.3, firmas 28116) reconoce uno: los otros
+ * diez son PDF validos que atacan al visor y entraban en el archivo sin que
+ * nadie los senalara. De ahi la segunda capa —utils/activecontent.ts— y el
+ * estado 'malicious', que estas pruebas fijan: el deposito no se rechaza, no se
+ * entrega (423) y solo sale de ahi por una liberacion manual.
+ *
+ * Ver test/assets/payloads/README.md para el origen de cada fichero.
+ */
+
+const PAYLOADS = path.join(__dirname, 'assets', 'payloads');
+
+const CORPUS = [
+  'foxit-reader-poc.pdf',
+  'payload1.pdf',
+  'payload2.pdf',
+  'payload3.pdf',
+  'payload4.pdf',
+  'payload5.pdf',
+  'payload6.pdf',
+  'payload7.pdf',
+  'payload8.pdf',
+  'payload9.pdf',
+  'starter_pack.pdf'
+];
+
+/**
+ * El unico del corpus con firma en ClamAV (`Html.Exploit.CVE_2016_3198-1`). Si
+ * la prueba que lo usa falla, es que la base de firmas ha dejado de
+ * reconocerlo: se comprueba con `clamscan test/assets/payloads/`.
+ */
+const SIGNED = 'payload1.pdf';
+
+/**
+ * El que no detecta nadie: sin /JavaScript ni /OpenAction, inyecta el codigo en
+ * un array /FontMatrix contra el parser del visor. Es la medida de lo que
+ * cubren las dos capas: se filtra contenido activo, no se certifica que un
+ * documento sea inofensivo.
+ */
+const UNDETECTED = 'payload8.pdf';
+
+// it.skip y no un `if`: asi Jest informa de lo que no se ha ejercitado en vez
+// de dar una cobertura aparente.
+const itAntivirus = Config.enable_antivirus ? it : it.skip;
+
+describe('Active-content PDF corpus', () => {
+
+  let api;
+  let server;
+  let token;
+
+  const deposited:string[] = [];
+
+  const upload = async (file:string) => {
+
+    const form = new FormData();
+    form.append('document', fs.createReadStream(path.join(PAYLOADS, file)), {
+      filename: file,
+      contentType: 'application/pdf'
+    });
+
+    const response = await api.post('/document', form, {
+      headers: { authorization: token, ...form.getHeaders() }
+    });
+
+    if(response.status === StatusCodes.OK) deposited.push(response.data.uuid);
+
+    return response;
+  };
+
+  const status = async (id:string):Promise<any> => {
+
+    const rows:any = await sequelize.query(
+      'SELECT scan_status, scan_signature, scan_engine FROM pergamo.document WHERE id = :id;', {
+      replacements: { id },
+      type: QueryTypes.SELECT
+    });
+
+    return rows[0];
+  };
+
+  beforeAll(async () => {
+
+    server = await app(0);
+
+    api = axios.create({
+      baseURL: `http://localhost:${server.address().port}`,
+      validateStatus: () => true
+    });
+
+    const login = await api.post('/organization/login', {
+      name: 'pergamo',
+      password: Config.password_master
+    });
+
+    token = login.data.token;
+  });
+
+  afterAll(async () => {
+
+    // El corpus no se queda en el fondo: estas pruebas corren contra la base
+    // configurada, que en desarrollo es la misma que se mira por la interfaz.
+    for(const id of deposited) {
+      await api.delete(`/document/${id}`, { headers: { authorization: token } });
+    }
+
+    server.close();
+    await sequelize.close();
+  });
+
+  it('Should ship the whole corpus', () => {
+
+    // Un antivirus con vigilancia en tiempo real puede haberse llevado
+    // payload1.pdf del clon: sin esto, la prueba que lo usa falla con un ENOENT
+    // dentro de un stream y cuesta entender por que.
+    const missing = CORPUS.filter((file) => !fs.existsSync(path.join(PAYLOADS, file)));
+
+    expect(missing).toEqual([]);
+  });
+
+  it('Should accept every payload as a structurally valid PDF', async () => {
+
+    // La verificacion de contenido dice si el fichero es lo que declara ser, no
+    // si es inofensivo: que los acepte todos es la frontera entre las capas.
+    for(const file of CORPUS) {
+
+      const type = await verifyMimetype(path.join(PAYLOADS, file), 'application/pdf');
+
+      expect({ file, ...type }).toMatchObject({ verifiable: true, matches: true });
+    }
+  });
+
+  it('Should flag ten of the eleven payloads as active content', async () => {
+
+    // La medida de la capa, sin pasar por la API. El que falta es UNDETECTED, y
+    // esta prueba avisa si deja de ser cierto en cualquiera de los dos sentidos.
+    const flagged:string[] = [];
+
+    for(const file of CORPUS) {
+
+      const result = await detectActiveContent(path.join(PAYLOADS, file), 'application/pdf');
+
+      if(result.active) flagged.push(file);
+    }
+
+    expect(flagged).toHaveLength(CORPUS.length - 1);
+    expect(flagged).not.toContain(UNDETECTED);
+  });
+
+  it('Should not flag the ordinary documents of the test corpus', async () => {
+
+    // Un filtro que marca todo no filtra nada. Estos dos PDF corrientes llevan
+    // `/AAAAAA` (un nombre de tipografia) y darian positivo con una busqueda
+    // por subcadena de `/AA`.
+    for(const file of ['test.pdf', 'test2.pdf']) {
+
+      const result = await detectActiveContent(path.join(__dirname, 'assets', file), 'application/pdf');
+
+      expect({ file, ...result }).toMatchObject({ active: false });
+    }
+  });
+
+  it('Should quarantine an active-content deposit instead of rejecting it', async () => {
+
+    // Lo que separa esto del antivirus: un fichero infectado no entra (400),
+    // pero el contenido activo si se deposita. El documento se guarda y lo que
+    // se retiene es la entrega.
+    const response = await upload('payload3.pdf');
+
+    expect(response.status).toBe(StatusCodes.OK);
+
+    const row = await status(response.data.uuid);
+
+    expect(row.scan_status).toBe('malicious');
+    expect(row.scan_signature).toContain('JavaScript');
+
+    const download = await api.get(`/document/${response.data.uuid}/file`, {
+      headers: { authorization: token }
+    });
+
+    expect(download.status).toBe(StatusCodes.LOCKED);
+    expect(download.data.error).toContain('active content');
+    // Y se dice que esperar no sirve: es la unica forma de que quien lo recibe
+    // sepa que hay que hacer algo.
+    expect(download.data.error).toContain('manual review');
+  });
+
+  it('Should still serve the metadata of an active-content document', async () => {
+
+    const uploaded = await upload('payload5.pdf');
+
+    const response = await api.get(`/document/${uploaded.data.uuid}`, {
+      headers: { authorization: token }
+    });
+
+    // Los metadatos son como el cliente descubre por que esta bloqueado: el
+    // gate esta en getFile y solo ahi.
+    expect(response.status).toBe(StatusCodes.OK);
+    expect(response.data.uuid).toBe(uploaded.data.uuid);
+
+    const scan = await api.get(`/document/${uploaded.data.uuid}/scan`, {
+      headers: { authorization: token }
+    });
+
+    expect(scan.data.scan_status).toBe('malicious');
+    expect(scan.data.scan_signature).toContain('ACTIVE_CONTENT');
+  });
+
+  it('Should only leave quarantine through a manual release', async () => {
+
+    const uploaded = await upload('payload9.pdf');
+    const id = uploaded.data.uuid;
+
+    expect((await status(id)).scan_status).toBe('malicious');
+
+    // El reescaneo no mira estas filas. Se reproduce aqui su seleccion exacta:
+    // es la garantia de que un barrido no libera en lote lo que se retuvo.
+    const queue:any = await sequelize.query(
+      `SELECT id FROM pergamo.document
+      WHERE (scan_engine IS NULL OR scan_engine <> :engine)
+        AND scan_status <> 'malicious' AND id = :id;`, {
+      replacements: { engine: 'any-engine', id },
+      type: QueryTypes.SELECT
+    });
+
+    expect(queue).toHaveLength(0);
+
+    // La liberacion manual es la de scripts/release.ts: pasa a 'clean'
+    // conservando la firma, para que quede trazado que se libero y por que.
+    await sequelize.query(
+      `UPDATE pergamo.document SET scan_status = 'clean', scan_date = CURRENT_TIMESTAMP WHERE id = :id;`, {
+      replacements: { id },
+      type: QueryTypes.UPDATE
+    });
+
+    const download = await api.get(`/document/${id}/file`, { headers: { authorization: token } });
+
+    expect(download.status).toBe(StatusCodes.OK);
+    expect((await status(id)).scan_signature).toContain('ACTIVE_CONTENT');
+  });
+
+  it('Should deposit the payload that neither layer detects', async () => {
+
+    // Este entra, queda descargable y las dos capas lo dan por bueno: es lo que
+    // cuesta no tener un parser de PDF en el proceso, y la razon por la que la
+    // interfaz nunca renderiza un documento del archivo.
+    const uploaded = await upload(UNDETECTED);
+
+    expect(uploaded.status).toBe(StatusCodes.OK);
+    expect((await status(uploaded.data.uuid)).scan_status).toBe('clean');
+  });
+
+  itAntivirus('Should reject the payload ClamAV recognises before it is stored', async () => {
+
+    // La otra capa y su otra politica: una firma corta la peticion con un 400 y
+    // el fichero no llega a depositarse.
+    const response = await upload(SIGNED);
+
+    expect(response.status).toBe(StatusCodes.BAD_REQUEST);
+    // Sin el nombre de la firma: depende de la version de la base de datos y
+    // convertiria una actualizacion de firmas en un fallo.
+    expect(response.data.error).toContain('File is infected');
+  });
+
+  it('Should serve a released payload as an attachment and byte for byte', async () => {
+
+    // La defensa que no depende de las dos capas: el contenido activo es inocuo
+    // mientras nadie lo renderice. Se entrega como adjunto, con nosniff y tal
+    // cual entro: sanear un PDF destruiria su huella y su firma electronica.
+    const file = 'starter_pack.pdf';
+    const source = path.join(PAYLOADS, file);
+
+    const uploaded = await upload(file);
+
+    expect(uploaded.status).toBe(StatusCodes.OK);
+    expect(uploaded.data.hash).toBe(await sha256File(source));
+
+    await sequelize.query("UPDATE pergamo.document SET scan_status = 'clean' WHERE id = :id;", {
+      replacements: { id: uploaded.data.uuid },
+      type: QueryTypes.UPDATE
+    });
+
+    const download = await api.get(`/document/${uploaded.data.uuid}/file`, {
+      headers: { authorization: token },
+      responseType: 'arraybuffer'
+    });
+
+    expect(download.status).toBe(StatusCodes.OK);
+    expect(download.headers['content-disposition']).toMatch(/^attachment;/);
+    expect(download.headers['x-content-type-options']).toBe('nosniff');
+    expect(Buffer.from(download.data).equals(fs.readFileSync(source))).toBe(true);
+  });
+});

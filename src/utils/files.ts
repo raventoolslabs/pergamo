@@ -63,17 +63,12 @@ const rmdir = async (path_base:string, directory:string) => {
 
 
 /**
- * Construye una cabecera Content-Disposition segura.
+ * El nombre viene del `originalname` del cliente: interpolarlo tal cual permite
+ * inyectar parametros en la cabecera subiendo un fichero con comillas o saltos
+ * de linea en el nombre.
  *
- * El nombre procede del `originalname` que envia el cliente, asi que
- * interpolarlo tal cual —como se hacia antes— permite inyectar parametros
- * adicionales en la cabecera (por ejemplo un `filename*` propio) simplemente
- * subiendo un fichero con comillas, punto y coma o saltos de linea en el
- * nombre.
- *
- * Se emite la forma doble de RFC 6266: `filename` ASCII entrecomillado y con
- * escape para clientes antiguos, y `filename*` codificado segun RFC 5987 para
- * los que soportan UTF-8, que es el que prevalece cuando ambos estan presentes.
+ * Se emite la forma doble de RFC 6266: `filename` ASCII para clientes antiguos
+ * y `filename*` en RFC 5987, que prevalece cuando estan los dos.
  */
 const contentDisposition = (filename:string, type = 'attachment') => {
 
@@ -87,12 +82,9 @@ const contentDisposition = (filename:string, type = 'attachment') => {
 }
 
 /**
- * Borra los temporales de subida que han quedado huerfanos.
- *
- * multer escribe en data/tmp antes de que el controlador tome ninguna decision.
- * En el camino normal el fichero se mueve o se borra, pero un proceso que muere
- * a mitad de peticion deja el temporal ahi para siempre: sin esta limpieza,
- * data/tmp crece de forma monotona.
+ * multer escribe en data/tmp antes de que el controlador decida nada. En el
+ * camino normal el fichero se mueve o se borra, pero un proceso que muere a
+ * mitad de peticion deja el temporal ahi para siempre.
  */
 const cleanTmp = async (directory:string, maxAgeMs:number) => {
 
@@ -117,8 +109,8 @@ const cleanTmp = async (directory:string, maxAgeMs:number) => {
       removed++;
 
     } catch(error) {
-      // Una subida en curso puede mover o borrar el fichero entre el readdir y
-      // el stat. No es un fallo: el objetivo de la limpieza ya se cumple.
+      // Una subida en curso puede mover el fichero entre el readdir y el stat:
+      // no es un fallo, el objetivo de la limpieza ya se cumple.
       continue;
     }
   }

@@ -6,324 +6,349 @@ import { useConfig } from '../api/config';
 import type { DocumentMetadata, DocumentVersion, ScanInfo } from '../api/types';
 import { useToast } from '../components/toast';
 import {
-  Aviso, AvisoDeError, CampoEtiquetas, Cargando, Dato, Dialogo, ESTADO,
-  formatearFecha, formatearTamano, mensajeDeError
+  Datum, Dialog, ErrorNotice, Loading, Notice, TagsField, VERDICT,
+  errorMessage, formatDate, formatSize, isDeliverable, verdictOf
 } from '../components/ui';
+import { t } from '../i18n';
 
 /** Claves que fija el propio Pergamo al guardar: se muestran, no se editan. */
-const DE_SISTEMA = [
+const SYSTEM_FIELDS = [
   'uuid', 'uuid_sha256', 'organization', 'creation_date',
   'hash', 'mimetype', 'extension', 'original_name', 'size'
 ];
 
 /**
- * Nombres de los campos editables en lenguaje de quien los rellena. Las claves
- * son las de VALID_METADATA_MODIFY, que es configurable, asi que lo que no
- * este aqui se muestra con su clave tal cual.
+ * Nombres de los campos editables. Las claves son las de VALID_METADATA_MODIFY,
+ * que es configurable, asi que lo que no este aqui se muestra tal cual.
  */
-const NOMBRE_DE_CAMPO: Record<string, string> = {
-  name: 'Nombre',
-  description: 'Descripción',
-  tags: 'Etiquetas'
+const FIELD_LABEL: Record<string, string> = {
+  name: t('detail.fieldName'),
+  description: t('detail.fieldDescription'),
+  tags: t('detail.fieldTags')
 };
 
-const comoEtiquetas = (valor: unknown): string[] =>
-  Array.isArray(valor) ? valor.filter((item): item is string => typeof item === 'string') : [];
+const asTags = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
 export const DocumentDetail = () => {
 
   const { id = '' } = useParams();
-  const navegar = useNavigate();
+  const navigate = useNavigate();
   const toast = useToast();
   const config = useConfig();
-  const entradaReemplazo = useRef<HTMLInputElement>(null);
+  const replacementInput = useRef<HTMLInputElement>(null);
 
-  const [metadatos, setMetadatos] = useState<DocumentMetadata | null>(null);
-  const [analisis, setAnalisis] = useState<ScanInfo | null>(null);
-  const [versiones, setVersiones] = useState<DocumentVersion[] | null>(null);
+  const [metadata, setMetadata] = useState<DocumentMetadata | null>(null);
+  const [scanInfo, setScanInfo] = useState<ScanInfo | null>(null);
+  const [versions, setVersions] = useState<DocumentVersion[] | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [cargando, setCargando] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [borrador, setBorrador] = useState<Record<string, unknown>>({});
-  const [guardando, setGuardando] = useState(false);
-  const [ocupado, setOcupado] = useState<string | null>(null);
-  const [confirmando, setConfirmando] = useState(false);
+  const [draft, setDraft] = useState<Record<string, unknown>>({});
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
-  const editables = useMemo(() => config?.valid_metadata_modify ?? [], [config]);
+  const editable = useMemo(() => config?.valid_metadata_modify ?? [], [config]);
 
-  const cargar = useCallback(async () => {
-    setCargando(true);
+  const load = useCallback(async () => {
+    setLoading(true);
 
     try {
       // El estado de analisis y las versiones viven en endpoints propios: se
       // piden a la vez para no encadenar tres esperas.
-      const [documento, sello, listaVersiones] = await Promise.all([
+      const [document, scan, versionList] = await Promise.all([
         api.document(id),
         api.scan(id),
         api.versions(id).catch(() => [] as DocumentVersion[])
       ]);
 
-      setMetadatos(documento);
-      setAnalisis(sello);
-      setVersiones(listaVersiones);
+      setMetadata(document);
+      setScanInfo(scan);
+      setVersions(versionList);
       setError(null);
-    } catch (fallo) {
-      setError(fallo);
+    } catch (failure) {
+      setError(failure);
     } finally {
-      setCargando(false);
+      setLoading(false);
     }
   }, [id]);
 
-  useEffect(() => { void cargar(); }, [cargar]);
+  useEffect(() => { void load(); }, [load]);
 
-  const reiniciarBorrador = useCallback(() => {
-    if (!metadatos) return;
+  const resetDraft = useCallback(() => {
+    if (!metadata) return;
 
-    setBorrador(editables.reduce((valores, clave) => ({
-      ...valores,
-      [clave]: clave === 'tags' ? comoEtiquetas(metadatos.tags) : (metadatos[clave] ?? '')
+    setDraft(editable.reduce((values, key) => ({
+      ...values,
+      [key]: key === 'tags' ? asTags(metadata.tags) : (metadata[key] ?? '')
     }), {} as Record<string, unknown>));
-  }, [metadatos, editables]);
+  }, [metadata, editable]);
 
-  // El borrador se rehace cada vez que llegan metadatos nuevos, para no dejar
-  // en pantalla valores de una version anterior del documento.
-  useEffect(reiniciarBorrador, [reiniciarBorrador]);
+  // El borrador se rehace cada vez que llegan metadatos nuevos, para no dejar en
+  // pantalla valores de una version anterior.
+  useEffect(resetDraft, [resetDraft]);
 
-  const hayCambios = useMemo(() => {
-    if (!metadatos) return false;
-    return editables.some((clave) => {
-      const original = clave === 'tags' ? comoEtiquetas(metadatos.tags) : (metadatos[clave] ?? '');
-      return JSON.stringify(original) !== JSON.stringify(borrador[clave] ?? (clave === 'tags' ? [] : ''));
+  const hasChanges = useMemo(() => {
+    if (!metadata) return false;
+    return editable.some((key) => {
+      const original = key === 'tags' ? asTags(metadata.tags) : (metadata[key] ?? '');
+      return JSON.stringify(original) !== JSON.stringify(draft[key] ?? (key === 'tags' ? [] : ''));
     });
-  }, [borrador, metadatos, editables]);
+  }, [draft, metadata, editable]);
 
-  const guardar = async () => {
-    setGuardando(true);
+  const save = async () => {
+    setSaving(true);
 
     try {
-      setMetadatos(await api.updateMetadata(id, borrador));
-      toast('Cambios guardados');
-    } catch (fallo) {
-      toast(mensajeDeError(fallo), 'error');
+      setMetadata(await api.updateMetadata(id, draft));
+      toast(t('detail.saved'));
+    } catch (failure) {
+      toast(errorMessage(failure), 'error');
     } finally {
-      setGuardando(false);
+      setSaving(false);
     }
   };
 
-  const descargar = async () => {
-    setOcupado('descarga');
+  const download = async () => {
+    setBusy('download');
 
     try {
-      await api.download(id, `${metadatos?.name}.${metadatos?.extension}`);
-    } catch (fallo) {
-      toast(mensajeDeError(fallo), 'error');
+      await api.download(id, `${metadata?.name}.${metadata?.extension}`);
+    } catch (failure) {
+      toast(errorMessage(failure), 'error');
     } finally {
-      setOcupado(null);
+      setBusy(null);
     }
   };
 
-  const reemplazar = async (fichero: File) => {
-    // La API rechaza un reemplazo con otro mimetype. Avisar aqui evita subir el
+  const replace = async (file: File) => {
+    // La API rechaza un reemplazo con otro mimetype: avisar aqui evita subir el
     // fichero entero para recibir un 400.
-    if (metadatos && fichero.type !== metadatos.mimetype) {
-      toast(`El reemplazo debe ser del mismo tipo que el original: ${metadatos.mimetype}`, 'error');
+    if (metadata && file.type !== metadata.mimetype) {
+      toast(t('detail.replaceTypeMismatch', { mimetype: metadata.mimetype }), 'error');
       return;
     }
 
-    setOcupado('reemplazo');
+    setBusy('replace');
 
     try {
-      await api.replaceFile(id, fichero);
-      await cargar();
-      toast('Fichero reemplazado');
-    } catch (fallo) {
-      toast(mensajeDeError(fallo), 'error');
+      await api.replaceFile(id, file);
+      await load();
+      toast(t('detail.replaced'));
+    } catch (failure) {
+      toast(errorMessage(failure), 'error');
     } finally {
-      setOcupado(null);
+      setBusy(null);
     }
   };
 
-  const eliminar = async () => {
-    setOcupado('borrado');
+  const remove = async () => {
+    setBusy('delete');
 
     try {
       await api.remove(id);
-      toast('Documento eliminado');
-      navegar('/');
-    } catch (fallo) {
-      setConfirmando(false);
-      toast(mensajeDeError(fallo), 'error');
+      toast(t('detail.deleted'));
+      navigate('/');
+    } catch (failure) {
+      setConfirming(false);
+      toast(errorMessage(failure), 'error');
     } finally {
-      setOcupado(null);
+      setBusy(null);
     }
   };
 
-  if (cargando && !metadatos) return <Cargando texto="Abriendo el documento…" />;
+  if (loading && !metadata) return <Loading text={t('detail.opening')} />;
 
-  if (!metadatos) {
+  if (!metadata) {
     return (
       <>
-        <AvisoDeError error={error} />
-        <p className="separado"><Link to="/">Volver a Documentos</Link></p>
+        <ErrorNotice error={error} />
+        <p className="spaced"><Link to="/">{t('detail.back')}</Link></p>
       </>
     );
   }
 
-  const fichero = `${metadatos.name}.${metadatos.extension}`;
-  const estado = analisis?.scan_status ?? 'pending';
-  const verificado = estado === 'clean';
+  const filename = `${metadata.name}.${metadata.extension}`;
 
-  const otrosCampos = Object.entries(metadatos).filter(([clave]) =>
-    !DE_SISTEMA.includes(clave) && !editables.includes(clave) && clave !== 'name' && clave !== 'tags');
+  // Dos preguntas distintas. `downloadable` es la del backend —¿se entrega?— y
+  // solo mira scan_status; `state` es lo que se le cuenta a quien esta delante,
+  // donde un 'clean' sin motor no es un analisis.
+  const scan = scanInfo?.scan_status ?? 'pending';
+  const downloadable = isDeliverable(scan);
+  const state = verdictOf(scan, scanInfo?.scan_engine);
+
+  const otherFields = Object.entries(metadata).filter(([key]) =>
+    !SYSTEM_FIELDS.includes(key) && !editable.includes(key) && key !== 'name' && key !== 'tags');
 
   return (
     <>
-      <Link to="/" className="volver">Volver a Documentos</Link>
+      <Link to="/" className="back">{t('detail.back')}</Link>
 
-      <div className="encabezado">
-        <div className="encabezado__texto">
-          <h1>{metadatos.name}</h1>
-          <p>{fichero}</p>
+      <div className="pagehead">
+        <div className="pagehead__text">
+          <h1>{metadata.name}</h1>
+          <p>{filename}</p>
         </div>
-        <div className="encabezado__acciones">
-          {/* En cuarentena no hay boton deshabilitado: hay una explicacion. Un
+        <div className="pagehead__actions">
+          {/* En cuarentena no hay boton deshabilitado, hay una explicacion: un
               boton que no responde obliga a adivinar por que. */}
-          {verificado ? (
-            <button type="button" className="btn btn--principal" onClick={descargar} disabled={ocupado === 'descarga'}>
-              {ocupado === 'descarga' ? <><span className="girando" aria-hidden="true" /> Descargando…</> : 'Descargar'}
+          {downloadable ? (
+            <button type="button" className="btn btn--primary" onClick={download} disabled={busy === 'download'}>
+              {busy === 'download'
+                ? <><span className="spinner" aria-hidden="true" /> {t('detail.downloading')}</>
+                : t('documents.download')}
             </button>
           ) : null}
           <button
             type="button"
             className="btn"
-            onClick={() => entradaReemplazo.current?.click()}
-            disabled={ocupado === 'reemplazo'}
+            onClick={() => replacementInput.current?.click()}
+            disabled={busy === 'replace'}
           >
-            {ocupado === 'reemplazo' ? <><span className="girando" aria-hidden="true" /> Reemplazando…</> : 'Reemplazar fichero'}
+            {busy === 'replace'
+              ? <><span className="spinner" aria-hidden="true" /> {t('detail.replacing')}</>
+              : t('detail.replace')}
           </button>
-          <button type="button" className="btn btn--riesgo" onClick={() => setConfirmando(true)}>Eliminar</button>
+          <button type="button" className="btn btn--danger" onClick={() => setConfirming(true)}>
+            {t('common.delete')}
+          </button>
         </div>
       </div>
 
       <input
-        ref={entradaReemplazo}
+        ref={replacementInput}
         type="file"
         hidden
-        accept={metadatos.mimetype}
-        onChange={(evento) => {
-          const elegido = evento.target.files?.[0];
-          evento.target.value = '';
-          if (elegido) void reemplazar(elegido);
+        accept={metadata.mimetype}
+        onChange={(event) => {
+          const chosen = event.target.files?.[0];
+          event.target.value = '';
+          if (chosen) void replace(chosen);
         }}
       />
 
-      <AvisoDeError error={error} />
+      <ErrorNotice error={error} />
 
-      <div className="ficha">
-        {/*
-          * El sello: la huella SHA-256 es lo unico que acredita que el
-          * contenido no ha cambiado desde que se deposito, asi que se compone
-          * como un sello y no como una linea gris al fondo de una tabla.
-          */}
-        <div className={`sello sello--${estado}`}>
-          <div className="sello__huella">{metadatos.hash?.slice(0, 8)}</div>
-          <div className="sello__veredicto">{ESTADO[estado]?.etiqueta}</div>
-          {analisis?.scan_signature ? <div className="sello__detalle">{analisis.scan_signature}</div> : null}
-          {analisis?.scan_engine ? <div className="sello__detalle">{analisis.scan_engine}</div> : null}
-          {analisis?.scan_date ? <div className="sello__detalle">{formatearFecha(analisis.scan_date, false)}</div> : null}
-          <div className="sello__completo">{metadatos.hash}</div>
+      <div className="detail">
+        {/* La huella SHA-256 es lo unico que acredita que el contenido no ha
+            cambiado desde el deposito: se compone como un sello y no como una
+            linea gris al fondo de una tabla. */}
+        <div className={`seal seal--${state}`}>
+          <div className="seal__fingerprint">{metadata.hash?.slice(0, 8)}</div>
+          <div className="seal__verdict">{VERDICT[state]?.label}</div>
+          {scanInfo?.scan_signature ? <div className="seal__detail">{scanInfo.scan_signature}</div> : null}
+          {scanInfo?.scan_engine ? <div className="seal__detail">{scanInfo.scan_engine}</div> : null}
+          {scanInfo?.scan_date ? <div className="seal__detail">{formatDate(scanInfo.scan_date, false)}</div> : null}
+          <div className="seal__full">{metadata.hash}</div>
         </div>
 
         <div>
-          <dl className="datos">
-            <Dato termino="Nombre original">{metadatos.original_name || '—'}</Dato>
-            <Dato termino="Tipo">{metadatos.mimetype}</Dato>
-            <Dato termino="Tamaño">
-              {typeof metadatos.size === 'number' ? formatearTamano(metadatos.size) : '—'}
-            </Dato>
-            <Dato termino="Depositado">{formatearFecha(metadatos.creation_date ? Number.parseFloat(String(metadatos.creation_date)) : null)}</Dato>
-            <Dato termino="Identificador"><span className="mono">{metadatos.uuid}</span></Dato>
-            {otrosCampos.map(([clave, valor]) => (
-              <Dato termino={clave} key={clave}>{String(valor)}</Dato>
+          <dl className="data">
+            <Datum term={t('detail.originalName')}>{metadata.original_name || t('common.none')}</Datum>
+            <Datum term={t('detail.mimetype')}>{metadata.mimetype}</Datum>
+            <Datum term={t('detail.size')}>
+              {typeof metadata.size === 'number' ? formatSize(metadata.size) : t('common.none')}
+            </Datum>
+            <Datum term={t('detail.deposited')}>
+              {formatDate(metadata.creation_date ? Number.parseFloat(String(metadata.creation_date)) : null)}
+            </Datum>
+            <Datum term={t('common.identifier')}><span className="mono">{metadata.uuid}</span></Datum>
+            {otherFields.map(([key, value]) => (
+              <Datum term={key} key={key}>{String(value)}</Datum>
             ))}
           </dl>
 
-          {!verificado ? (
-            <div className="separado">
-              <Aviso tipo={estado === 'pending' ? 'warn' : 'error'}>
-                {estado === 'infected'
-                  ? 'El análisis encontró una firma conocida en este fichero, así que Pergamo no lo entrega. Sus metadatos siguen disponibles, y un reanálisis puede liberarlo si resulta ser un falso positivo.'
-                  : estado === 'error'
-                    // Aqui no hay nada que esperar: el reanalisis no devuelve un
-                    // fichero que no esta. Se dice lo que ha pasado y a quien le
-                    // toca mirarlo.
-                    ? 'El fichero no se encuentra en el almacén. Sus metadatos y su huella siguen aquí, pero el contenido no se puede entregar: avisa a quien administre el despliegue para que revise el volumen de datos.'
-                    : 'Este fichero se guardó sin poder analizarse. No se entrega hasta que un reanálisis lo apruebe.'}
-              </Aviso>
+          {/* Lo que hay que saber antes de fiarse de un documento que si se
+              entrega. */}
+          {state === 'unscanned' ? (
+            <div className="spaced">
+              <Notice kind="info">{VERDICT.unscanned.detail}</Notice>
+            </div>
+          ) : null}
+
+          {state === 'pending' ? (
+            <div className="spaced">
+              <Notice kind="warn">{t('detail.pendingNotice')}</Notice>
+            </div>
+          ) : null}
+
+          {!downloadable ? (
+            <div className="spaced">
+              <Notice kind="error">
+                {state === 'infected'
+                  ? t('detail.infectedNotice')
+                  // En 'malicious' y en 'error' esperar no sirve de nada: el
+                  // reanalisis ni mira los primeros ni devuelve un fichero que
+                  // no esta. Se dice a quien le toca actuar.
+                  : state === 'malicious' ? t('detail.maliciousNotice') : t('detail.missingNotice')}
+              </Notice>
             </div>
           ) : null}
         </div>
       </div>
 
-      <section className="seccion">
-        <h2>Metadatos</h2>
-        <p className="seccion__nota">
-          {editables.length
-            ? 'Los campos que este servidor permite modificar. El resto los fija Pergamo al guardar el fichero.'
-            : 'Este servidor no permite modificar ningún campo.'}
+      <section className="section">
+        <h2>{t('detail.metadata')}</h2>
+        <p className="section__note">
+          {editable.length ? t('detail.metadataEditable') : t('detail.metadataLocked')}
         </p>
 
-        {editables.length ? (
-          <div className="formulario">
-            {editables.map((clave) => (
-              <div className="campo" key={clave}>
-                <label htmlFor={`meta-${clave}`}>{NOMBRE_DE_CAMPO[clave] || clave}</label>
-                {clave === 'tags' ? (
-                  <CampoEtiquetas
-                    id={`meta-${clave}`}
-                    value={comoEtiquetas(borrador.tags)}
-                    onChange={(etiquetas) => setBorrador((actual) => ({ ...actual, tags: etiquetas }))}
+        {editable.length ? (
+          <div className="form">
+            {editable.map((key) => (
+              <div className="field" key={key}>
+                <label htmlFor={`meta-${key}`}>{FIELD_LABEL[key] || key}</label>
+                {key === 'tags' ? (
+                  <TagsField
+                    id={`meta-${key}`}
+                    value={asTags(draft.tags)}
+                    onChange={(tags) => setDraft((current) => ({ ...current, tags }))}
                   />
                 ) : (
                   <input
-                    id={`meta-${clave}`}
+                    id={`meta-${key}`}
                     type="text"
-                    value={String(borrador[clave] ?? '')}
-                    onChange={(evento) => setBorrador((actual) => ({ ...actual, [clave]: evento.target.value }))}
+                    value={String(draft[key] ?? '')}
+                    onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
                   />
                 )}
               </div>
             ))}
 
-            <div className="encabezado__acciones">
-              <button type="button" className="btn btn--principal" onClick={guardar} disabled={!hayCambios || guardando}>
-                {guardando ? <><span className="girando" aria-hidden="true" /> Guardando…</> : 'Guardar cambios'}
+            <div className="pagehead__actions">
+              <button type="button" className="btn btn--primary" onClick={save} disabled={!hasChanges || saving}>
+                {saving
+                  ? <><span className="spinner" aria-hidden="true" /> {t('common.saving')}</>
+                  : t('common.save')}
               </button>
-              <button type="button" className="btn" onClick={reiniciarBorrador} disabled={!hayCambios || guardando}>
-                Descartar
+              <button type="button" className="btn" onClick={resetDraft} disabled={!hasChanges || saving}>
+                {t('common.discard')}
               </button>
             </div>
           </div>
         ) : null}
       </section>
 
-      <section className="seccion">
-        <h2>Versiones anteriores</h2>
-        <p className="seccion__nota">
-          {versiones?.length
-            ? 'Pergamo conserva estas copias en disco. La API no ofrece descargarlas: solo pueden recuperarse desde el servidor.'
-            : `Se guarda una copia cada vez que reemplazas el fichero${config?.max_version_file ? `, hasta ${config.max_version_file}` : ''}.`}
+      <section className="section">
+        <h2>{t('detail.versions')}</h2>
+        <p className="section__note">
+          {versions?.length
+            ? t('detail.versionsKept')
+            : config?.max_version_file
+              ? t('detail.versionsNoneLimited', { limit: config.max_version_file })
+              : t('detail.versionsNone')}
         </p>
 
-        {versiones?.length ? (
-          <div className="desliza">
-            <table className="tabla">
-              <thead><tr><th>Versión</th><th>Guardada</th></tr></thead>
+        {versions?.length ? (
+          <div className="scroller">
+            <table className="table">
+              <thead><tr><th>{t('detail.versionNumber')}</th><th>{t('detail.versionSaved')}</th></tr></thead>
               <tbody>
-                {versiones.map((version) => (
+                {versions.map((version) => (
                   <tr key={version.version}>
                     <td>{version.version}</td>
-                    <td>{formatearFecha(version.created_at)}</td>
+                    <td>{formatDate(version.created_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -332,24 +357,28 @@ export const DocumentDetail = () => {
         ) : null}
       </section>
 
-      {confirmando ? (
-        <Dialogo
-          titulo="Eliminar documento"
-          onClose={() => setConfirmando(false)}
-          pie={
+      {confirming ? (
+        <Dialog
+          title={t('detail.deleteTitle')}
+          onClose={() => setConfirming(false)}
+          footer={
             <>
-              <button type="button" className="btn" onClick={() => setConfirmando(false)}>Cancelar</button>
-              <button type="button" className="btn btn--riesgo" onClick={eliminar} disabled={ocupado === 'borrado'}>
-                {ocupado === 'borrado' ? <><span className="girando" aria-hidden="true" /> Eliminando…</> : 'Eliminar'}
+              <button type="button" className="btn" onClick={() => setConfirming(false)}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="btn btn--danger" onClick={remove} disabled={busy === 'delete'}>
+                {busy === 'delete'
+                  ? <><span className="spinner" aria-hidden="true" /> {t('detail.deleting')}</>
+                  : t('common.delete')}
               </button>
             </>
           }
         >
-          <div className="dialogo__cuerpo">
-            <p>Se eliminan <strong>{fichero}</strong> y todas sus versiones guardadas.</p>
-            <Aviso tipo="warn">Esto no se puede deshacer.</Aviso>
+          <div className="dialog__body">
+            <p>{t('detail.deleteBodyBefore')}<strong>{filename}</strong>{t('detail.deleteBodyAfter')}</p>
+            <Notice kind="warn">{t('detail.deleteWarning')}</Notice>
           </div>
-        </Dialogo>
+        </Dialog>
       ) : null}
     </>
   );

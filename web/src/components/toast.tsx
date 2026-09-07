@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { t } from '../i18n';
+
 type ToastKind = 'success' | 'error' | 'warn';
 
 interface Toast {
@@ -33,11 +35,11 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="avisos" aria-live="polite">
+      <div className="notices" aria-live="polite">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`flotante flotante--${toast.kind}`}>
+          <div key={toast.id} className={`toast toast--${toast.kind}`}>
             <p>{toast.message}</p>
-            <button type="button" onClick={() => dismiss(toast.id)} aria-label="Cerrar aviso">✕</button>
+            <button type="button" onClick={() => dismiss(toast.id)} aria-label={t('a11y.dismissNotice')}>✕</button>
           </div>
         ))}
       </div>
@@ -47,6 +49,6 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 
 export const useToast = () => {
   const context = useContext(ToastContext);
-  if (!context) throw new Error('useToast fuera de ToastProvider');
+  if (!context) throw new Error('useToast used outside ToastProvider');
   return context;
 };

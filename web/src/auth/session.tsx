@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 
 import { api, onUnauthorized, tokenStore } from '../api/client';
+import { t } from '../i18n';
 
 export interface Session {
   token: string;
@@ -22,14 +23,8 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-/**
- * Lee el payload del JWT sin verificarlo.
- *
- * Es solo para decidir que pinta la interfaz (menu de master, nombre en la
- * barra, cierre por caducidad). La autoridad sobre lo que se puede hacer sigue
- * siendo el backend, que si verifica la firma en cada peticion: manipular este
- * payload en el navegador no da acceso a nada.
- */
+// Lee el payload del JWT sin verificarlo: solo decide lo que pinta la interfaz.
+// Quien autoriza sigue siendo el backend, que si comprueba la firma.
 const readToken = (token: string): Session | null => {
   try {
     const [, payload] = token.split('.');
@@ -62,8 +57,7 @@ const restore = (): Session | null => {
 
   const session = readToken(token);
 
-  // Un token ya caducado no llega a usarse: se descarta aqui en vez de esperar
-  // al primer 401.
+  // Un token ya caducado se descarta aqui, sin esperar al primer 401.
   if (!session || (session.expiresAt && session.expiresAt <= Date.now())) {
     tokenStore.clear();
     return null;
@@ -85,18 +79,16 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     const { token } = await api.login(name, password);
     const next = readToken(token);
 
-    if (!next) throw new Error('El servidor ha devuelto un token que no se puede leer');
+    if (!next) throw new Error(t('login.unreadableToken'));
 
     tokenStore.set(token);
     setSession(next);
   }, []);
 
-  // Cualquier 401 cierra la sesion, venga de donde venga: sin esto, una pantalla
-  // con el token caducado se quedaria mostrando errores sin explicar por que.
+  // Cualquier 401 cierra la sesion, venga de donde venga.
   useEffect(() => onUnauthorized(() => setSession(null)), []);
 
-  // Cierre automatico al caducar el token, para no descubrirlo a mitad de una
-  // subida larga.
+  // Cierre automatico al caducar, para no descubrirlo a mitad de una subida.
   useEffect(() => {
     if (!session?.expiresAt) return;
 
@@ -114,6 +106,6 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
 export const useSession = () => {
   const context = useContext(SessionContext);
-  if (!context) throw new Error('useSession fuera de SessionProvider');
+  if (!context) throw new Error('useSession used outside SessionProvider');
   return context;
 };

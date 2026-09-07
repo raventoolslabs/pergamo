@@ -43,14 +43,11 @@ const readHead = async (filePath:string) => {
 }
 
 /**
- * Comprueba que el contenido real del fichero corresponde al mimetype que
- * declara el cliente, que multer toma del Content-Type de la peticion y por
- * tanto es manipulable.
+ * El mimetype declarado sale del Content-Type de la peticion, asi que es
+ * manipulable: aqui se contrasta con el contenido real.
  *
- * Devuelve verifiable=false cuando no hay firma conocida para ese mimetype: en
- * ese caso no se puede afirmar nada y el llamante decide. Se prefiere esto a
- * rechazar por defecto para no romper en silencio un VALID_MIMETYPE ampliado
- * por configuracion.
+ * Sin firma conocida devuelve verifiable=false y decide el llamante, para no
+ * romper en silencio un VALID_MIMETYPE ampliado por configuracion.
  */
 export const verifyMimetype = async (filePath:string, mimetype:string) => {
 
