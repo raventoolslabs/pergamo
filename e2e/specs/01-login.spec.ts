@@ -1,4 +1,4 @@
-import { test, expect, shot, login, ORGANIZATION, PASSWORD } from '../helpers';
+import { test, expect, shot, login, menuUsuario, ORGANIZATION, PASSWORD } from '../helpers';
 
 test.describe('Acceso', () => {
 
@@ -22,7 +22,7 @@ test.describe('Acceso', () => {
     await shot(page, 'acceso-error');
   });
 
-  test('entra y aterriza en el fondo documental', async ({ page }) => {
+  test('entra y aterriza en el listado de documentos', async ({ page }) => {
     await login(page);
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -34,6 +34,7 @@ test.describe('Acceso', () => {
 
   test('sale de la sesión y vuelve al acceso', async ({ page }) => {
     await login(page);
+    await menuUsuario(page);
     await page.getByRole('button', { name: /salir/i }).click();
 
     await expect(page.getByRole('button', { name: /entrar/i })).toBeVisible();
@@ -47,6 +48,6 @@ test.describe('Configuración', () => {
     // contrasena cambiada, y todos los demas recorridos fallarian sin decir
     // por que.
     await login(page, ORGANIZATION, PASSWORD);
-    await expect(page.getByRole('button', { name: /salir/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /menú de usuario/i })).toBeVisible();
   });
 });

@@ -6,14 +6,14 @@ import { useConfig } from '../api/config';
 import type { DocumentMetadata, DocumentVersion, ScanInfo } from '../api/types';
 import { useToast } from '../components/toast';
 import {
-  Aviso, AvisoDeError, CampoEtiquetas, Cargando, Dato, Dialogo, VEREDICTO,
-  formatearFecha, mensajeDeError
+  Aviso, AvisoDeError, CampoEtiquetas, Cargando, Dato, Dialogo, ESTADO,
+  formatearFecha, formatearTamano, mensajeDeError
 } from '../components/ui';
 
 /** Claves que fija el propio Pergamo al guardar: se muestran, no se editan. */
 const DE_SISTEMA = [
   'uuid', 'uuid_sha256', 'organization', 'creation_date',
-  'hash', 'mimetype', 'extension', 'original_name'
+  'hash', 'mimetype', 'extension', 'original_name', 'size'
 ];
 
 /**
@@ -164,7 +164,7 @@ export const DocumentDetail = () => {
     return (
       <>
         <AvisoDeError error={error} />
-        <p className="separado"><Link to="/">Volver al fondo documental</Link></p>
+        <p className="separado"><Link to="/">Volver a Documentos</Link></p>
       </>
     );
   }
@@ -178,7 +178,7 @@ export const DocumentDetail = () => {
 
   return (
     <>
-      <Link to="/" className="volver">Volver al fondo documental</Link>
+      <Link to="/" className="volver">Volver a Documentos</Link>
 
       <div className="encabezado">
         <div className="encabezado__texto">
@@ -227,7 +227,7 @@ export const DocumentDetail = () => {
           */}
         <div className={`sello sello--${estado}`}>
           <div className="sello__huella">{metadatos.hash?.slice(0, 8)}</div>
-          <div className="sello__veredicto">{VEREDICTO[estado]}</div>
+          <div className="sello__veredicto">{ESTADO[estado]?.etiqueta}</div>
           {analisis?.scan_signature ? <div className="sello__detalle">{analisis.scan_signature}</div> : null}
           {analisis?.scan_engine ? <div className="sello__detalle">{analisis.scan_engine}</div> : null}
           {analisis?.scan_date ? <div className="sello__detalle">{formatearFecha(analisis.scan_date, false)}</div> : null}
@@ -238,6 +238,9 @@ export const DocumentDetail = () => {
           <dl className="datos">
             <Dato termino="Nombre original">{metadatos.original_name || '—'}</Dato>
             <Dato termino="Tipo">{metadatos.mimetype}</Dato>
+            <Dato termino="Tamaño">
+              {typeof metadatos.size === 'number' ? formatearTamano(metadatos.size) : '—'}
+            </Dato>
             <Dato termino="Depositado">{formatearFecha(metadatos.creation_date ? Number.parseFloat(String(metadatos.creation_date)) : null)}</Dato>
             <Dato termino="Identificador"><span className="mono">{metadatos.uuid}</span></Dato>
             {otrosCampos.map(([clave, valor]) => (
@@ -247,10 +250,15 @@ export const DocumentDetail = () => {
 
           {!verificado ? (
             <div className="separado">
-              <Aviso tipo={estado === 'infected' ? 'error' : 'warn'}>
+              <Aviso tipo={estado === 'pending' ? 'warn' : 'error'}>
                 {estado === 'infected'
                   ? 'El análisis encontró una firma conocida en este fichero, así que Pergamo no lo entrega. Sus metadatos siguen disponibles, y un reanálisis puede liberarlo si resulta ser un falso positivo.'
-                  : 'Este fichero se guardó sin poder analizarse. No se entrega hasta que un reanálisis lo apruebe.'}
+                  : estado === 'error'
+                    // Aqui no hay nada que esperar: el reanalisis no devuelve un
+                    // fichero que no esta. Se dice lo que ha pasado y a quien le
+                    // toca mirarlo.
+                    ? 'El fichero no se encuentra en el almacén. Sus metadatos y su huella siguen aquí, pero el contenido no se puede entregar: avisa a quien administre el despliegue para que revise el volumen de datos.'
+                    : 'Este fichero se guardó sin poder analizarse. No se entrega hasta que un reanálisis lo apruebe.'}
               </Aviso>
             </div>
           ) : null}

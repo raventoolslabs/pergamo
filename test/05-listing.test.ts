@@ -140,6 +140,49 @@ describe('Listing endpoints', () => {
     expect(response.data.documents.some((item:any) => item.id === documentId)).toBe(false);
   });
 
+  it('Should accept several scan statuses at once', async () => {
+
+    // La interfaz agrupa 'infected' y 'error' en un solo filtro: si la lista no
+    // llegara entera, una de las dos mitades quedaria imposible de encontrar.
+    let response = await api.get('/document?scan_status=infected,error', {
+      headers: { authorization: tokenOwner }
+    });
+    expect(response.status).toBe(StatusCodes.OK);
+    expect(response.data.documents.some((item:any) => item.id === documentId)).toBe(false);
+
+    response = await api.get('/document?scan_status=clean,pending', {
+      headers: { authorization: tokenOwner }
+    });
+    expect(response.status).toBe(StatusCodes.OK);
+    expect(response.data.documents.some((item:any) => item.id === documentId)).toBe(true);
+  });
+
+  it('Should filter by deposit date range', async () => {
+
+    const pasado = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const futuro = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    let response = await api.get(`/document?from=${encodeURIComponent(pasado)}&to=${encodeURIComponent(futuro)}`, {
+      headers: { authorization: tokenOwner }
+    });
+    expect(response.status).toBe(StatusCodes.OK);
+    expect(response.data.documents.some((item:any) => item.id === documentId)).toBe(true);
+
+    // Una franja que termina antes de que existiera el documento no puede
+    // devolverlo: si lo hace, el filtro no se esta aplicando.
+    response = await api.get(`/document?to=${encodeURIComponent(pasado)}`, {
+      headers: { authorization: tokenOwner }
+    });
+    expect(response.status).toBe(StatusCodes.OK);
+    expect(response.data.documents.some((item:any) => item.id === documentId)).toBe(false);
+
+    response = await api.get(`/document?from=${encodeURIComponent(futuro)}`, {
+      headers: { authorization: tokenOwner }
+    });
+    expect(response.status).toBe(StatusCodes.OK);
+    expect(response.data.documents.some((item:any) => item.id === documentId)).toBe(false);
+  });
+
   it('Should paginate', async () => {
 
     const response = await api.get('/document?limit=1&offset=0', { headers: { authorization: tokenOwner } });
@@ -153,7 +196,9 @@ describe('Listing endpoints', () => {
 
   it('Should reject invalid query parameters instead of ignoring them', async () => {
 
-    for(const query of ['limit=0', 'limit=1000', 'offset=-1', 'sort=path', 'order=random', 'scan_status=whatever', 'unknown=1']) {
+    for(const query of ['limit=0', 'limit=1000', 'offset=-1', 'sort=path', 'order=random',
+      'scan_status=whatever', 'scan_status=clean,whatever', 'scan_status=', 'from=ayer',
+      'to=ayer', 'unknown=1']) {
       const response = await api.get(`/document?${query}`, { headers: { authorization: tokenOwner } });
       expect([query, response.status]).toEqual([query, StatusCodes.BAD_REQUEST]);
     }

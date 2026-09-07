@@ -36,18 +36,41 @@ const paginationSchema = {
   offset: z.coerce.number().int().min(0).default(0)
 };
 
+export const SCAN_STATUS = ['pending', 'clean', 'infected', 'error'] as const;
+
+/**
+ * Filtro por estado de analisis: uno o varios, separados por comas.
+ *
+ * Admite lista porque la interfaz agrupa estados que para quien consulta
+ * significan lo mismo —'infected' y 'error' son ambos "esto no se descarga y
+ * hay que mirarlo"—, y sin esto una de las dos mitades quedaria invisible.
+ *
+ * Cada valor se valida contra el enum por separado: lo que no este en la lista
+ * sigue devolviendo 400 en lugar de ignorarse.
+ */
+const scanStatusFilter = z.string()
+  .transform((value) => value.split(','))
+  .pipe(z.array(z.enum(SCAN_STATUS)).min(1).max(SCAN_STATUS.length));
+
 /**
  * Filtros y orden del listado de documentos.
  *
  * 'sort' y 'order' terminan interpolados en el SQL —no admiten parametro
  * enlazado—, asi que se declaran como enum: lo que no esta en la lista no llega
  * a la consulta. Cualquier otra forma de validarlos seria una inyeccion.
+ *
+ * 'from' y 'to' acotan la fecha de deposito. Se comparan contra creation_date,
+ * que es TIMESTAMP WITHOUT TIME ZONE en UTC: el cliente manda instantes ISO con
+ * zona y aqui se convierten a Date, de modo que la franja no dependa de donde
+ * este el navegador.
  */
 export const documentListQuerySchema = z.object({
   ...paginationSchema,
   name: z.string().max(256).optional(),
   tag: z.string().max(256).optional(),
-  scan_status: z.enum(['pending', 'clean', 'infected', 'error']).optional(),
+  scan_status: scanStatusFilter.optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
   sort: z.enum(['creation_date', 'modification_date']).default('creation_date'),
   order: z.enum(['asc', 'desc']).default('desc')
 }).strict();
