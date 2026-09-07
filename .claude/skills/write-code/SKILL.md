@@ -10,26 +10,36 @@ Dos partes, ambas obligatorias: el **flujo de git** que envuelve la tarea y las
 
 ## 1. Antes de escribir: preparar la rama
 
-Nunca se escribe codigo sobre una rama desactualizada ni directamente sobre
-`development` o `main`.
+**Toda rama nace de `development` actualizado.** Nunca de `main`, nunca de otra
+rama de trabajo, y nunca de un `development` que lleve dias sin bajar: heredar
+un punto de partida viejo se paga despues, al mezclar.
+
+Primero, ver si hay un desarrollo ya empezado:
 
 ```bash
 git fetch origin
 git rev-parse --abbrev-ref HEAD          # en que rama estamos
 ```
 
-**Si la rama actual es `development` o `main`** — hay que salir de ahi:
+**Si no hay desarrollo empezado** —estamos en `development` o en `main`, o la
+tarea no continua ninguna rama abierta— se baja `development` y solo entonces se
+crea la rama:
 
 ```bash
 git checkout development
-git pull --ff-only origin development
+git pull --ff-only origin development     # obligatorio: la rama parte de aqui
 git checkout -b <tipo>/<descripcion-en-kebab-case>
 ```
 
-**Si ya estamos en una rama de trabajo** — se actualiza contra development:
+El `pull` no es opcional ni se salta porque «hace poco que se bajo». Si falla
+—porque `development` diverge en local— hay que resolverlo antes de crear nada,
+no crear la rama sobre lo que haya.
+
+**Si el desarrollo ya esta empezado** y la tarea continua esa rama, se sigue en
+ella y se pone al dia contra `development`:
 
 ```bash
-git pull --ff-only origin development     # o: git fetch origin && git rebase origin/development
+git pull --ff-only origin development     # o: git rebase origin/development
 ```
 
 Con cambios sin confirmar el pull falla. En ese caso: `git stash push -u`,

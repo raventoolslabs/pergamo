@@ -9,8 +9,8 @@ Gestor de documentos con analisis antivirus. API en Express + TypeScript
 o estilo, invoca la skill `write-code`** (`Skill(skill: "write-code")`) y sigue
 lo que dice. Cubre las convenciones de escritura —codigo en ingles, texto de
 interfaz en el catalogo de i18n, comentarios en espanol y sinteticos, markdown
-en espanol— y el flujo de git que envuelve la tarea: actualizar contra
-`development`, trabajar en una rama propia y terminar con push y PR.
+en espanol— y el flujo de git que envuelve la tarea: toda rama nace de un
+`development` recien bajado, se trabaja en ella y se termina con push y PR.
 
 Aplica tambien al terminar la tarea, para la parte de subida y PR.
 

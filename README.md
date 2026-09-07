@@ -32,9 +32,9 @@ comentario se limita a traducir a prosa la línea de debajo, sobra. El texto que
 `web/src/i18n`, con la clave en inglés y la traducción en español. Los `.md` del proyecto, este
 incluido, se escriben en español.
 
-La regla completa, junto al flujo de git que envuelve cualquier tarea de código (actualizar contra
-`development`, trabajar en una rama propia, terminar con push y PR contra `development`), está en la
-skill `write-code` (`.claude/skills/write-code/SKILL.md`).
+La regla completa, junto al flujo de git que envuelve cualquier tarea de código (toda rama nace de un
+`development` recién bajado, se trabaja en ella y se termina con push y PR contra `development`), está
+en la skill `write-code` (`.claude/skills/write-code/SKILL.md`).
 
 ## Configuración
 
