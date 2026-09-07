@@ -64,8 +64,21 @@ export const shot = async (page: Page, name: string) => {
 export const login = async (page: Page, name = ORGANIZATION, password = PASSWORD) => {
   await page.goto('/');
   await page.getByLabel(/organización o usuario/i).fill(name);
-  await page.getByLabel(/contraseña/i).fill(password);
+  // Anclado: el boton que muestra la contraseña se llama «Ver contraseña», asi
+  // que sin los limites la busqueda encuentra el campo y el boton.
+  await page.getByLabel(/^contraseña$/i).fill(password);
   await page.getByRole('button', { name: /entrar/i }).click();
+};
+
+/**
+ * Abre el menu de usuario del membrete.
+ *
+ * «Mi cuenta» y «Salir» ya no estan en la barra: viven detras del icono de
+ * usuario, asi que llegar a ellos es un paso mas que conviene no repetir en
+ * cada prueba.
+ */
+export const menuUsuario = async (page: Page) => {
+  await page.getByRole('button', { name: /menú de usuario/i }).click();
 };
 
 /**

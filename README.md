@@ -237,7 +237,7 @@ mano. Estos cuatro endpoints cubren ese hueco y son de solo lectura:
 
 | Endpoint | Quién | Qué devuelve |
 |---|---|---|
-| `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status`, y orden por `creation_date` o `modification_date`. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
+| `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status` (uno o varios separados por comas: `scan_status=infected,error`), `from` y `to` (franja inclusiva de fecha de depósito, instantes ISO), y orden por `creation_date` o `modification_date`. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
 | `GET /document/:id/scan` | Organización | `scan_status`, `scan_signature`, `scan_engine` y `scan_date` del documento. Va aparte de `GET /document/:id` porque el cuerpo de ese endpoint es el JSONB de metadatos tal cual, y añadirle claves rompería a quien ya lo consume. |
 | `GET /organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
 | `GET /config` | Autenticado | Límites del despliegue: `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir en lugar de duplicar la configuración. |
@@ -382,13 +382,15 @@ Cada documento lleva `scan_status`, `scan_signature`, `scan_engine` y `scan_date
 | Estado | Significado | Descarga |
 |---|---|---|
 | `clean` | Analizado y aprobado (o antivirus desactivado por configuración). | Permitida |
-| `pending` | El antivirus estaba habilitado pero no disponible en el momento de la subida. | **423** |
+| `pending` | No hay veredicto todavía: el antivirus estaba habilitado pero no disponible en la subida, o un reescaneo no llegó a completarse sobre ese fichero. Se reintenta solo en el siguiente barrido. | **423** |
 | `infected` | Una firma lo señaló, en la subida o en un reescaneo posterior. | **423** |
-| `error` | El análisis no pudo completarse (por ejemplo, el fichero no está en disco). | **423** |
+| `error` | El fichero no está en disco (`scan_signature` = `FILE_MISSING`). Es el **único** caso que lo produce: no es un análisis pendiente, es un documento roto, y un reescaneo no lo arregla. | **423** |
 
 El bloqueo se aplica en `GET /document/:id/file` y **no** en `GET /document/:id`: los metadatos de un documento en cuarentena siguen siendo consultables, porque es como el cliente descubre por qué está bloqueado.
 
 **Política ante escáner no disponible**: la subida se acepta y el documento queda `pending`. Prioriza la disponibilidad de la subida sin llegar a servir nunca contenido que se pretendía verificar y no se verificó.
+
+`pending` y `error` bloquean los dos la descarga, pero no significan lo mismo y por eso no se han fundido: `pending` se resuelve solo —queda en la cola de reescaneo con `scan_engine` nulo—, mientras que `error` sale de esa cola y exige que alguien mire por qué falta el fichero.
 
 ### Reescaneo del corpus
 

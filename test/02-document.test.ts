@@ -72,6 +72,7 @@ describe('Document Tests', () => {
     expect(response.data.original_name).toBe('test.pdf');
     expect(response.data.mimetype).toBe('application/pdf');
     expect(response.data.hash).toBe(hash);
+    expect(response.data.size).toBe(fs.statSync(pathPdf).size);
 
     id = response.data.uuid;
   });
