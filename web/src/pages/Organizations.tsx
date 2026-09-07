@@ -3,11 +3,44 @@ import type { FormEvent } from 'react';
 
 import { api } from '../api/client';
 import type { Organization, OrganizationList } from '../api/types';
+import { CambiarContrasena } from '../components/PasswordChange';
 import { Comprobacion, contrasenaValida } from '../components/PasswordFields';
 import { useToast } from '../components/toast';
-import { Aviso, AvisoDeError, Cargando, Dialogo, Vacio, formatearFecha } from '../components/ui';
+import {
+  Aviso, AvisoDeError, Cargando, Dialogo, POR_PAGINA, Paginacion, Vacio, formatearFecha
+} from '../components/ui';
 
-const POR_PAGINA = 25;
+/**
+ * Cuenta el censo en una frase, como hace el fondo documental con los
+ * documentos: lo que importa de un vistazo es cuantas organizaciones hay vivas
+ * y cuantas se dieron de baja sin borrarse.
+ */
+const resumen = (activas: number, bajas: number) => {
+  if (!activas && !bajas) return 'Todavía no hay ninguna organización.';
+
+  const censo = `${activas} organizaci${activas === 1 ? 'ón' : 'ones'} con fondo propio`;
+
+  if (!bajas) return `${censo} en este servidor.`;
+
+  return `${censo} · ${bajas} dada${bajas === 1 ? '' : 's'} de baja.`;
+};
+
+const IconoAlta = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+    <path d="M12 5v14" /><path d="M5 12h14" />
+  </svg>
+);
+
+const IconoLlave = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="8" cy="15.5" r="3.5" />
+    <path d="M10.3 13.2 19 4.5" />
+    <path d="M15.5 8 18 10.5" />
+    <path d="M18.5 5.5 21 8" />
+  </svg>
+);
 
 /* ------------------------------------------------------------ alta nueva -- */
 
@@ -105,70 +138,30 @@ const DialogoDeAlta = ({ onClose, onCreated }: {
 
 /* ------------------------------------------------------ cambio de clave -- */
 
-const DialogoDeContrasena = ({ organizacion, onClose, onChanged }: {
+/**
+ * El "estado de éxito dentro del propio componente" del diseño solo tiene
+ * sentido si el dialogo NO se cierra solo al terminar: por eso, a diferencia
+ * del resto de dialogos de esta pantalla, este no lleva `onChanged` que lo
+ * cierre — cierra el master, con Cancelar, clic fuera o Escape, despues de ver
+ * confirmado el cambio.
+ */
+const DialogoDeContrasena = ({ organizacion, onClose }: {
   organizacion: Organization;
   onClose: () => void;
-  onChanged: () => void;
-}) => {
-
-  const [contrasena, setContrasena] = useState('');
-  const [repetida, setRepetida] = useState('');
-  const [error, setError] = useState<unknown>(null);
-  const [guardando, setGuardando] = useState(false);
-
-  const noCoinciden = !!repetida && contrasena !== repetida;
-
-  const enviar = async (evento: FormEvent) => {
-    evento.preventDefault();
-    setError(null);
-    setGuardando(true);
-
-    try {
-      await api.changeOrganizationPassword(organizacion.id, contrasena);
-      onChanged();
-    } catch (fallo) {
-      setError(fallo);
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  return (
-    <Dialogo
+}) => (
+  <Dialogo desnudo ariaLabel={`Cambiar la contraseña de ${organizacion.name}`} onClose={onClose}>
+    <CambiarContrasena
       titulo={`Contraseña de ${organizacion.name}`}
-      onClose={onClose}
-      pie={
-        <>
-          <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-          <button type="submit" form="cambio-contrasena" className="btn btn--principal"
-            disabled={guardando || noCoinciden || !contrasenaValida(contrasena)}>
-            {guardando ? <><span className="girando" aria-hidden="true" /> Guardando…</> : 'Cambiar'}
-          </button>
-        </>
+      descripcion={
+        <>No puede coincidir con la actual. No afecta a sus sesiones ya abiertas: los
+          tokens que tenga emitidos seguirán valiendo hasta que caduquen.</>
       }
-    >
-      <form id="cambio-contrasena" className="dialogo__cuerpo" onSubmit={enviar}>
-        <AvisoDeError error={error} />
-
-        <div className="campo">
-          <label htmlFor="cambio-nueva">Contraseña nueva</label>
-          <input id="cambio-nueva" type="password" autoComplete="new-password" autoFocus value={contrasena}
-            onChange={(evento) => setContrasena(evento.target.value)} />
-          <Comprobacion contrasena={contrasena} />
-        </div>
-
-        <div className="campo">
-          <label htmlFor="cambio-repetida">Repetir contraseña</label>
-          <input id="cambio-repetida" type="password" autoComplete="new-password" value={repetida}
-            onChange={(evento) => setRepetida(evento.target.value)} />
-          {noCoinciden ? <p className="campo__pista campo__pista--error">No coincide con la anterior.</p> : null}
-        </div>
-
-        <p className="campo__pista">El servidor la rechaza si coincide con la actual.</p>
-      </form>
-    </Dialogo>
-  );
-};
+      textoEnvio="Cambiar"
+      onSubmit={(contrasena) => api.changeOrganizationPassword(organizacion.id, contrasena)}
+      onCancel={onClose}
+    />
+  </Dialogo>
+);
 
 /* ------------------------------------------------------------- registro -- */
 
@@ -178,69 +171,86 @@ export const Organizations = () => {
 
   const [nombre, setNombre] = useState('');
   const [conBajas, setConBajas] = useState(false);
-  const [desde, setDesde] = useState(0);
+  const [porPagina, setPorPagina] = useState(POR_PAGINA[0]);
+  const [pagina, setPagina] = useState(1);
   const [datos, setDatos] = useState<OrganizationList | null>(null);
+  const [censo, setCenso] = useState<{ activas: number; bajas: number } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [cargando, setCargando] = useState(true);
   const [creando, setCreando] = useState(false);
   const [cambiando, setCambiando] = useState<Organization | null>(null);
   const [recarga, setRecarga] = useState(0);
 
+  const desde = (pagina - 1) * porPagina;
+
   useEffect(() => {
     let vivo = true;
     setCargando(true);
 
     const temporizador = setTimeout(() => {
-      api.organizations({ name: nombre, include_discharged: conBajas, limit: POR_PAGINA, offset: desde })
+      api.organizations({ name: nombre, include_discharged: conBajas, limit: porPagina, offset: desde })
         .then((resultado) => { if (vivo) { setDatos(resultado); setError(null); } })
         .catch((fallo) => { if (vivo) setError(fallo); })
         .finally(() => { if (vivo) setCargando(false); });
     }, nombre ? 300 : 0);
 
     return () => { vivo = false; clearTimeout(temporizador); };
-  }, [nombre, conBajas, desde, recarga]);
+  }, [nombre, conBajas, desde, porPagina, recarga]);
 
-  const refrescar = useCallback(() => setRecarga((valor) => valor + 1), []);
+  // El subtitulo cuenta el censo entero, no lo que deja ver el filtro puesto:
+  // igual que en el fondo documental, son dos recuentos sin filtrar y sin traer
+  // una sola fila. Las bajas salen de la diferencia, que es el unico dato que
+  // la API no da hecho.
+  useEffect(() => {
+    let vivo = true;
+
+    Promise.all([
+      api.organizations({ limit: 1 }),
+      api.organizations({ limit: 1, include_discharged: true })
+    ])
+      .then(([activas, todas]) => {
+        if (vivo) setCenso({ activas: activas.total, bajas: todas.total - activas.total });
+      })
+      .catch(() => { if (vivo) setCenso(null); });
+
+    return () => { vivo = false; };
+  }, [recarga]);
+
+  const refrescar = useCallback(() => { setPagina(1); setRecarga((valor) => valor + 1); }, []);
 
   const organizaciones = datos?.organizations ?? [];
   const total = datos?.total ?? 0;
-  const cabeEnUnaPagina = total <= POR_PAGINA;
+  const filtrado = !!nombre || conBajas;
+
+  const limpiar = () => { setPagina(1); setNombre(''); setConBajas(false); };
 
   return (
     <>
       <div className="encabezado">
         <div className="encabezado__texto">
           <h1>Organizaciones</h1>
-          <p>
-            {total} organizaci{total === 1 ? 'ón' : 'ones'} con fondo propio en este servidor.
-          </p>
+          <p>{censo ? resumen(censo.activas, censo.bajas) : 'Consultando el censo…'}</p>
         </div>
         <div className="encabezado__acciones">
           <button type="button" className="btn btn--principal" onClick={() => setCreando(true)}>
+            <IconoAlta />
             Nueva organización
           </button>
         </div>
       </div>
 
-      <Aviso tipo="info">
-        El usuario master no pertenece a ninguna organización, así que desde aquí no se ven ni se
-        suben documentos. Para trabajar con un fondo hay que entrar con su organización.
-      </Aviso>
-
-      <div className="separado">
-        <AvisoDeError error={error} />
-      </div>
+      <AvisoDeError error={error} />
 
       <div className="filtros">
         <div className="campo">
           <label htmlFor="organizacion-buscar">Buscar</label>
           <input id="organizacion-buscar" type="search" placeholder="Nombre de la organización" value={nombre}
-            onChange={(evento) => { setDesde(0); setNombre(evento.target.value); }} />
+            onChange={(evento) => { setPagina(1); setNombre(evento.target.value); }} />
         </div>
         <div className="campo">
           <label htmlFor="organizacion-bajas">Dadas de baja</label>
           <select id="organizacion-bajas" value={conBajas ? 'true' : 'false'}
-            onChange={(evento) => { setDesde(0); setConBajas(evento.target.value === 'true'); }}>
+            onChange={(evento) => { setPagina(1); setConBajas(evento.target.value === 'true'); }}>
             <option value="false">Ocultar</option>
             <option value="true">Mostrar también</option>
           </select>
@@ -249,60 +259,78 @@ export const Organizations = () => {
 
       {cargando && !datos ? <Cargando /> : null}
 
-      {!cargando && !organizaciones.length ? (
-        <Vacio titulo="Ninguna organización coincide">Cambia la búsqueda o da de alta una nueva.</Vacio>
-      ) : null}
-
-      {organizaciones.length ? (
+      {datos ? (
         <>
-          <div className="desliza">
-            <table className="tabla">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Identificador</th>
-                  <th>Alta</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {organizaciones.map((organizacion) => (
-                  <tr key={organizacion.id}>
-                    <td>
-                      {organizacion.name}
-                      {organizacion.discharge_date
-                        ? <div className="entrada__veredicto entrada__veredicto--infected">de baja</div>
-                        : null}
-                    </td>
-                    <td><span className="mono">{organizacion.id}</span></td>
-                    <td>{formatearFecha(organizacion.creation_date, false)}</td>
-                    <td>
-                      <button type="button" className="btn btn--menudo" onClick={() => setCambiando(organizacion)}>
-                        Cambiar contraseña
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="resultado">
+            <span className="resultado__cuenta">
+              {filtrado
+                ? `${total} organizaci${total === 1 ? 'ón coincide' : 'ones coinciden'}`
+                : `${total} organizaci${total === 1 ? 'ón' : 'ones'}`}
+            </span>
+            {filtrado ? (
+              <button type="button" className="btn btn--pill" onClick={limpiar}>Limpiar filtros</button>
+            ) : null}
           </div>
 
-          {cabeEnUnaPagina ? null : (
-          <div className="paginacion">
-            <span className="paginacion__cuenta">
-              {desde + 1}–{Math.min(desde + organizaciones.length, total)} de {total}
-            </span>
-            <button type="button" className="btn btn--menudo"
-              onClick={() => setDesde(Math.max(0, desde - POR_PAGINA))} disabled={desde === 0 || cargando}>
-              Anteriores
-            </button>
-            <button type="button" className="btn btn--menudo"
-              onClick={() => setDesde(desde + POR_PAGINA)}
-              disabled={desde + organizaciones.length >= total || cargando}>
-              Siguientes
-            </button>
+          <div className="registro">
+            <div className="desliza">
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Organización</th>
+                    <th>Identificador</th>
+                    <th>Alta</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {organizaciones.map((organizacion) => (
+                    <tr key={organizacion.id}>
+                      <td>
+                        <div className="tabla__nombre">{organizacion.name}</div>
+                        {/* Una baja no borra el fondo: la organizacion sigue en
+                            el censo, marcada, porque sus documentos siguen ahi. */}
+                        {organizacion.discharge_date ? (
+                          <span className="baja" title={`De baja el ${formatearFecha(organizacion.discharge_date, false)}`}>
+                            de baja
+                          </span>
+                        ) : null}
+                      </td>
+                      <td><span className="mono">{organizacion.id}</span></td>
+                      <td className="tabla__fecha">{formatearFecha(organizacion.creation_date, false)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn--icono"
+                          aria-label={`Cambiar contraseña de ${organizacion.name}`}
+                          title="Cambiar contraseña"
+                          onClick={() => setCambiando(organizacion)}
+                        >
+                          <IconoLlave />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {!cargando && !organizaciones.length ? (
+              <Vacio titulo="Ninguna organización coincide" centrado>
+                Cambia la búsqueda o da de alta una nueva.
+              </Vacio>
+            ) : null}
           </div>
-          )}
+
+          <Paginacion
+            total={total}
+            mostrados={organizaciones.length}
+            pagina={pagina}
+            porPagina={porPagina}
+            ocupado={cargando}
+            onPagina={setPagina}
+            onPorPagina={(cuantos) => { setPagina(1); setPorPagina(cuantos); }}
+          />
         </>
       ) : null}
 
@@ -314,15 +342,7 @@ export const Organizations = () => {
       ) : null}
 
       {cambiando ? (
-        <DialogoDeContrasena
-          organizacion={cambiando}
-          onClose={() => setCambiando(null)}
-          onChanged={() => {
-            const cambiada = cambiando.name;
-            setCambiando(null);
-            toast(`Contraseña de ${cambiada} cambiada`);
-          }}
-        />
+        <DialogoDeContrasena organizacion={cambiando} onClose={() => setCambiando(null)} />
       ) : null}
     </>
   );

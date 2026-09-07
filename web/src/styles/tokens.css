@@ -1,73 +1,59 @@
 /*
  * Paleta de Pergamo.
  *
- * Sale del logotipo (public/img/logo.png), pero con una regla que la separa de
- * cualquier panel de administracion: el verde NO es el color de los botones,
- * es el color de un dato concreto —custodia verificada—. Cuando un color
- * informa no puede gastarse en decoracion, o deja de significar nada.
+ * Tema oscuro unico. Viene del diseño de la pantalla de documentos
+ * (web/mock/documentos): un archivo se mira durante horas y de lo que se trata
+ * es de que destaque el documento, no la interfaz. No hay variante clara ni
+ * conmutador: dos temas serian dos diseños que mantener, y el claro ya no es el
+ * que se ha dibujado.
  *
- * Las acciones van en tinta, el negro del propio logotipo.
+ * La regla que separa esto de cualquier panel de administracion sigue intacta:
+ * el verde NO es el color de los botones, es el color de un dato concreto
+ * —documento analizado—. Cuando un color informa no puede gastarse en
+ * decoracion, o deja de significar nada. Por eso la accion principal va en
+ * papel (--tinta) sobre el fondo, y el unico sitio donde el verde cubre
+ * superficie es el membrete, que es marca y no dato.
  */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  /* Tinta: texto y acciones. */
-  --tinta: #0e0f0e;
-  --tinta-media: #4a4e4c;
-  --tinta-tenue: #757b78;
-  --tinta-contra: #ffffff;
+  /* Tinta: texto y acciones. Sobre fondo oscuro la tinta es el papel. */
+  --tinta: #f2f1ee;
+  --tinta-media: rgba(242, 241, 238, .6);
+  --tinta-tenue: rgba(242, 241, 238, .45);
+  --tinta-contra: #141413;
 
-  /* Papel. Gris frio deliberado: el crema es la marca de la casa de medio
-     internet y no dice nada de un archivo documental. */
-  --pergamino: #f1f2ef;
-  --hoja: #ffffff;
-  --pauta: #dde0da;
-  --pauta-fuerte: #b9beb6;
+  /* Papel. */
+  --pergamino: #141413;
+  --hoja: #191918;
+  --menu: #1c1c1a;
+  --pauta: rgba(242, 241, 238, .09);
+  --pauta-fuerte: rgba(242, 241, 238, .14);
+  --roce: rgba(242, 241, 238, .035);
+  --relleno: rgba(242, 241, 238, .06);
 
-  /* Veredictos. El tono pleno marca; el oscuro es el unico que se usa sobre
-     papel para texto, porque el pleno no llega a 4.5:1 de contraste. */
-  --verde: #00b85c;
-  --verde-texto: #05713e;
-  --verde-tenue: #e4f6ec;
+  /* Veredictos. El tono pleno marca y ademas se lee: sobre #141413 los tres
+     pasan de 4.5:1, asi que aqui no hace falta la pareja pleno/oscuro que
+     exigia el papel claro. */
+  --verde: #7fdba4;
+  --verde-texto: #7fdba4;
+  --verde-tenue: rgba(127, 219, 164, .12);
 
-  --lacre: #b3391f;
-  --lacre-tenue: #fbede9;
+  --lacre: #f08c72;
+  --lacre-tenue: rgba(240, 140, 114, .12);
 
-  --espera: #9a6300;
-  --espera-tenue: #fbf2e2;
+  --espera: #e0b061;
+  --espera-tenue: rgba(224, 176, 97, .12);
 
-  --sombra-flotante: 0 18px 48px rgba(14, 15, 14, .22);
-  --sombra-aviso: 0 6px 20px rgba(14, 15, 14, .14);
+  /* Verde de marca: solo el membrete. Es el verde del logotipo, mas saturado
+     que el del veredicto a proposito, para que uno no se lea como el otro. */
+  --marca: #00b25a;
+  --marca-tinta: #082a19;
 
-  --texto: 'Archivo Variable', 'Helvetica Neue', Arial, sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-}
+  --sombra-flotante: 0 18px 48px rgba(0, 0, 0, .6);
+  --sombra-aviso: 0 6px 20px rgba(0, 0, 0, .5);
+  --sombra-menu: 0 18px 40px rgba(0, 0, 0, .5);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-
-    --tinta: #e9ebe7;
-    --tinta-media: #a6ada7;
-    --tinta-tenue: #838a84;
-    --tinta-contra: #121311;
-
-    --pergamino: #121311;
-    --hoja: #1a1c1a;
-    --pauta: #2c2f2b;
-    --pauta-fuerte: #454a44;
-
-    --verde: #16c96e;
-    --verde-texto: #4fdd97;
-    --verde-tenue: #102b1c;
-
-    --lacre: #ef7a60;
-    --lacre-tenue: #2e1913;
-
-    --espera: #dda13f;
-    --espera-tenue: #2b2113;
-
-    --sombra-flotante: 0 18px 48px rgba(0, 0, 0, .6);
-    --sombra-aviso: 0 6px 20px rgba(0, 0, 0, .5);
-  }
+  --texto: 'Outfit Variable', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }

@@ -48,7 +48,11 @@ const serveWeb = (app:express.Express) => {
 
   app.use(express.static(webRoot, { index: false, maxAge: '1h' }));
 
-  app.get('*', (req, res, next) => {
+  // Express 5 (path-to-regexp v8) ya no admite el comodin '*' sin nombrar: hay
+  // que darle un nombre al parametro, aunque no se use. Las llaves son
+  // necesarias ademas: '/*splat' no casa la raiz '/', solo lo que cuelga de
+  // ella; '/{*splat}' (comodin dentro de un grupo opcional) casa las dos cosas.
+  app.get('/{*splat}', (req, res, next) => {
     if(API_PREFIXES.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) return next();
     res.setHeader('Cache-Control', 'no-cache');
     return res.sendFile(indexFile);

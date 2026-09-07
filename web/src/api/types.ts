@@ -13,6 +13,9 @@ export interface DocumentMetadata {
   mimetype: string;
   extension: string;
   hash: string;
+  /** Bytes del fichero. No lo tienen los documentos depositados antes de que
+      la subida empezara a guardarlo, asi que siempre hay que comprobarlo. */
+  size?: number;
   organization?: string;
   creation_date?: string;
   tags?: string[];
@@ -76,7 +79,13 @@ export interface DocumentQuery {
   offset?: number;
   name?: string;
   tag?: string;
-  scan_status?: ScanStatus | '';
+  /** Uno o varios estados separados por comas ('infected,error'): la interfaz
+      agrupa en 'En cuarentena' los dos que bloquean por algo que revisar. */
+  scan_status?: string;
+  /** Franja de deposito, inclusiva. Instantes ISO con zona: creation_date esta
+      en UTC y el formulario recoge hora local. */
+  from?: string;
+  to?: string;
   sort?: 'creation_date' | 'modification_date';
   order?: 'asc' | 'desc';
 }

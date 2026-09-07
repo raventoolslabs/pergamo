@@ -109,6 +109,10 @@ const upload = async (req, res, next) => {
       mimetype: file.mimetype,
       extension: mime.extension(file.mimetype),
       hash: await sha256File(file.path),
+      // El tamano se fija aqui y no se recalcula: es un dato del deposito, como
+      // el hash. Los documentos anteriores a esta clave no lo tienen, asi que
+      // quien lo muestre debe tratarlo como opcional.
+      size: file.size,
       tags: []
     }
 
@@ -500,7 +504,7 @@ const list = async (req, res, next) => {
     if(!query.success) throw new ValidationError(StatusCodes.BAD_REQUEST,
       'INVALID_QUERY', formatIssues(query.error), req);
 
-    const { limit, offset, name, tag, scan_status, sort, order } = query.data;
+    const { limit, offset, name, tag, scan_status, from, to, sort, order } = query.data;
 
     const replacements:any = { organization, limit, offset };
     const conditions:string[] = [];
@@ -518,8 +522,29 @@ const list = async (req, res, next) => {
     }
 
     if(scan_status) {
-      conditions.push(`scan_status = :scan_status`);
+      // IN y no '=': el filtro admite varios estados a la vez. Sequelize expande
+      // el array del replacement, asi que los valores siguen enlazados.
+      conditions.push(`scan_status IN (:scan_status)`);
       replacements.scan_status = scan_status;
+    }
+
+    // Franja de deposito, inclusiva por los dos lados: quien pide "hasta las
+    // 12:00" espera que lo depositado a las 12:00 en punto entre.
+    //
+    // La conversion es explicita y no se deja al driver. creation_date es
+    // TIMESTAMP WITHOUT TIME ZONE y guarda hora UTC, porque la sesion corre con
+    // TimeZone=UTC; en cambio un Date de JavaScript enlazado tal cual llega a
+    // Postgres con el desfase del proceso y se castea a la hora local de la
+    // maquina, no a UTC. En un servidor que no vaya en UTC eso desplaza la
+    // franja entera tantas horas como diga su zona, en silencio.
+    if(from) {
+      conditions.push(`creation_date >= CAST(:from AS timestamptz) AT TIME ZONE 'UTC'`);
+      replacements.from = from.toISOString();
+    }
+
+    if(to) {
+      conditions.push(`creation_date <= CAST(:to AS timestamptz) AT TIME ZONE 'UTC'`);
+      replacements.to = to.toISOString();
     }
 
     const where = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
