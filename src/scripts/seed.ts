@@ -6,6 +6,7 @@ import Config from '@/shared/config';
 import log from '@/shared/logger';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import { app } from '@/server';
+import { documentStorage } from '@/infrastructure/files/document-storage';
 
 /**
  * Siembra de documentos de ejemplo, uno por cada estado de analisis.
@@ -188,7 +189,7 @@ const clean = async () => {
 
   for(const row of rows) {
 
-    const filePath = path.join(Config.path_base, row.organization, row.path);
+    const filePath = documentStorage.resolve(row.organization, row.path);
 
     if(fs.existsSync(filePath)) await fs.promises.unlink(filePath);
 
@@ -304,7 +305,7 @@ const seed = async () => {
           type: QueryTypes.SELECT
         });
 
-        await fs.promises.unlink(path.join(Config.path_base, rows[0].organization, rows[0].path));
+        await fs.promises.unlink(documentStorage.resolve(rows[0].organization, rows[0].path));
       }
 
       log.info(`Seed: "${item.name}" (${id}) on status ${item.scan_status}${force ? '' : ' (set by the deposit itself)'}`);

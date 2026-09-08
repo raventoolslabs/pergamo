@@ -3,31 +3,15 @@ import fs_extra from "fs-extra";
 import path from "path";
 import mv from "mv";
 
-import Config from '@/shared/config'
-
-const mvAsync = async (origen, destino) => {
+const mvAsync = async (from:string, to:string) => {
   return new Promise((resolve, reject) => {
-    mv(origen, destino, { mkdirp: true }, (error) => {
+    mv(from, to, { mkdirp: true }, (error) => {
       if (error) {
         reject(error);
       } 
       resolve({});
     });
   });
-}
-
-const pathFile = (metadata:any) => {
-
-  const { uuid_sha256, extension, organization } = metadata;
-
-  let pathFile = 
-    '/' + uuid_sha256.substring(0,2) + 
-    '/' + uuid_sha256.substring(2,6) + 
-    '/' + uuid_sha256.substring(6,14) + 
-    '/' + uuid_sha256.substring(14) + 
-    '/' + uuid_sha256 + '.' + extension;
-
-  return path.join(Config.path_base, organization, pathFile);
 }
 
 const mkdir = async (destinationDir) => {
@@ -100,7 +84,6 @@ const cleanTmp = async (directory:string, maxAgeMs:number) => {
 }
 
 export default {
-  pathFile,
   cleanTmp,
   mvAsync,
   mkdir,

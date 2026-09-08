@@ -1,11 +1,11 @@
 import fs from 'fs';
-import path from 'path';
 
 import Config from '@/shared/config';
 import log from '@/shared/logger';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { ScannerUnavailableError } from '@/domain/exceptions/scanner-unavailable.exception';
+import { documentStorage } from '@/infrastructure/files/document-storage';
 
 /**
  * Reescaneo del corpus almacenado, tras cada actualizacion de firmas.
@@ -82,7 +82,7 @@ const rescan = async () => {
       offsetId = row.id;
       totals.scanned++;
 
-      const filePath = path.join(Config.path_base, row.organization, row.path);
+      const filePath = documentStorage.resolve(row.organization, row.path);
 
       // El fichero puede faltar (borrado manual, volumen no montado): se marca
       // 'error' y no 'clean', porque la ausencia de veredicto no es un veredicto

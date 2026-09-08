@@ -12,7 +12,7 @@ import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import Config from '@/shared/config'
 import { sha256File } from '@/shared/hash';
 import { verifyMimetype } from '@/infrastructure/files/filetype';
-import FilesUtils from "@/infrastructure/files/storage";
+import { documentStorage } from "@/infrastructure/files/document-storage";
 
 const EICAR = `X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`;
 
@@ -412,15 +412,20 @@ describe('Document Tests', () => {
   
   it('Should remove a document', async () => {
 
-    let response = await api.get(`/document/${id}`, {
-      headers: {
-        'authorization': token
-      }
+    // La ruta se lee de la fila, que es donde la deja el trigger: recomponerla
+    // aqui a partir de los metadatos daba un fichero que nunca existio, y la
+    // comprobacion de abajo pasaba sin comprobar nada.
+    const rows:any = await sequelize.query(
+      'SELECT organization, path FROM pergamo.document WHERE id = :id;', {
+      replacements: { id },
+      type: QueryTypes.SELECT
     });
 
-    const pathFile = FilesUtils.pathFile(response.data);
+    const filePath = documentStorage.resolve(rows[0].organization, rows[0].path);
 
-    response = await api.delete(`/document/${id}`, {
+    expect(fs.existsSync(filePath)).toBeTruthy();
+
+    const response = await api.delete(`/document/${id}`, {
       headers: {
         'authorization': token
       }
@@ -428,6 +433,6 @@ describe('Document Tests', () => {
 
     expect(response.status).toBe(200);
     expect(response.data.message).toBe(`Document with id ${id} deleted`);
-    expect(!fs.existsSync(pathFile)).toBeTruthy();
+    expect(fs.existsSync(filePath)).toBeFalsy();
   });
 });
