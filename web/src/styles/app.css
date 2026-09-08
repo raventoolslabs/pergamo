@@ -405,6 +405,17 @@ a:hover { text-decoration-color: currentColor; }
 .verdict--infected svg, .verdict--malicious svg { color: var(--pending); }
 .verdict--error svg { color: var(--seal); }
 
+/* El indice no decide si el documento se entrega, asi que no toma prestado el
+   lacre de la cuarentena mas que para lo que de verdad fallo. Lo que no se
+   indexo por nadie haberlo pedido va en el gris del papel, igual que lo no
+   analizado. */
+.verdict--index-none svg, .verdict--index-unsupported svg { color: var(--ink-faint); }
+.verdict--index-pending svg, .verdict--index-indexing svg { color: var(--pending); }
+.verdict--index-indexed svg { color: var(--green); }
+.verdict--index-error svg { color: var(--seal); }
+
+.index-state { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+
 /* ============================================================= paginacion == */
 
 .pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 18px; }
@@ -610,6 +621,16 @@ a:hover { text-decoration-color: currentColor; }
 }
 .dropzone strong { color: var(--ink); font-size: 15px; }
 .dropzone.over { border-color: var(--green); border-style: solid; background: var(--green-soft); color: var(--green-text); }
+
+/* La etiqueta entera es el area de pulsacion, no solo el cuadrito: es una
+   opcion que se explica en dos lineas y obligar a acertar en 13 px sobra. */
+.check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+/* Tinta, no verde: el verde de esta paleta significa «documento analizado» y
+   gastarlo en un control lo deja de decir. */
+.check input { flex: none; margin-top: 2px; width: 15px; height: 15px; accent-color: var(--ink); }
+.check span { font-size: 13px; color: var(--ink-faint); line-height: 1.5; }
+.check strong { display: block; font-weight: 500; font-size: 14px; color: var(--ink); }
+.check:has(input:disabled) { cursor: default; opacity: .6; }
 
 .queue { display: flex; flex-direction: column; }
 .queue__item {

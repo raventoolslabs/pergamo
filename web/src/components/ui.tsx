@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 import { ApiError } from '../api/client';
-import type { ScanStatus } from '../api/types';
+import type { IndexStatus, ScanStatus } from '../api/types';
 import { t } from '../i18n';
 
 /* =============================================================== verdicts == */
@@ -82,6 +82,46 @@ export const Verdict = ({ status, engine }: { status: ScanStatus; engine?: strin
     </div>
   );
 };
+
+/* ================================================================= indice == */
+
+/**
+ * Lo que la interfaz cuenta del indice semantico. Ninguno comparte etiqueta:
+ * 'none' es un documento que nadie pidio indexar y 'unsupported' uno que si se
+ * pidio y cuyo formato no tiene conversor. Llamar a los dos «sin indexar»
+ * esconderia el unico de los dos sobre el que hay algo que decidir.
+ */
+export const INDEX: Record<IndexStatus, { label: string; detail: string }> = {
+  none: { label: t('index.none.label'), detail: t('index.none.detail') },
+  pending: { label: t('index.pending.label'), detail: t('index.pending.detail') },
+  indexing: { label: t('index.indexing.label'), detail: t('index.indexing.detail') },
+  indexed: { label: t('index.indexed.label'), detail: t('index.indexed.detail') },
+  unsupported: { label: t('index.unsupported.label'), detail: t('index.unsupported.detail') },
+  error: { label: t('index.error.label'), detail: t('index.error.detail') }
+};
+
+/** Renglones de texto —lo que se indexa— mas el glifo del estado. */
+const INDEX_ICON: Record<IndexStatus, ReactNode> = {
+  none: <><path d="M4 6.5h16M4 11h16M4 15.5h10" strokeDasharray="2.6 3.2" /></>,
+  pending: <><path d="M4 6.5h16M4 11h9" /><circle cx="16" cy="16" r="5" /><path d="M16 13.4V16l1.9 1.1" /></>,
+  // Flecha circular: aqui hay una maquina trabajando, no una espera.
+  indexing: <><path d="M4 6.5h16M4 11h9" /><path d="M21 16a5 5 0 1 1-1.8-3.8" /><path d="M21.2 11.6v3.2H18" /></>,
+  indexed: <><path d="M4 6.5h16M4 11h10" /><path d="M12.6 16.8l3 3 5.6-6.4" /></>,
+  // Barrada: el formato no entra, y no es cuestion de esperar.
+  unsupported: <><path d="M4 6.5h16M4 11h9" /><circle cx="16" cy="16" r="5" /><path d="M12.5 19.5l7-7" /></>,
+  error: <><path d="M4 6.5h16M4 11h9" /><path d="M16 11.6l5.2 9.4h-10.4z" /><path d="M16 15v2.2" /><path d="M16 18.9h.01" /></>
+};
+
+/** Icono y palabra, como el veredicto: el color nunca lleva solo el mensaje. */
+export const IndexState = ({ status }: { status: IndexStatus }) => (
+  <div className={`verdict verdict--index-${status}`} title={INDEX[status]?.detail}>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {INDEX_ICON[status]}
+    </svg>
+    <span>{INDEX[status]?.label || status}</span>
+  </div>
+);
 
 /* ============================================================= pagination == */
 

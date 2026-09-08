@@ -57,6 +57,7 @@ export const UploadDialog = ({ onClose, onUploaded }: {
   const input = useRef<HTMLInputElement>(null);
 
   const [items, setItems] = useState<QueueItem[]>([]);
+  const [indexing, setIndexing] = useState(false);
   const [over, setOver] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploaded, setUploaded] = useState(0);
@@ -104,7 +105,7 @@ export const UploadDialog = ({ onClose, onUploaded }: {
         position === index ? { ...item, state: 'uploading' } : item));
 
       try {
-        await api.upload(items[index].file);
+        await api.upload(items[index].file, indexing);
         succeeded += 1;
         setItems((current) => current.map((item, position) =>
           position === index ? { ...item, state: 'done', note: t('upload.done') } : item));
@@ -171,6 +172,23 @@ export const UploadDialog = ({ onClose, onUploaded }: {
               : ''}
             {config.max_file_size ? t('upload.maxSize', { limit: formatSize(config.max_file_size) }) : ''}
           </p>
+        ) : null}
+
+        {/* Solo si el despliegue indexa: una casilla que siempre devuelve un 400
+            es peor que no ofrecer la funcionalidad. */}
+        {config?.indexing_enabled ? (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={indexing}
+              disabled={sending}
+              onChange={(event) => setIndexing(event.target.checked)}
+            />
+            <span>
+              <strong>{t('upload.index')}</strong>
+              {t('upload.indexHint')}
+            </span>
+          </label>
         ) : null}
 
         {items.length ? (

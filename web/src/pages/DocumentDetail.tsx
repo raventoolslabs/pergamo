@@ -3,10 +3,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client';
 import { useConfig } from '../api/config';
-import type { DocumentMetadata, DocumentVersion, ScanInfo } from '../api/types';
+import type { DocumentMetadata, DocumentVersion, IndexInfo, ScanInfo } from '../api/types';
 import { useToast } from '../components/toast';
 import {
-  Datum, Dialog, ErrorNotice, Loading, Notice, TagsField, VERDICT,
+  Datum, Dialog, ErrorNotice, INDEX, IndexState, Loading, Notice, TagsField, VERDICT,
   errorMessage, formatDate, formatSize, isDeliverable, verdictOf
 } from '../components/ui';
 import { t } from '../i18n';
@@ -27,6 +27,12 @@ const FIELD_LABEL: Record<string, string> = {
   tags: t('detail.fieldTags')
 };
 
+/** Mientras el trabajo esta vivo. Con el worker parado el estado se queda en
+    'pending', asi que el refresco tiene tope: una pestana abierta no debe
+    preguntar para siempre. */
+const REFRESH_MS = 4000;
+const REFRESH_LIMIT = 15;
+
 const asTags = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
@@ -37,9 +43,11 @@ export const DocumentDetail = () => {
   const toast = useToast();
   const config = useConfig();
   const replacementInput = useRef<HTMLInputElement>(null);
+  const refreshes = useRef(0);
 
   const [metadata, setMetadata] = useState<DocumentMetadata | null>(null);
   const [scanInfo, setScanInfo] = useState<ScanInfo | null>(null);
+  const [indexInfo, setIndexInfo] = useState<IndexInfo | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
@@ -53,18 +61,24 @@ export const DocumentDetail = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
+    refreshes.current = 0;
 
     try {
-      // El estado de analisis y las versiones viven en endpoints propios: se
-      // piden a la vez para no encadenar tres esperas.
-      const [document, scan, versionList] = await Promise.all([
+      // El estado de analisis, el del indice y las versiones viven en endpoints
+      // propios: se piden a la vez para no encadenar cuatro esperas.
+      //
+      // El del indice cae a null si falla, como las versiones: un servidor sin
+      // esa ruta no puede dejar la ficha en blanco.
+      const [document, scan, index, versionList] = await Promise.all([
         api.document(id),
         api.scan(id),
+        api.indexInfo(id).catch(() => null),
         api.versions(id).catch(() => [] as DocumentVersion[])
       ]);
 
       setMetadata(document);
       setScanInfo(scan);
+      setIndexInfo(index);
       setVersions(versionList);
       setError(null);
     } catch (failure) {
@@ -75,6 +89,22 @@ export const DocumentDetail = () => {
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Indexar tarda segundos, no dias: sin esto la ficha ensena una cola que ya se
+  // vacio hasta que alguien recarga.
+  useEffect(() => {
+    const status = indexInfo?.index_status;
+
+    if (status !== 'pending' && status !== 'indexing') return;
+    if (refreshes.current >= REFRESH_LIMIT) return;
+
+    const timer = setTimeout(() => {
+      refreshes.current += 1;
+      api.indexInfo(id).then(setIndexInfo).catch(() => {});
+    }, REFRESH_MS);
+
+    return () => clearTimeout(timer);
+  }, [indexInfo, id]);
 
   const resetDraft = useCallback(() => {
     if (!metadata) return;
@@ -287,6 +317,50 @@ export const DocumentDetail = () => {
           ) : null}
         </div>
       </div>
+
+      {/* Solo donde significa algo: un despliegue que no indexa no gana una
+          seccion sobre algo que no hace, y un documento que nadie pidio indexar
+          en uno que si la tiene explica por que no esta. */}
+      {indexInfo && (config?.indexing_enabled || indexInfo.index_status !== 'none') ? (
+        <section className="section">
+          <h2>{t('detail.index')}</h2>
+
+          <div className="index-state">
+            <IndexState status={indexInfo.index_status} />
+            {indexInfo.index_status === 'indexing' ? <span className="spinner" aria-hidden="true" /> : null}
+          </div>
+
+          <p className="section__note">{INDEX[indexInfo.index_status]?.detail}</p>
+
+          {indexInfo.index_status === 'indexed' ? (
+            <dl className="data">
+              <Datum term={t('detail.indexChunks')}>
+                {typeof indexInfo.index_chunks === 'number'
+                  ? t('detail.indexChunkCount', { count: indexInfo.index_chunks })
+                  : t('common.none')}
+              </Datum>
+              <Datum term={t('detail.indexModel')}>
+                <span className="mono">{indexInfo.index_model || t('common.none')}</span>
+              </Datum>
+              <Datum term={t('detail.indexDate')}>{formatDate(indexInfo.index_date)}</Datum>
+            </dl>
+          ) : null}
+
+          {/* El motivo, tal como lo guardo el trabajo. 'EMPTY_CONTENT' es el
+              unico codigo fijo y el caso frecuente —un PDF escaneado sin capa de
+              texto—, asi que se traduce; el resto es el mensaje de la excepcion
+              y se muestra tal cual antes que inventarle una explicacion. */}
+          {indexInfo.index_error ? (
+            <div className="spaced">
+              <Notice kind={indexInfo.index_status === 'error' ? 'error' : 'warn'}>
+                {indexInfo.index_error === 'EMPTY_CONTENT'
+                  ? t('detail.indexEmptyContent')
+                  : indexInfo.index_error}
+              </Notice>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="section">
         <h2>{t('detail.metadata')}</h2>

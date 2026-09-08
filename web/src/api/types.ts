@@ -22,6 +22,13 @@ export interface DocumentMetadata {
   [key: string]: unknown;
 }
 
+/**
+ * Estado del indice semantico. 'none' no es un fallo: es un documento que nadie
+ * pidio indexar, y por eso no se confunde con 'unsupported', donde si se pidio y
+ * el formato no tiene conversor.
+ */
+export type IndexStatus = 'none' | 'pending' | 'indexing' | 'indexed' | 'error' | 'unsupported';
+
 export interface DocumentSummary {
   id: string;
   creation_date: string;
@@ -49,6 +56,16 @@ export interface ScanInfo {
   scan_date: string | null;
 }
 
+export interface IndexInfo {
+  index_status: IndexStatus;
+  index_model: string | null;
+  index_converter: string | null;
+  index_chunker_version: string | null;
+  index_chunks: number | null;
+  index_error: string | null;
+  index_date: string | null;
+}
+
 export interface DocumentVersion {
   version: number;
   created_at: string;
@@ -73,6 +90,9 @@ export interface ServerConfig {
   /** Ausente en servidores anteriores a que /config lo sirviera: ahi no se
       afirma ni una cosa ni la otra. */
   enable_antivirus?: boolean;
+  /** Ausente en servidores sin indexacion: la interfaz no ofrece entonces una
+      casilla que solo puede devolver un 400. */
+  indexing_enabled?: boolean;
   valid_mimetype: string[];
   valid_metadata_modify: string[];
   max_file_size: number;

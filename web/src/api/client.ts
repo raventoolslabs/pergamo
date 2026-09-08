@@ -1,5 +1,5 @@
 import type {
-  DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion,
+  DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, IndexInfo,
   Organization, OrganizationList, ScanInfo, ServerConfig
 } from './types';
 
@@ -142,6 +142,8 @@ export const api = {
 
   scan: (id: string) => request<ScanInfo>(`/document/${encodeURIComponent(id)}/scan`),
 
+  indexInfo: (id: string) => request<IndexInfo>(`/document/${encodeURIComponent(id)}/index`),
+
   versions: (id: string) => request<DocumentVersion[]>(`/document/${encodeURIComponent(id)}/versions`),
 
   updateMetadata: (id: string, metadata: Record<string, unknown>) =>
@@ -151,12 +153,16 @@ export const api = {
       body: JSON.stringify(metadata)
     }),
 
-  upload: (file: File) => {
+  upload: (file: File, index = false) => {
     const form = new FormData();
     form.append('document', file);
+    // La indexacion viaja en la query y no como campo del multipart: multer solo
+    // puebla req.body con lo que llega antes del fichero, asi que un campo
+    // detras pediria indexar sin obtenerlo y sin error.
+    //
     // Sin content-type explicito: lo pone el navegador con el boundary que
     // multer necesita.
-    return request<DocumentMetadata>('/document', { method: 'POST', body: form });
+    return request<DocumentMetadata>(`/document${query({ index })}`, { method: 'POST', body: form });
   },
 
   replaceFile: (id: string, file: File) => {

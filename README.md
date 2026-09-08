@@ -122,7 +122,7 @@ Qué permite hacer, según con quién se entre:
 
 | Sesión | Puede |
 |---|---|
-| Organización | Listar, buscar y filtrar documentos; subirlos (varios a la vez, con arrastrar y soltar); ver la ficha completa; editar los metadatos que permita `VALID_METADATA_MODIFY`; descargar; reemplazar el fichero; consultar las versiones; eliminar; y cambiar su propia contraseña. |
+| Organización | Listar, buscar y filtrar documentos; subirlos (varios a la vez, con arrastrar y soltar) pidiendo o no que se indexen; ver la ficha completa, con el estado del índice; editar los metadatos que permita `VALID_METADATA_MODIFY`; descargar; reemplazar el fichero; consultar las versiones; eliminar; y cambiar su propia contraseña. |
 | Master | Crear organizaciones, listarlas y cambiar la contraseña de cualquiera de ellas. |
 
 El token master **no pertenece a ninguna organización**, así que con él no se puede operar sobre
@@ -248,6 +248,15 @@ de fotografiarla: un fallo puede dejar una pantalla que se ve bien y no hace nad
 Los estados que no se pueden provocar desde fuera se fuerzan en la base de datos de prueba: sin un
 ClamAV con firmas reales no hay forma de conseguir un documento en cuarentena, y la cuarentena es
 justo la pantalla que más importa revisar.
+
+El recorrido corto **no indexa**: `E2E_INDEXING=1` levanta además un Redis desechable y activa la
+indexación, y entonces exige `EMBEDDING_BASE_URL`. La máquina de inferencia no se simula: si se
+pide indexar de verdad, hay que decir contra qué, y del cableado con dobles ya se ocupan
+`test/10-indexing` y `test/12-queue`.
+
+```
+E2E_INDEXING=1 EMBEDDING_BASE_URL=http://maquina-ia:11434/v1 npm run test:e2e
+```
 
 El recorrido **no** está en el workflow de GitHub Actions, que hoy solo construye y publica la
 imagen: añadirlo exigiría un servicio de base de datos en CI.
@@ -654,6 +663,12 @@ sustituir un fichero no debe poder desindexar un documento por omisión.
 `GET /document/:id/index` devuelve el estado, gemelo de `/scan` y por el mismo motivo: el
 cuerpo de `GET /document/:id` es el JSONB tal cual y añadirle claves cambiaría un contrato
 que ya se consume.
+
+En la interfaz es una casilla del diálogo de subida, que **solo aparece si el despliegue
+indexa**: `GET /config` lleva `indexing_enabled` justamente para no ofrecer una casilla
+que solo puede devolver un `400`. La ficha del documento muestra entonces el estado del
+índice, y mientras el trabajo está vivo (`pending`, `indexing`) se refresca sola —con
+tope, para que una pestaña olvidada no pregunte para siempre—.
 
 ### Búsqueda
 

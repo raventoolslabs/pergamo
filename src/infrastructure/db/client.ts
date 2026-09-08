@@ -2,6 +2,15 @@ import { Sequelize, QueryTypes, DataTypes } from 'sequelize';
 import pg from 'pg'
 import Config from '@/shared/config';
 
+/**
+ * Las columnas TIMESTAMP WITHOUT TIME ZONE guardan UTC —CURRENT_TIMESTAMP sobre
+ * un servidor en UTC—, pero el driver las lee como hora local del proceso. Con
+ * la API fuera de UTC eso desplaza cada fecha por el desfase del equipo y el
+ * error solo se ve cuando dos fechas de la misma operacion aparecen juntas.
+ */
+pg.types.setTypeParser(pg.types.builtins.TIMESTAMP,
+  (value:string) => value === null ? null : new Date(`${value.replace(' ', 'T')}Z`));
+
 const configDatabase:any = {
   username: Config.db.username,
   password: Config.db.password,

@@ -60,7 +60,7 @@ export const indexDocument = async (input:IndexDocumentInput, deps:IndexingDeps)
     const chunks = deps.chunker.split(converted);
 
     // Un PDF escaneado sin capa de texto llega hasta aqui sin nada. Marcarlo
-    // indexado con cero trozos lo escondería: es accionable y se dice.
+    // indexado con cero trozos lo esconderia: es accionable y se dice.
     if(!chunks.length) {
       await deps.documents.setIndexStatus(id, 'error', 'EMPTY_CONTENT');
       return 'error';

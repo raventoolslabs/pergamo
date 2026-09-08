@@ -121,6 +121,11 @@ if [ -n "${E2E_INDEXING:-}" ]; then
     || die 'El Redis de prueba no ha llegado a estar listo.'
 
   export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}"
+  # La pila de prueba es un solo proceso, asi que el worker va dentro. Se exporta
+  # y no se deja al defecto porque el `.env` de quien lanza esto puede llevarlo a
+  # 'false' —lo normal si tiene un worker suelto—, y entonces los documentos se
+  # quedarian en 'pending' sin que nada lo explique.
+  export INDEXING_WORKER_EMBEDDED=true
   export EMBEDDING_BASE_URL
   export EMBEDDING_MODEL="${EMBEDDING_MODEL:-bge-m3}"
   export EMBEDDING_DIMENSION="${EMBEDDING_DIMENSION:-1024}"
@@ -205,6 +210,7 @@ docker run --rm --network host \
   -e PERGAMO_URL="$APP_URL" \
   -e PERGAMO_DB_PORT="$DB_PORT" \
   -e PERGAMO_MASTER="$MASTER_USER" \
+  -e PERGAMO_INDEXING="${E2E_INDEXING:-}" \
   -e PERGAMO_PASSWORD="$MASTER_PASSWORD" \
   -e CI=1 \
   -v "${ROOT}/e2e:/e2e" \
