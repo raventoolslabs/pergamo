@@ -5,7 +5,7 @@ import Config from '@/shared/config';
 import log from '@/shared/logger';
 import { ConversionUnsupportedError } from '@/domain/exceptions/indexing.exception';
 import { indexDocument } from '@/app/use-cases/indexing/commands/index-document.handler';
-import { indexingDeps, prepareIndexing, queueConnection, QUEUE_NAME } from '@/container';
+import { indexingDeps, prepareWorker, queueConnection, QUEUE_NAME } from '@/container';
 
 // docker stop manda SIGKILL a los diez segundos, asi que esperar mas que esto a
 // que termine el trabajo en curso no sirve de nada.
@@ -27,7 +27,7 @@ export const startWorker = async () => {
 
   if(worker) return worker;
 
-  await prepareIndexing();
+  await prepareWorker();
 
   redis = queueConnection();
 

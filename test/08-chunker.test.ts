@@ -126,13 +126,28 @@ describe('Chunker', () => {
     expect(chunks.map((chunk) => chunk.contentType)).toEqual(['text', 'table']);
   });
 
-  it('Should carry the page of the first block of each chunk', () => {
+  it('Should carry the page of each chunk', () => {
 
     const chunks = split(document(
       block('Uno.', ['A'], 'text', 3),
       block('Dos.', ['B'], 'text', 7)));
 
     expect(chunks.map((chunk) => chunk.page)).toEqual([3, 7]);
+  });
+
+  /**
+   * `page` es una cita. Un trozo que cruzase la frontera solo podria citar una
+   * de las dos paginas, y una cita incorrecta es peor que un trozo mas corto.
+   */
+  it('Should never let a chunk span two pages', () => {
+
+    const chunks = split(document(
+      block('Final de la primera.', [], 'text', 1),
+      block('Principio de la segunda.', [], 'text', 2)));
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks.map((chunk) => chunk.page)).toEqual([1, 2]);
+    expect(chunks[0].content).not.toContain('segunda');
   });
 
   it('Should number positions densely and in order', () => {

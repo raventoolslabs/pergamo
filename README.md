@@ -566,7 +566,7 @@ documento.
 | Paso | Qué pasa |
 |---|---|
 | Conversión | `officeParser`, recorriendo el AST. No se le pide el markdown ya montado: la página de un PDF, la diapositiva de un PPTX y el nombre de hoja de un XLSX viven en nodos contenedores y desaparecen al aplanar el documento. |
-| Troceado | Propio y versionado (`v1`). Corte por encabezado, luego por párrafo, luego duro con solapamiento. Las tablas se parten por filas **repitiendo la cabecera**. |
+| Troceado | Propio y versionado (`v1`). Corte por encabezado, luego por párrafo, luego duro con solapamiento. Las tablas se parten por filas **repitiendo la cabecera**, y ningún trozo cruza una frontera de página: `page` es una cita, y una cita incorrecta es peor que un trozo más corto. |
 | Migas de pan | Cada trozo se prefija con la ruta de encabezados que lo contiene, y ese texto prefijado es el que se guarda **y** el que se embebe: no hay dos versiones de lo indexado. |
 | Vectores | Un cliente `openai-compatible` cubre Ollama, vLLM y OpenAI. Se piden por lotes, que es lo que más afecta al tiempo de una reindexación. |
 | Escritura | Borrado e inserción en una transacción, cerrada con un `UPDATE ... WHERE metadata->>'hash' = :hash`. Si no afecta a ninguna fila se deshace todo: el fichero se reemplazó mientras se convertía. |
@@ -600,6 +600,12 @@ parte del contrato del proveedor de embeddings, y `assertEmbeddingSchema` compar
 cosas **al arrancar**. Lo mismo con la anchura del vector: la columna se crea con
 `EMBEDDING_DIMENSION` y el arranque aborta si dejan de coincidir, en lugar de fallar en
 el primer trabajo.
+
+Esa comprobación es local y bloquea el arranque de la API y del worker por igual. Lo que
+**no** hace la API es esperar a que el proveedor responda: un tercero caído no puede
+impedir que arranque el archivo entero, y `/search` dirá lo que pasa cuando se le
+pregunte. Quien sí espera es el worker, porque aceptar trabajos contra una máquina de
+inferencia muerta no sirve de nada.
 
 ### Cola y worker
 

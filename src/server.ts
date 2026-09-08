@@ -6,7 +6,7 @@ import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { activeContentRules } from '@/infrastructure/antivirus/active-content';
 import { startWorker, stopWorker } from '@/api/queue/index.worker';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
-import { prepareIndexing } from '@/container';
+import { assertIndexReady } from '@/container';
 import FilesUtils from '@/infrastructure/files/storage';
 import express from 'express';
 import path from 'path';
@@ -82,10 +82,12 @@ export const app = async (port:any = Config.port) => {
   // una dimension que no cuadra o un operador equivocado no fallan solos, dan
   // resultados que no significan nada.
   //
-  // La API necesita el proveedor aunque el worker vaya suelto, porque /search
-  // tiene que embeber la consulta.
+  // Solo el esquema, que es local. Al proveedor no se le llama aqui: /search lo
+  // necesita, pero un tercero que no responde no puede impedir que arranque el
+  // archivo entero. Quien si espera a que responda es el worker, porque aceptar
+  // trabajos contra una maquina muerta no sirve de nada.
   if(Config.indexing.enabled) {
-    await prepareIndexing();
+    await assertIndexReady();
     if(Config.indexing.worker_embedded) await startWorker();
   } else {
     log.warn('Indexing DISABLED (INDEXING_ENABLED is not enabled): documents are stored without being indexed');

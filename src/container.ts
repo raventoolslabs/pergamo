@@ -75,20 +75,31 @@ export { QUEUE_NAME };
 export const queueConnection = connection;
 
 /**
- * Lo que hay que comprobar antes de indexar o buscar: que el esquema y el
- * proveedor dicen lo mismo, y que el proveedor responde.
+ * Que el esquema y el proveedor declaran lo mismo. Es local y barato, y lo que
+ * detecta —una anchura que no cuadra, un operador que el indice no puede
+ * servir— no falla solo: da resultados que no significan nada. Bloquea el
+ * arranque de la API y del worker por igual.
  *
- * Memoizado porque lo piden dos: el arranque de la API —que necesita el
- * proveedor para /search aunque el worker vaya suelto— y el propio worker.
+ * Memoizado: lo piden los dos y la respuesta no cambia.
  */
-let prepared:Promise<void> = null;
+let asserted:Promise<void> = null;
 
-export const prepareIndexing = () => {
+export const assertIndexReady = () => {
 
-  if(!prepared) prepared = (async () => {
-    await assertEmbeddingSchema(searchIndex());
-    await indexingDeps.embedder.init();
-  })().catch((error) => { prepared = null; throw error; });
+  if(!asserted) asserted = assertEmbeddingSchema(searchIndex())
+    .catch((error) => { asserted = null; throw error; });
 
-  return prepared;
+  return asserted;
+};
+
+/**
+ * Ademas, que el proveedor responde. Esto SOLO lo espera el worker: aceptar
+ * trabajos contra una maquina de inferencia muerta no sirve de nada.
+ *
+ * La API no lo hace. Un tercero que no responde no puede impedir que arranque
+ * el archivo entero, y /search dira lo que pasa cuando se le pregunte.
+ */
+export const prepareWorker = async () => {
+  await assertIndexReady();
+  await indexingDeps.embedder.init();
 };

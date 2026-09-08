@@ -193,7 +193,11 @@ export const chunker:Chunker = {
 
       // Cambiar de seccion cierra el trozo: mezclar dos secciones en uno deja
       // migas de pan que no describen la mitad del texto.
-      if(pending && !sameSection(pending.headingPath, block.headingPath)) push();
+      //
+      // Cambiar de pagina tambien, y por un motivo distinto: `page` es una
+      // cita. Un trozo que cruza la frontera solo puede citar una de las dos, y
+      // una cita incorrecta es peor que un trozo mas corto.
+      if(pending && (!sameSection(pending.headingPath, block.headingPath) || pending.page !== block.page)) push();
 
       for(const piece of pieceOf(block, budget, overlap)) {
 
