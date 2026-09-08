@@ -21,7 +21,7 @@ Es un **servicio único** (monolito modular ejecutado en un solo proceso Node), 
 * `dev.js` — arranque de desarrollo: API e interfaz en un solo comando.
 * `e2e` — recorrido en navegador de la interfaz, en contenedor. Proyecto npm propio, fuera de `web/` para que Playwright no entre en el build de la imagen.
 * `public` — logo y favicons, que Vite incorpora al build de la interfaz.
-* `clamav` — configuración del demonio ClamAV (`clamd.conf`) y lista local de firmas ignoradas.
+* `docker` — despliegue: `docker-compose.yml`, `.env.example` del contenedor y la configuración del demonio ClamAV (`clamd.conf` y lista local de firmas ignoradas).
 * `test` — pruebas de integración.
 
 ## Convenciones de código
@@ -47,7 +47,7 @@ Variables que conviene revisar antes de desplegar:
 | `JWT_EXPIRES_IN` | Caducidad de los tokens (por defecto `8h`). |
 | `TRUST_PROXY` | Saltos de proxy inverso en los que confiar. **Si hay un proxy delante y vale 0, el rate limiting agrupará a todos los clientes bajo una sola IP.** |
 | `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` | Intentos permitidos por IP en los endpoints de credenciales. |
-| `MAX_FILE_SIZE` | Tamaño máximo por fichero subido, en bytes. **Si lo cambias, ajusta también `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` en `clamav/clamd.conf`**: por debajo de este valor, ClamAV deja de analizar por completo los ficheros más grandes. |
+| `MAX_FILE_SIZE` | Tamaño máximo por fichero subido, en bytes. **Si lo cambias, ajusta también `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` en `docker/clamav/clamd.conf`**: por debajo de este valor, ClamAV deja de analizar por completo los ficheros más grandes. |
 | `DEBUG` | Nivel de log `debug`; registra metadatos completos de fichero y documento. |
 | `ENABLE_ANTIVIRUS` | Análisis con ClamAV. Si no se define, el antivirus queda **desactivado** y el arranque lo advierte por log. Acepta `true/1/yes/on` y `false/0/no/off` sin distinguir mayúsculas; **un valor no reconocido detiene el arranque** en lugar de desactivar el escaneo en silencio. |
 | `CLAMAV_HOST` / `CLAMAV_PORT` | Destino del demonio clamd. Con `ENABLE_ANTIVIRUS` activo hay que definir esto o `CLAMAV_SOCKET`: sin uno de los dos, el arranque falla. |
@@ -79,7 +79,14 @@ Para desarrollo, `npm run dev` ejecuta la API sin compilar mediante ts-node.
 
 ### Despliegue con Docker
 
-`docker compose up --build` levanta dos servicios: **clamav** y **pergamo**. Antes el `docker-compose.yml` declaraba un único servicio, con ClamAV dentro del contenedor de la API.
+Todo lo que necesita el despliegue vive en `docker/`: el compose, la configuración de ClamAV y el `.env.example` del contenedor —que no es el mismo que el de la raíz, pensado para desarrollo—. El `Dockerfile` se queda en la raíz, porque el contexto de construcción es el repositorio entero.
+
+```
+cp docker/.env.example docker/.env
+docker compose -f docker/docker-compose.yml up --build
+```
+
+Eso levanta dos servicios: **clamav** y **pergamo**. Antes el compose declaraba un único servicio, con ClamAV dentro del contenedor de la API.
 
 | Servicio | Papel |
 |---|---|
@@ -100,7 +107,7 @@ ClamAV vive ahora en su propio contenedor por tres motivos: aísla su ~1–1,5 G
 
 La imagen de la aplicación ejecuta el proceso como usuario `node`: **no corre como root**.
 
-Los límites de `clamav/clamd.conf` (`MaxFileSize`, `MaxScanSize`, `StreamMaxLength`) deben ser siempre mayores o iguales que `MAX_FILE_SIZE`. Están en dos ficheros distintos, así que la prueba `Should scan a file up to MAX_FILE_SIZE` existe precisamente para detectar que se han desalineado. `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, que es el comportamiento contrario al de ClamAV por defecto.
+Los límites de `docker/clamav/clamd.conf` (`MaxFileSize`, `MaxScanSize`, `StreamMaxLength`) deben ser siempre mayores o iguales que `MAX_FILE_SIZE`. Están en dos ficheros distintos, así que la prueba `Should scan a file up to MAX_FILE_SIZE` existe precisamente para detectar que se han desalineado. `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, que es el comportamiento contrario al de ClamAV por defecto.
 
 ## Interfaz web
 
@@ -187,11 +194,11 @@ para resolverlo, en vez de dejar caer una traza de `sequelize`.
 **Preparación, una sola vez:**
 
 ```
-cp .env.dev.example .env
+cp .env.example .env
 ```
 
 Después hay que rellenar `DB_PASSWORD` y crear la base de desarrollo. El propio
-`.env.dev.example` lleva el SQL: un rol `pergamo_dev`, su base, y las extensiones `uuid-ossp`,
+`.env.example` lleva el SQL: un rol `pergamo_dev`, su base, y las extensiones `uuid-ossp`,
 `pgcrypto` y `unaccent` creadas **por el superusuario** —no son «trusted», así que el rol de la
 aplicación no puede instalarlas—. Es la misma convención que siguen las demás bases del host.
 
@@ -292,7 +299,7 @@ Las dependencias de ejecución se han movido de `devDependencies` a `dependencie
 La aplicación corre como el usuario `node` (uid 1000). El volumen de datos viene del host y conserva su propiedad, así que **antes de arrancar** hay que cederlo a ese usuario:
 
 ```
-chown -R 1000:1000 ./data
+chown -R 1000:1000 docker/data
 ```
 
 Si no se hace, el contenedor se detiene en el arranque con un mensaje indicando este mismo comando, en lugar de fallar más tarde con un error de permisos opaco.
@@ -328,7 +335,7 @@ En una tabla `document` grande, añadir la restricción toma un bloqueo exclusiv
 
 ### 6. ClamAV pasa a ser un servicio propio (acción obligatoria)
 
-La imagen de la aplicación **ya no incluye ClamAV**, y el `docker-entrypoint.sh` ya no arranca clamd ni freshclam. El escáner es ahora el servicio `clamav` de `docker-compose.yml`.
+La imagen de la aplicación **ya no incluye ClamAV**, y el `docker-entrypoint.sh` ya no arranca clamd ni freshclam. El escáner es ahora el servicio `clamav` de `docker/docker-compose.yml`.
 
 Antes de actualizar:
 
@@ -467,7 +474,7 @@ ClamAV responde a «¿es esto malware conocido?». Un fondo documental tiene ade
 MALICIOUS_ACTIVE_CONTENT_IGNORE="EmbeddedFile"
 ```
 
-Es el equivalente de `clamav/local.ign2` para esta capa, y se usa igual: se anota siempre por qué se ignora y quién lo decidió. Un nombre que no corresponda a ninguna regla **detiene el arranque**, en lugar de dejar un despliegue cuarentenando lo que su operador daba por exceptuado.
+Es el equivalente de `docker/clamav/local.ign2` para esta capa, y se usa igual: se anota siempre por qué se ignora y quién lo decidió. Un nombre que no corresponda a ninguna regla **detiene el arranque**, en lugar de dejar un despliegue cuarentenando lo que su operador daba por exceptuado.
 
 ### Reescaneo del corpus
 
@@ -487,7 +494,7 @@ npm run scan:release -- <id-documento>
 
 Pasa el documento a `clean` **conservando `scan_signature`**, de modo que el falso positivo queda trazado. El fichero no se modifica en ningún momento: los falsos positivos se **liberan** mediante revisión, no se "arreglan" alterando el documento.
 
-Si una misma firma reincide sobre documentos legítimos, se añade a `clamav/local.ign2` y se reinicia el servicio `clamav`.
+Si una misma firma reincide sobre documentos legítimos, se añade a `docker/clamav/local.ign2` y se reinicia el servicio `clamav`.
 
 > **Por qué no hay saneado automático de PDF (CDR).** Se evaluó y se descartó. Reescribir un PDF para eliminar JavaScript, `/OpenAction`, `/Launch` o ficheros embebidos **rompe cualquier firma electrónica**, porque una firma PAdES/PKCS#7 cubre un `ByteRange` de bytes concretos. Además, los PDF firmados contienen legítimamente lo que un CDR elimina: PAdES-LTV embebe respuestas OCSP y CRLs *como ficheros embebidos*. Y el fallo sería silencioso: un rechazo por falso positivo devuelve 400 y el cliente reclama; una sanitización devuelve 200 y un fichero aparentemente correcto, cuyo daño se descubre meses después. Por último, rompería `metadata.hash`, que es la identidad de registro del documento.
 >

@@ -14,7 +14,7 @@ import sequelize, { QueryTypes } from '../utils/db';
  * levanta un reescaneo sino la decision de alguien que responde del documento.
  *
  * Pasa a 'clean' conservando scan_signature, para que siga siendo trazable y se
- * pueda decidir si la firma merece entrar en clamav/local.ign2. El fichero no
+ * pueda decidir si la firma merece entrar en docker/clamav/local.ign2. El fichero no
  * se toca: alterarlo destruiria su hash y su firma electronica.
  */
 
@@ -48,7 +48,7 @@ const release = async () => {
   });
 
   log.warn(`Document ${id} (organization ${document.organization}) released from "${document.scan_status}" to "clean". Retained signature: ${document.scan_signature || 'none'}`);
-  log.info('If this signature keeps flagging legitimate documents, add it to clamav/local.ign2 and restart the clamav service.');
+  log.info('If this signature keeps flagging legitimate documents, add it to docker/clamav/local.ign2 and restart the clamav service.');
 }
 
 release()

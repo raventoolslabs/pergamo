@@ -17,7 +17,7 @@ const path = require('path');
 
 const RAIZ = __dirname;
 const ENV_FILE = path.join(RAIZ, '.env');
-const EJEMPLO = '.env.dev.example';
+const EJEMPLO = '.env.example';
 
 const rojo = (texto) => `\x1b[31m${texto}\x1b[0m`;
 const verde = (texto) => `\x1b[32m${texto}\x1b[0m`;

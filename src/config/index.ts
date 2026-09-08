@@ -37,7 +37,7 @@ const config = {
   valid_metadata_modify,
   valid_mimetype,
   // Reglas de contenido activo que este despliegue no aplica: el equivalente de
-  // clamav/local.ign2 para el detector propio. Un archivo de facturas firmadas
+  // docker/clamav/local.ign2 para el detector propio. Un archivo de facturas firmadas
   // lleva ficheros embebidos por norma y sin esta valvula queda en cuarentena
   // entero. Se anota siempre por que se ignora.
   malicious_active_content_ignore,

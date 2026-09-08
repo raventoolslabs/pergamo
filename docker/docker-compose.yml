@@ -1,5 +1,10 @@
 # Pergamo: escaner antivirico y aplicacion. Dos servicios, no tres.
 #
+#   docker compose -f docker/docker-compose.yml up --build
+#
+# El .env y el directorio ./data que montan los servicios se buscan junto a este
+# fichero, dentro de docker/; el contexto de construccion es la raiz.
+#
 # La base de datos NO se declara aqui. Este fichero levantaba antes su propio
 # contenedor de postgres con su propio volumen, y eso creaba una segunda base
 # en maquinas que ya tienen una: el destino sale ahora del .env (DB_HOST,
@@ -10,16 +15,17 @@
 #
 #   docker network create steamfront
 
+# Sin esto el proyecto tomaria el nombre del directorio ('docker'), y con el se
+# renombrarian la imagen y el volumen de firmas.
+name: "pergamo"
+
 services:
 
   clamav:
     container_name: "pergamo-clamav"
     # Version fijada: el motor y el formato de la base de firmas van
     # emparejados, y un salto de version no anunciado puede dejar a clamd sin
-    # cargar las firmas. Antes se instalaba `apk add clamav` sin fijar nada.
-    #
-    # Debe coincidir con la version que descarga las firmas en el host que las
-    # siembre a mano (ver refresh-clamav.sh del despliegue).
+    # cargar las firmas.
     image: "clamav/clamav:1.4.4"
     restart: "always"
     # El fichero de firmas ignoradas se COPIA al directorio de bases en el
@@ -61,8 +67,10 @@ services:
     container_name: "pergamo"
     #image: "pergamo"
     restart: "always"
+    # El contexto es la raiz del repositorio, no este directorio: alli viven el
+    # Dockerfile y el codigo que copia.
     build:
-      context: .
+      context: ".."
       dockerfile: "Dockerfile"
     # El 3000 es la puerta de entrada, la misma que usa `npm run dev` para la
     # interfaz de Vite. Los dos entornos comparten puerto a proposito: el proxy
