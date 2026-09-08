@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import sequelize, { QueryTypes } from "@/infrastructure/db/client";
+import Config from "@/shared/config";
 import log from "@/shared/logger";
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
@@ -50,6 +51,21 @@ const markApplied = async (id:string, transaction?:any) => {
 }
 
 /**
+ * Parametros de despliegue que una migracion necesita conocer.
+ *
+ * Van como GUC local de la transaccion porque el script se envia entero y sin
+ * replacements: enlazarlos romperia los casts '::' y los bloques $$.
+ */
+const setDeploymentParameters = async (transaction:any) => {
+
+  await sequelize.query("SELECT set_config('pergamo.embedding_dimensions', :dimensions, true);", {
+    replacements: { dimensions: String(Config.indexing.embedding.dimension) },
+    type: QueryTypes.SELECT,
+    transaction
+  });
+}
+
+/**
  * Aplica en orden las migraciones pendientes, cada una en su propia transaccion
  * junto con su registro: o se aplica entera o no deja rastro.
  *
@@ -86,6 +102,8 @@ export const runMigrations = async () => {
     const transaction = await sequelize.transaction();
 
     try {
+
+      await setDeploymentParameters(transaction);
 
       await sequelize.query(script, { transaction });
       await markApplied(id, transaction);

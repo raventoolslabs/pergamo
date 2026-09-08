@@ -1,4 +1,5 @@
 import { ScanStatus } from '@/domain/value-objects/scan-status';
+import { IndexStatus } from '@/domain/value-objects/index-status';
 
 export interface DocumentRow {
   id: string;
@@ -11,6 +12,13 @@ export interface DocumentRow {
   scan_signature: string | null;
   scan_engine: string | null;
   scan_date: Date | null;
+  index_status: IndexStatus;
+  index_model: string | null;
+  index_converter: string | null;
+  index_chunker_version: string | null;
+  index_chunks: number | null;
+  index_error: string | null;
+  index_date: Date | null;
 }
 
 // Lo que devuelve el listado: sin `path`, y con el total de la ventana.

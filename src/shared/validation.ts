@@ -22,6 +22,18 @@ export const escapeLike = (value:string) => value.replace(/[\\%_]/g, (char) => `
 const TRUE_VALUES = new Set(['true', '1', 'yes', 'y', 'on']);
 const FALSE_VALUES = new Set(['false', '0', 'no', 'n', 'off']);
 
+/**
+ * Una clave presente y vacia en el .env llega como cadena vacia, no como
+ * ausente, y entonces una validacion de opcional no se aplica: `EMBEDDING_BASE_URL=`
+ * fallaba con «Invalid URL» en vez de leerse como «no hay».
+ */
+export const optionalValue = (value:string|undefined) => {
+
+  const trimmed = value?.trim();
+
+  return trimmed ? trimmed : undefined;
+}
+
 export const parseBoolean = (value:string|undefined, defaultValue:boolean, name:string) => {
 
   if(value === undefined || value.trim() === '') return defaultValue;
@@ -63,6 +75,23 @@ export const configSchema = z.object({
   // Los nombres se contrastan con las reglas reales en app.ts: importar el
   // detector aqui crearia un ciclo.
   malicious_active_content_ignore: z.array(z.string()),
+  indexing: z.object({
+    enabled: z.boolean(),
+    max_chunks: z.number().int().positive(),
+    chunk_size: z.number().int().positive(),
+    chunk_overlap: z.number().int().min(0),
+    convert_timeout: z.number().int().positive(),
+    embedding: z.object({
+      provider: z.enum(['openai-compatible']),
+      base_url: z.string().url().optional(),
+      api_key: z.string().min(1).optional(),
+      model: z.string().min(1),
+      // Tope de pgvector para un indice HNSW sobre el tipo `vector`.
+      dimension: z.number().int().min(1).max(2000),
+      batch_size: z.number().int().positive(),
+      timeout: z.number().int().positive()
+    })
+  }),
   db: z.object({
     username: z.string().min(1),
     // Hay despliegues legitimos sin contrasena (trust, peer o IAM).
@@ -78,6 +107,18 @@ export const configSchema = z.object({
 .refine((config) => !config.enable_antivirus || !!(config.antivirus.host || config.antivirus.socket), {
   message: 'ENABLE_ANTIVIRUS requires CLAMAV_HOST or CLAMAV_SOCKET',
   path: ['antivirus', 'host']
+})
+// Mismo motivo: sin destino al que pedir vectores, la indexacion solo puede
+// fallar en el primer trabajo.
+.refine((config) => !config.indexing.enabled || !!config.indexing.embedding.base_url, {
+  message: 'INDEXING_ENABLED requires EMBEDDING_BASE_URL',
+  path: ['indexing', 'embedding', 'base_url']
+})
+// El solapamiento igual o mayor que el trozo no avanza: el troceado no
+// terminaria nunca.
+.refine((config) => config.indexing.chunk_overlap < config.indexing.chunk_size, {
+  message: 'INDEX_CHUNK_OVERLAP must be smaller than INDEX_CHUNK_SIZE',
+  path: ['indexing', 'chunk_overlap']
 });
 
 export const formatIssues = (error:any) =>

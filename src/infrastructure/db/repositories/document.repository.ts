@@ -2,7 +2,7 @@ import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import { Document, DocumentMetadata } from '@/domain/entities/document';
 import { TransactionScope } from '@/app/ports/unit-of-work';
 import {
-  DocumentListFilter, DocumentPage, DocumentRepository, ScanRecord
+  DocumentListFilter, DocumentPage, DocumentRepository, IndexResult, ScanRecord
 } from '@/app/ports/repositories/document.repository';
 import { DocumentRow, DocumentSummaryRow } from '@/infrastructure/db/schema/document.row';
 import { toDocument, toDocumentSummary } from '@/infrastructure/db/mappers/document.mapper';
@@ -44,7 +44,9 @@ export const documentRepository:DocumentRepository = {
 
     const result:any = await sequelize.query(
       `SELECT id, creation_date, modification_date, path, organization, metadata,
-        scan_status, scan_signature, scan_engine, scan_date
+        scan_status, scan_signature, scan_engine, scan_date,
+        index_status, index_model, index_converter, index_chunker_version,
+        index_chunks, index_error, index_date
       FROM pergamo.document WHERE organization = :organization AND id = :id;`, {
       replacements: { id, organization },
       type: QueryTypes.SELECT
@@ -161,5 +163,33 @@ export const documentRepository:DocumentRepository = {
       total: rows.length ? Number.parseInt(rows[0].total) : 0,
       documents: rows.map(toDocumentSummary)
     };
+  },
+
+  async setIndexStatus(document, status, error?, scope?:TransactionScope) {
+
+    await sequelize.query(
+      `UPDATE pergamo.document
+      SET index_status = :status, index_error = :error, index_date = CURRENT_TIMESTAMP
+      WHERE id = :document;`, {
+      replacements: { document, status, error: error ?? null },
+      type: QueryTypes.UPDATE,
+      transaction: scope as any
+    });
+  },
+
+  async finishIndexing(document, hash, result:IndexResult, scope?:TransactionScope) {
+
+    const [, affected]:any = await sequelize.query(
+      `UPDATE pergamo.document
+      SET index_status = 'indexed', index_model = :model, index_converter = :converter,
+          index_chunker_version = :chunkerVersion, index_chunks = :chunks,
+          index_error = NULL, index_date = CURRENT_TIMESTAMP
+      WHERE id = :document AND metadata->>'hash' = :hash;`, {
+      replacements: { document, hash, ...result },
+      type: QueryTypes.UPDATE,
+      transaction: scope as any
+    });
+
+    return affected > 0;
   }
 };

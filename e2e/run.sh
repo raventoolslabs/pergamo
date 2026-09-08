@@ -75,6 +75,8 @@ fi
 
 # --- base de datos desechable -----------------------------------------------
 
+# Con pgvector y no la imagen oficial: la migracion 005 lo exige, y aqui el rol
+# de la aplicacion ES el superusuario del contenedor, asi que la crea sola.
 say "Levantando la base de datos de prueba (${DB_CONTAINER})"
 docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$DB_CONTAINER" \
@@ -82,7 +84,7 @@ docker run -d --name "$DB_CONTAINER" \
   -e POSTGRES_PASSWORD="$DB_PASSWORD" \
   -e POSTGRES_DB="$DB_NAME" \
   -p "127.0.0.1:${DB_PORT}:5432" \
-  postgres:16-alpine >/dev/null
+  pgvector/pgvector:0.8.6-pg18-trixie >/dev/null
 
 for _ in $(seq 1 60); do
   docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 && break
@@ -110,6 +112,10 @@ export DB_NAME="$DB_NAME"
 export DB_SSL=false
 export DEBUG=false
 export ENABLE_ANTIVIRUS=false
+# La suite corta no depende de la maquina de inferencia. E2E_INDEXING=1 la
+# activa para el recorrido que si la necesita.
+export INDEXING_ENABLED="${E2E_INDEXING:+true}"
+export INDEXING_ENABLED="${INDEXING_ENABLED:-false}"
 export REMOVE_FILE_DISK=true
 export JWT_EXPIRES_IN=8h
 export TRUST_PROXY=0

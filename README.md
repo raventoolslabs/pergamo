@@ -8,13 +8,14 @@ Es un **servicio único** (monolito modular ejecutado en un solo proceso Node), 
 
 ## Estructura del proyecto
 
-* `src/routes` — definición de rutas y encadenado de middleware.
-* `src/controllers` — lógica de negocio de documentos y organizaciones.
-* `src/models` — interfaces TypeScript de las entidades.
-* `src/middleware` — autenticación JWT, manejo de errores y logging por petición.
-* `src/utils` — base de datos, JWT, hashing, ficheros, tipo de fichero, antivirus, migraciones y logger.
-* `src/config` — configuración por variables de entorno e `init.sql` (esquema, triggers y funciones).
-* `src/migrations` — migraciones SQL versionadas (ver más abajo).
+La API sigue una arquitectura por capas, con la regla de dependencias descrita en la skill `ddd-architecture` y comprobada por `test/00-architecture.test.ts`.
+
+* `src/api` — transporte HTTP: controladores, rutas, middleware y DTO de entrada y salida. Aquí, y solo aquí, una excepción de dominio se traduce a código HTTP.
+* `src/app` — casos de uso (`use-cases`, separados en commands y queries) y los puertos (`ports`) que declaran lo que necesitan del exterior.
+* `src/domain` — entidades, value objects y excepciones. No conoce ni la base de datos ni HTTP.
+* `src/infrastructure` — implementaciones de esos puertos: repositorios, cliente y migraciones de base de datos, almacenamiento de ficheros, ClamAV, JWT e indexación.
+* `src/shared` — configuración por variables de entorno, logger, hashing y utilidades transversales.
+* `src/container.ts` — punto de composición: enchufa las implementaciones a los puertos, y es el único camino por el que la capa `api` alcanza una.
 * `src/scripts` — tareas de operación: reescaneo del corpus y liberación de falsos positivos.
 * `web` — interfaz web (React + Vite), proyecto npm propio; su build cae en `dist/web`.
 * `web/src/i18n` — catálogo de la interfaz: clave en inglés, texto en español. Ningún literal de cara al usuario vive suelto en el JSX.
@@ -276,13 +277,15 @@ El aislamiento por organización se aplica igual que en el resto: el `WHERE orga
 
 ## Migraciones de base de datos
 
-`src/config/init.sql` solo se aplica en la **primera** instalación. Cualquier cambio de esquema posterior va en `src/migrations` como fichero `.sql` numerado, y lo aplica automáticamente `npm run init` en cada arranque.
+`src/infrastructure/db/sql/init.sql` solo se aplica en la **primera** instalación. Cualquier cambio de esquema posterior va en `src/infrastructure/db/migrations` como fichero `.sql` numerado, y lo aplica automáticamente `npm run init` en cada arranque.
 
 * Cada migración se ejecuta dentro de su propia transacción junto con su registro en `pergamo.schema_migrations`: o se aplica entera, o no deja rastro.
 * Las migraciones ya aplicadas se omiten, de modo que arrancar varias veces es seguro.
 * En una base de datos anterior a este mecanismo, la migración `001_init` se marca como aplicada automáticamente (baseline) sin reejecutar `init.sql`.
 
-Para añadir una migración, crea `src/migrations/00N_descripcion.sql`. El orden de aplicación es alfabético.
+Para añadir una migración, crea `src/infrastructure/db/migrations/00N_descripcion.sql`. El orden de aplicación es alfabético.
+
+Antes de cada script, el runner inyecta como GUC local de la transacción los parámetros de despliegue que una migración pueda necesitar —hoy solo `pergamo.embedding_dimensions`—. Van así porque el fichero se envía entero y sin `replacements`: enlazarlos rompería los casts `::` y los bloques `$$`.
 
 ## Notas de migración desde la versión 1.0.2
 
@@ -533,6 +536,79 @@ X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
 Ha de subirse **exacto**: la firma de ClamAV para EICAR es un hash del fichero completo, así que cualquier byte añadido la anula. Para probar la detección dentro de un fichero grande hay que embeberlo como una entrada de un archivo comprimido, que es lo que hace la prueba del límite de tamaño.
 
 EICAR responde a «¿llega el fichero al motor?», que es una pregunta distinta de «¿sirve el motor para esto?». Para la segunda está el corpus de `test/assets/payloads/` (ver su `README.md`), con el detalle de qué reconoce ClamAV en cada fichero y por qué diez de los once no le corresponden. Aviso al clonar: `payload1.pdf` tiene firma, y un antivirus con vigilancia en tiempo real puede llevárselo del directorio de trabajo.
+
+## Indexación semántica
+
+Desactivada por defecto. Con `INDEXING_ENABLED=false` Pergamo se comporta exactamente
+como antes de que existiera: no se convierte nada, no se piden vectores y no se abre
+ninguna conexión con la máquina de inferencia.
+
+### Qué hace
+
+Convierte el documento a bloques con su procedencia, los trocea, pide un vector por
+trozo y los guarda en `pergamo.document_chunk_v1`.
+
+Los trozos viven en la misma base que los documentos, y no en un almacén vectorial
+aparte, porque son **dato derivado**: el `ON DELETE CASCADE` los borra solos, la clave
+foránea de organización garantiza el aislamiento entre inquilinos sin depender de que
+nadie recuerde un `WHERE`, y escribir el índice cabe en la misma transacción que el
+documento.
+
+### El recorrido
+
+| Paso | Qué pasa |
+|---|---|
+| Conversión | `officeParser`, recorriendo el AST. No se le pide el markdown ya montado: la página de un PDF, la diapositiva de un PPTX y el nombre de hoja de un XLSX viven en nodos contenedores y desaparecen al aplanar el documento. |
+| Troceado | Propio y versionado (`v1`). Corte por encabezado, luego por párrafo, luego duro con solapamiento. Las tablas se parten por filas **repitiendo la cabecera**. |
+| Migas de pan | Cada trozo se prefija con la ruta de encabezados que lo contiene, y ese texto prefijado es el que se guarda **y** el que se embebe: no hay dos versiones de lo indexado. |
+| Vectores | Un cliente `openai-compatible` cubre Ollama, vLLM y OpenAI. Se piden por lotes, que es lo que más afecta al tiempo de una reindexación. |
+| Escritura | Borrado e inserción en una transacción, cerrada con un `UPDATE ... WHERE metadata->>'hash' = :hash`. Si no afecta a ninguna fila se deshace todo: el fichero se reemplazó mientras se convertía. |
+
+### Estados
+
+`index_status` vive en columnas propias de `pergamo.document`, nunca dentro de
+`metadata`, por la misma razón que `scan_status`: `metadata` la modifica el cliente a
+través de una allowlist configurable.
+
+| Estado | Significa |
+|---|---|
+| `none` | No se pidió indexar, o el documento está retenido. |
+| `pending` | Encolado, o devuelto a la cola porque el proveedor no respondió. |
+| `indexing` | Un worker lo tiene entre manos. |
+| `indexed` | Tiene vectores, y `index_model` dice con qué modelo. |
+| `error` | `FILE_MISSING` o `EMPTY_CONTENT` —lo que produce un PDF escaneado sin capa de texto—. No se reintenta. |
+| `unsupported` | Mimetype sin conversor. No se reintenta. |
+
+Un documento nunca pasa a `indexed` sin vectores: si la máquina de inferencia no
+responde, vuelve a `pending` y lo recupera el siguiente barrido.
+
+### La trampa del operator class
+
+El índice se crea con `vector_cosine_ops`, que **obliga** a consultar con `<=>`. Con
+`<->` o `<#>` el planificador deja de poder usarlo y recorre la tabla entera: sin error
+y sin aviso, devolviendo resultados que parecen correctos.
+
+Por eso la única consulta ANN del proyecto vive en un solo fichero, la distancia forma
+parte del contrato del proveedor de embeddings, y `assertEmbeddingSchema` compara ambas
+cosas **al arrancar**. Lo mismo con la anchura del vector: la columna se crea con
+`EMBEDDING_DIMENSION` y el arranque aborta si dejan de coincidir, en lugar de fallar en
+el primer trabajo.
+
+### Prerrequisito
+
+pgvector es requisito de **toda** instalación, indexe o no: la migración `005` lo exige.
+No es una extensión «trusted», así que la instala el superusuario junto a las otras tres.
+La alternativa —crear las tablas solo si la extensión está— dejaría dos esquemas
+distintos bajo el mismo id en `pergamo.schema_migrations`.
+
+### Superficie nueva
+
+Se introduce un parser de documentos sobre ficheros no confiables, contra un principio
+explícito del proyecto. Se acota: solo sobre documentos que ya pasaron el antivirus y el
+filtro de contenido activo, con tope de tiempo por documento y límites de descompresión,
+que es lo que el propio `officeParser` pide hacer —su README declara mantenedor único y
+hardening «best-effort, not a guarantee»—. Cuando exista el worker suelto, además en otro
+proceso.
 
 ## Licencia
 

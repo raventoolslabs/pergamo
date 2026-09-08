@@ -1,4 +1,5 @@
 import { ScanStatus } from '@/domain/value-objects/scan-status';
+import { IndexStatus } from '@/domain/value-objects/index-status';
 
 /**
  * Documento depositado.
@@ -30,6 +31,22 @@ export interface Document {
   scanSignature?: string;
   scanEngine?: string;
   scanDate?: Date;
+  index: IndexState;
+}
+
+/**
+ * Estado de la indexacion semantica. En columnas propias y nunca dentro de
+ * `metadata`: esa la modifica el cliente por una allowlist configurable, y una
+ * clave de estado ahi le dejaria marcarse como indexado a si mismo.
+ */
+export interface IndexState {
+  status: IndexStatus;
+  model?: string;
+  converter?: string;
+  chunkerVersion?: string;
+  chunks?: number;
+  error?: string;
+  date?: Date;
 }
 
 // Lo que un listado necesita: sin `path`, que es almacenamiento y no sale nunca.

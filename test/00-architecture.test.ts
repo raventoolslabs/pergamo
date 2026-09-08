@@ -53,6 +53,23 @@ describe('Layer dependencies', () => {
     expect(offences).toEqual([]);
   });
 
+  /**
+   * Ni el dominio ni los casos de uso abren ficheros: lo que necesiten pasa por
+   * un puerto. Es la unica dependencia de infraestructura que no se ve en un
+   * import de @/, y por eso se comprueba aparte.
+   *
+   * `path` no cuenta: manipular una cadena de ruta no es tocar el disco.
+   */
+  it('Should not touch the filesystem from domain or app', () => {
+
+    const offences = files
+      .filter((file) => ['domain', 'app'].includes(path.relative(SRC, file).split(path.sep)[0]))
+      .filter((file) => /from\s+['"](fs|fs\/promises|fs-extra)['"]/.test(fs.readFileSync(file, 'utf8')))
+      .map((file) => path.relative(SRC, file));
+
+    expect(offences).toEqual([]);
+  });
+
   // La excepcion que define un adaptador: implementa una interfaz declarada en
   // app/ports. Cualquier otra entrada en app/ desde infrastructure esta mal.
   it('Should only reach app/ports from infrastructure', () => {

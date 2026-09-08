@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { Dialect } from 'sequelize';
 
-import { configSchema, formatIssues, parseBoolean } from '@/shared/validation';
+import { configSchema, formatIssues, optionalValue, parseBoolean } from '@/shared/validation';
 
 dotenv.config();
 
@@ -23,9 +23,9 @@ const config = {
   // Sin esto NodeClam ejecuta el binario clamdscan local en vez de abrir
   // conexion, y con clamd en su propio contenedor eso no funciona.
   antivirus: {
-    host: process.env.CLAMAV_HOST,
+    host: optionalValue(process.env.CLAMAV_HOST),
     port: process.env.CLAMAV_PORT ? Number.parseInt(process.env.CLAMAV_PORT) : 3310,
-    socket: process.env.CLAMAV_SOCKET,
+    socket: optionalValue(process.env.CLAMAV_SOCKET),
     timeout: process.env.CLAMAV_TIMEOUT ? Number.parseInt(process.env.CLAMAV_TIMEOUT) : 60000,
     init_retries: process.env.CLAMAV_INIT_RETRIES ? Number.parseInt(process.env.CLAMAV_INIT_RETRIES) : 10,
     init_retry_delay_ms: process.env.CLAMAV_INIT_RETRY_DELAY_MS ? Number.parseInt(process.env.CLAMAV_INIT_RETRY_DELAY_MS) : 3000
@@ -49,6 +49,30 @@ const config = {
   rate_limit: {
     window_ms: process.env.RATE_LIMIT_WINDOW_MS ? Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS) : 900000,
     max: process.env.RATE_LIMIT_MAX ? Number.parseInt(process.env.RATE_LIMIT_MAX) : 10
+  },
+  // Indexacion semantica. Desactivada por defecto: sin ella Pergamo se comporta
+  // exactamente como antes de que existiera.
+  indexing: {
+    enabled: parseBoolean(process.env.INDEXING_ENABLED, false, 'INDEXING_ENABLED'),
+    // Superarlo es ConversionUnsupportedError: un documento que produce miles de
+    // trozos casi siempre es una extraccion que salio mal.
+    max_chunks: process.env.INDEX_MAX_CHUNKS ? Number.parseInt(process.env.INDEX_MAX_CHUNKS) : 2000,
+    chunk_size: process.env.INDEX_CHUNK_SIZE ? Number.parseInt(process.env.INDEX_CHUNK_SIZE) : 1500,
+    chunk_overlap: process.env.INDEX_CHUNK_OVERLAP ? Number.parseInt(process.env.INDEX_CHUNK_OVERLAP) : 200,
+    // Tope de tiempo por documento. El conversor abre ficheros no confiables:
+    // un PDF construido para no terminar nunca no puede bloquear al worker.
+    convert_timeout: process.env.INDEX_CONVERT_TIMEOUT ? Number.parseInt(process.env.INDEX_CONVERT_TIMEOUT) : 300000,
+    embedding: {
+      provider: process.env.EMBEDDING_PROVIDER || 'openai-compatible',
+      base_url: optionalValue(process.env.EMBEDDING_BASE_URL),
+      api_key: optionalValue(process.env.EMBEDDING_API_KEY),
+      model: process.env.EMBEDDING_MODEL || 'bge-m3',
+      // Parte del esquema: la columna se crea con esta anchura y cambiarla
+      // despues exige reindexar. assertEmbeddingSchema lo comprueba al arrancar.
+      dimension: process.env.EMBEDDING_DIMENSION ? Number.parseInt(process.env.EMBEDDING_DIMENSION) : 1024,
+      batch_size: process.env.EMBEDDING_BATCH_SIZE ? Number.parseInt(process.env.EMBEDDING_BATCH_SIZE) : 16,
+      timeout: process.env.EMBEDDING_TIMEOUT ? Number.parseInt(process.env.EMBEDDING_TIMEOUT) : 120000
+    }
   },
   user_master: process.env.USER_MASTER,
   password_master: process.env.PASSWORD_MASTER,

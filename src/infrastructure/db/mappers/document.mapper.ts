@@ -15,7 +15,16 @@ export const toDocument = (row:DocumentRow):Document => ({
   scanStatus: row.scan_status,
   scanSignature: optional(row.scan_signature),
   scanEngine: optional(row.scan_engine),
-  scanDate: optional(row.scan_date)
+  scanDate: optional(row.scan_date),
+  index: {
+    status: row.index_status,
+    model: optional(row.index_model),
+    converter: optional(row.index_converter),
+    chunkerVersion: optional(row.index_chunker_version),
+    chunks: optional(row.index_chunks),
+    error: optional(row.index_error),
+    date: optional(row.index_date)
+  }
 });
 
 export const toDocumentSummary = (row:DocumentSummaryRow):DocumentSummary => ({

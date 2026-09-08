@@ -23,6 +23,10 @@ export const documentStorage:FileStorage = {
     await FilesUtils.mvAsync(from, to);
   },
 
+  async exists(filePath) {
+    return fs.promises.access(filePath).then(() => true).catch(() => false);
+  },
+
   /**
    * Desplaza las versiones existentes un numero hacia arriba y comprime la
    * actual como `.1`, descartando lo que exceda MAX_VERSION_FILES.

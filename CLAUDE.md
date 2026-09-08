@@ -37,6 +37,6 @@ importa cualquiera. Lo demas esta prohibido.
 npm run dev          # API + interfaz en desarrollo
 npm run dev:seed     # datos de prueba
 npx tsc --noEmit     # comprobacion de tipos
-npx jest             # tests de integracion
+npm test             # tests (jest necesita --experimental-vm-modules)
 ./e2e/run.sh         # tests end-to-end (Playwright)
 ```

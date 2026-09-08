@@ -4,6 +4,8 @@ import Config from '@/shared/config';
 import log from '@/shared/logger';
 import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { activeContentRules } from '@/infrastructure/antivirus/active-content';
+import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
+import { indexingDeps, searchIndex } from '@/container';
 import FilesUtils from '@/infrastructure/files/storage';
 import express from 'express';
 import path from 'path';
@@ -73,6 +75,16 @@ export const app = async (port:any = Config.port) => {
     await antivirus.init();
   } else {
     log.warn('Antivirus DISABLED (ENABLE_ANTIVIRUS is not enabled): uploads are stored without being scanned');
+  }
+
+  // El esquema y el proveedor tienen que decir lo mismo ANTES de aceptar nada:
+  // una dimension que no cuadra o un operador equivocado no fallan solos, dan
+  // resultados que no significan nada.
+  if(Config.indexing.enabled) {
+    await assertEmbeddingSchema(searchIndex());
+    await indexingDeps.embedder.init();
+  } else {
+    log.warn('Indexing DISABLED (INDEXING_ENABLED is not enabled): documents are stored without being indexed');
   }
 
   const app = express();
