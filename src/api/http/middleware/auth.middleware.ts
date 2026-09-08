@@ -1,36 +1,32 @@
-import log from '@/infrastructure/logging/logger';
-import JWTUtil from '@/infrastructure/security/jwt';
-import { StatusCodes, ValidationError } from '@/api/http/middleware/error.middleware';
+import log from '@/shared/logger';
+import { UnauthorizedError } from '@/domain/exceptions/domain.exception';
+import { organizationDeps } from '@/container';
 
-export const authHandler = async (req, res, next) => {
+const authenticate = async (req) => {
 
   const token = req.headers['authorization'];
 
+  if(!token) throw new UnauthorizedError('TOKEN_REQUIRED', 'Token not provided');
+
+  req.user = await organizationDeps.tokens.verify(token);
+
+  log.debug(`${req.method} ${req.originalUrl} - ${req.id} | Organization: ${req.user.name}`);
+}
+
+export const authHandler = async (req, res, next) => {
   try {
-
-    if (!token) throw new ValidationError(StatusCodes.UNAUTHORIZED, 'TOKEN_REQUIRED','Token not provided')
-
-    req.user = await JWTUtil.verifyToken(token);
-    log.debug(`${req.method} ${req.originalUrl} - ${req.id} | Organization: ${req.user.name}`);
+    await authenticate(req);
     next();
-
   } catch(err) {
     next(err);
   }
 };
 
 export const authMasterHandler = async (req, res, next) => {
-
-  const token = req.headers['authorization'];
-
   try {
-
-    if (!token) throw new ValidationError(StatusCodes.UNAUTHORIZED, 'TOKEN_REQUIRED','Token not provided')
-
-    req.user = await JWTUtil.verifyToken(token);
-    if (!req.user.master) throw new ValidationError(StatusCodes.UNAUTHORIZED, 'NOT_MASTER','User not master')
+    await authenticate(req);
+    if(!req.user.master) throw new UnauthorizedError('NOT_MASTER', 'User not master');
     next();
-
   } catch(err) {
     next(err);
   }

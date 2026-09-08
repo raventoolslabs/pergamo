@@ -7,7 +7,7 @@ import { StatusCodes } from 'http-status-codes';
 import { app } from '@/server';
 import Config from '@/shared/config';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
-import { sha256File } from '@/infrastructure/security/hash';
+import { sha256File } from '@/shared/hash';
 import { verifyMimetype } from '@/infrastructure/files/filetype';
 import { detectActiveContent } from '@/infrastructure/antivirus/active-content';
 

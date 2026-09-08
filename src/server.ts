@@ -1,7 +1,7 @@
 import Middleware from '@/api/http/middleware';
 import Routes from '@/api/http/routes';
 import Config from '@/shared/config';
-import log from '@/infrastructure/logging/logger';
+import log from '@/shared/logger';
 import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { activeContentRules } from '@/infrastructure/antivirus/active-content';
 import FilesUtils from '@/infrastructure/files/storage';

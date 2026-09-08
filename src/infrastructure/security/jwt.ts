@@ -3,27 +3,27 @@ import path from "path"
 import jwt from 'jsonwebtoken';
 
 import Config from "@/shared/config";
-import { StatusCodes, ValidationError } from "@/api/http/middleware/error.middleware";
+import { UnauthorizedError } from "@/domain/exceptions/domain.exception";
+import { TokenPayload, TokenService } from "@/app/ports/services/token.service";
 
 const privateKey = fs.readFileSync(path.join(Config.path_base, '.key', 'private-key.pem'), 'utf8');
 const publicKey = fs.readFileSync(path.join(Config.path_base, '.key', 'public-key.pem'), 'utf8');
 
-const generateToken = (payload) => {
+const generate = (payload:TokenPayload) => {
   return jwt.sign(payload, privateKey, {
     algorithm: 'RS256',
     expiresIn: Config.jwt_expires_in
   });
 };
 
-const verifyToken = async (token) => {
+const verify = async (token:string):Promise<TokenPayload> => {
   try {
-    return await jwt.verify(token, publicKey, { algorithms: ['RS256'] });
+    return await jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as TokenPayload;
   } catch(err) {
-    throw new ValidationError(StatusCodes.UNAUTHORIZED, 'MALFORMED_TOKEN','Malformed token')
+    throw new UnauthorizedError('MALFORMED_TOKEN', 'Malformed token');
   }
 };
 
-export default{
-  generateToken,
-  verifyToken
-}
+export const jwtService:TokenService = { generate, verify };
+
+export default jwtService;

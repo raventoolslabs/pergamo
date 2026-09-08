@@ -1,32 +1,32 @@
-import {
-	StatusCodes,
-  getReasonPhrase,
-} from 'http-status-codes';
-import log from '@/infrastructure/logging/logger';
+import { StatusCodes, getReasonPhrase } from 'http-status-codes';
 
-class ValidationError extends Error {
+import log from '@/shared/logger';
+import { DomainError, DomainErrorKind } from '@/domain/exceptions/domain.exception';
 
-  statusCode:number;
-  error:string;
-
-  constructor(statusCode:number, error:string, message:string, req?:any) {
-    super();
-    this.statusCode = statusCode;
-    this.error = error;
-    this.message = message;
-    if(req) log.warn(`${req.method} ${req.originalUrl} - ${req.id} | Error(${error}): ${message}`);
-  }
-}
+/**
+ * Unico sitio donde un fallo de negocio se convierte en codigo HTTP. El dominio
+ * declara la clase del fallo y desconoce que esto se sirve por HTTP.
+ */
+const STATUS:Record<DomainErrorKind, number> = {
+  validation: StatusCodes.BAD_REQUEST,
+  unauthorized: StatusCodes.UNAUTHORIZED,
+  not_found: StatusCodes.NOT_FOUND,
+  locked: StatusCodes.LOCKED
+};
 
 const errorHandler = (err, req, res, next) => {
 
   if(err) {
-    if(err instanceof  ValidationError) {
+    if(err instanceof DomainError) {
 
-      res.status(err.statusCode)
+      const statusCode = STATUS[err.kind];
+
+      log.warn(`${req.method} ${req.originalUrl} - ${req.id} | Error(${err.code}): ${err.message}`);
+
+      res.status(statusCode)
       .set('Content-Type', 'application/json')
       .send({
-        statusCode: err.statusCode,
+        statusCode,
         error: err.message
       });
 
@@ -59,8 +59,4 @@ const errorHandler = (err, req, res, next) => {
   next();
 }
 
-export {
-  errorHandler,
-  StatusCodes,
-  ValidationError
-}
+export { errorHandler };

@@ -1,28 +1,14 @@
 import fs from 'fs';
 import NodeClam from 'clamscan';
 
-import log from '@/infrastructure/logging/logger';
+import log from '@/shared/logger';
 import Config from '@/shared/config';
-import { StatusCodes, ValidationError } from '@/api/http/middleware/error.middleware';
-
-// El escaner no esta disponible. Se distingue de una infeccion porque la
-// respuesta es otra: la infeccion es un 400 al cliente, esto no es culpa suya.
-export class ScannerUnavailableError extends Error {
-  constructor(message:string) {
-    super(message);
-    this.name = 'ScannerUnavailableError';
-  }
-}
-
-export interface ScanResult {
-  infected: boolean;
-  signature?: string;
-  engine: string;
-}
+import { ScannerUnavailableError } from '@/domain/exceptions/scanner-unavailable.exception';
+import { DocumentScanner, ScanVerdict } from '@/app/ports/services/document-scanner.service';
 
 const sleep = (ms:number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-class Antivirus {
+class Antivirus implements DocumentScanner {
 
   private clamscan;
   private engineVersion:string;
@@ -108,7 +94,7 @@ class Antivirus {
    * clamd corre en otro contenedor y no ve el sistema de ficheros, que es
    * ademas por lo que StreamMaxLength es el limite critico de clamd.conf.
    */
-  check = async (filePath:string):Promise<ScanResult> => {
+  check = async (filePath:string):Promise<ScanVerdict> => {
 
     await this.init();
 
@@ -136,17 +122,6 @@ class Antivirus {
     }
   }
 
-  /** Variante para las subidas: una infeccion corta la peticion con un 400; la
-      indisponibilidad se propaga y la decide el controlador. */
-  scan = async (filePath:string, req:any):Promise<ScanResult> => {
-
-    const result = await this.check(filePath);
-
-    if(result.infected) throw new ValidationError(StatusCodes.BAD_REQUEST,
-      'FILE_CORRUPT', `File is infected with ${result.signature}`, req);
-
-    return result;
-  }
 }
 
 export default new Antivirus();

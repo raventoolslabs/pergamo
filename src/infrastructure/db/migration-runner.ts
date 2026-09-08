@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import sequelize, { QueryTypes } from "@/infrastructure/db/client";
-import log from "@/infrastructure/logging/logger";
+import log from "@/shared/logger";
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 

@@ -1,6 +1,6 @@
 import * as UUID from 'uuid';
 
-import log from '@/infrastructure/logging/logger';
+import log from '@/shared/logger';
 import Config from '@/shared/config';
 
 export const globalHandler = (req, res, next) => {

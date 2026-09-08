@@ -6,7 +6,7 @@ import FilesUtils from '@/infrastructure/files/storage';
 import Config from '@/shared/config';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import { runMigrations } from '@/infrastructure/db/migration-runner';
-import log from '@/infrastructure/logging/logger';
+import log from '@/shared/logger';
 
 const createSchema = async () => {
 

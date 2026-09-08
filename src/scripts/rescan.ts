@@ -2,9 +2,10 @@ import fs from 'fs';
 import path from 'path';
 
 import Config from '@/shared/config';
-import log from '@/infrastructure/logging/logger';
+import log from '@/shared/logger';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
-import antivirus, { ScannerUnavailableError } from '@/infrastructure/antivirus/clamav.service';
+import antivirus from '@/infrastructure/antivirus/clamav.service';
+import { ScannerUnavailableError } from '@/domain/exceptions/scanner-unavailable.exception';
 
 /**
  * Reescaneo del corpus almacenado, tras cada actualizacion de firmas.
@@ -12,7 +13,7 @@ import antivirus, { ScannerUnavailableError } from '@/infrastructure/antivirus/c
  * Sin este barrido solo se escanearia en la subida, y un fichero limpio hoy
  * puede tener firma dentro de tres dias.
  *
- * Este proceso marca, nunca borra: utils/antivirus.ts fija removeInfected en
+ * Este proceso marca, nunca borra: clamav.service.ts fija removeInfected en
  * false, porque corromper en silencio un documento valido es peor defecto que
  * dejar pasar un virus.
  */

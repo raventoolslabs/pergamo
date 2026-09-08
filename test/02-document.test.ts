@@ -10,7 +10,7 @@ import mime from 'mime-types';
 import { app } from '@/server';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import Config from '@/shared/config'
-import { sha256File } from '@/infrastructure/security/hash';
+import { sha256File } from '@/shared/hash';
 import { verifyMimetype } from '@/infrastructure/files/filetype';
 import FilesUtils from "@/infrastructure/files/storage";
 

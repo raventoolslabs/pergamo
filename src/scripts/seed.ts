@@ -3,7 +3,7 @@ import path from 'path';
 import http from 'http';
 
 import Config from '@/shared/config';
-import log from '@/infrastructure/logging/logger';
+import log from '@/shared/logger';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import { app } from '@/server';
 

@@ -23,6 +23,7 @@ src/
 ```
   api  →  app  →  domain
   infrastructure  →  domain
+  infrastructure  →  app/ports        y solo app/ports: eso es un adaptador
   cualquiera      →  shared
 ```
 
@@ -35,9 +36,17 @@ Prohibido, sin excepciones:
   app     →  infrastructure     salvo por su puerto en app/ports
 ```
 
-La ultima es la que da el beneficio real: un caso de uso depende de la
-**interfaz** que declara en `app/ports`, no de su implementacion. Por eso se
-puede probar con dobles sin levantar Postgres, Redis ni clamd.
+Un caso de uso depende de la **interfaz** que declara en `app/ports`, no de su
+implementacion, y la recibe por parametro. Por eso se puede probar con dobles
+sin levantar Postgres, Redis ni clamd.
+
+Quien une las dos mitades es el **punto de composicion**, `src/container.ts`:
+importa las implementaciones y las enchufa a los puertos. Junto a `server.ts`,
+`index.ts` e `init.ts` esta fuera de las capas —son el arranque, no codigo de
+negocio— y es el unico camino por el que `api` alcanza una implementacion.
+
+`test/00-architecture.test.ts` comprueba esta tabla. Un import prohibido no
+rompe la compilacion: sin esa prueba, la arquitectura se erosiona en silencio.
 
 ## 2. Que va en cada capa
 
@@ -73,17 +82,21 @@ se encuentre.
 ### `infrastructure/`
 
 Implementaciones de los puertos: repositorios, cliente de base de datos,
-migraciones, sistema de ficheros, clamd, JWT, hash, logger. Aqui si se usa
-`snake_case` y tipos del driver, porque es donde vive esa realidad.
+migraciones, sistema de ficheros, clamd, JWT. Aqui si se usa `snake_case` y
+tipos del driver, porque es donde vive esa realidad.
 
 Cada repositorio trae consigo su **mapper** entre la fila y la entidad. La
 conversion ocurre en un sitio, no repartida por el codigo.
 
 ### `shared/`
 
-Configuracion (`shared/config`) y utilidades sin dueño: validacion de entorno,
-helpers de cadenas. Cualquier capa puede importarla, asi que **nada de logica de
-negocio aqui**: si algo del dominio acaba en `shared`, esta mal colocado.
+Configuracion (`shared/config`), logger, hash y utilidades sin dueño. Cualquier
+capa puede importarla, asi que **nada de logica de negocio aqui**: si algo del
+dominio acaba en `shared`, esta mal colocado.
+
+El logger vive aqui y no detras de un puerto a proposito: registrar es
+transversal, y una interfaz `Logger` que todas las capas tienen que recibir por
+parametro cuesta mas de lo que aisla.
 
 ### `public/`
 
@@ -122,13 +135,17 @@ Un caso de uso es **un fichero con una funcion exportada**, no una clase. La
 regla que importa es una responsabilidad por fichero; envolverla en una clase
 sin estado solo añade ceremonia, y el resto del proyecto es funcional.
 
-Las dependencias entran por parametro con un valor por defecto, que es lo que
-permite sustituirlas en las pruebas:
+Las dependencias entran **por parametro**, tipadas solo con sus puertos. No
+tienen valor por defecto: el defecto obligaria a importar la implementacion, que
+es exactamente lo que la capa no puede hacer. Quien las pasa es el controlador,
+con lo que le da `@/container`; una prueba pasa dobles.
 
 ```ts
-export const uploadDocument = async (input:UploadDocumentInput,
-  deps = { documents: documentRepository, scanner: clamavService }) => { ... }
+export const uploadDocument = async (input:UploadDocumentInput, deps:DocumentDeps) => { ... }
 ```
+
+El agregado agrupa sus dependencias en un `dependencies.ts` junto a sus casos de
+uso, para no repetir la lista en cada firma.
 
 Commands y queries van en carpetas separadas. Un command cambia estado; una
 query no.

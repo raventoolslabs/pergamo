@@ -1,8 +1,7 @@
-export default interface Organization {
+export interface Organization {
   id: string;
-  creation_date: Date;
-  modification_date: Date;
-  discharge_date?: Date;
+  creationDate: Date;
+  modificationDate: Date;
+  dischargeDate?: Date;
   name: string;
-  password?: string;
 }
