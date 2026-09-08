@@ -19,22 +19,20 @@ interface QueueItem {
  * que no este aqui se muestra con su mimetype entero: sera largo, pero es
  * cierto. Recortar por la barra convertia el ODT en
  * «vnd.oasis.opendocument.text».
+ *
+ * Solo los que el servidor puede verificar por firma: anunciar DOC, XLS o ZIP
+ * ofrecia formatos que la subida rechaza con un 400.
  */
 const FORMAT: Record<string, string> = {
   'application/pdf': 'PDF',
+  'application/rtf': 'RTF',
+  'application/epub+zip': 'EPUB',
   'application/vnd.oasis.opendocument.text': 'ODT',
   'application/vnd.oasis.opendocument.spreadsheet': 'ODS',
   'application/vnd.oasis.opendocument.presentation': 'ODP',
-  'application/msword': 'DOC',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
-  'application/vnd.ms-excel': 'XLS',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-  'image/jpeg': 'JPG',
-  'image/png': 'PNG',
-  'image/tiff': 'TIFF',
-  'text/plain': 'TXT',
-  'text/csv': 'CSV',
-  'application/zip': 'ZIP'
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX'
 };
 
 const formatOf = (mimetype: string) => FORMAT[mimetype] || mimetype;

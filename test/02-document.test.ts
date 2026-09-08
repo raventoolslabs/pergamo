@@ -266,6 +266,62 @@ describe('Document Tests', () => {
     await api.delete(`/document/${response.data.uuid}`, { headers: { 'authorization': token } });
   });
 
+  it('Should upload each format the deployment permits', async () => {
+
+    // El recorrido completo por formato: allowlist, escaneo y firma. Las firmas
+    // se prueban aparte en 07-filetype; esto fija que la subida las usa.
+    const files:Record<string, string> = {
+      'application/rtf': 'test.rtf',
+      'application/epub+zip': 'test.epub',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'test.docx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'test.xlsx',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'test.pptx'
+    };
+
+    for(const [mimetype, file] of Object.entries(files)) {
+
+      if(!Config.valid_mimetype.includes(mimetype)) continue;
+
+      const source = path.join(__dirname, 'assets', file);
+      const form = new FormData();
+      form.append('document', fs.createReadStream(source), { contentType: mimetype });
+
+      const response = await api.post('/document', form, {
+        headers: { 'authorization': token, ...form.getHeaders() }
+      });
+
+      expect({ file, status: response.status }).toEqual({ file, status: 200 });
+      expect(response.data.mimetype).toBe(mimetype);
+      expect(response.data.hash).toBe(await sha256File(source));
+
+      await api.delete(`/document/${response.data.uuid}`, { headers: { 'authorization': token } });
+    }
+  });
+
+  it('Should reject an OOXML declared as another OOXML', async () => {
+
+    // Los tres comparten cabecera de ZIP: sin leer el content type real dentro
+    // del paquete, este deposito entraria como si fuese una hoja de calculo.
+    const xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    if(!Config.valid_mimetype.includes(xlsx)) {
+      return console.warn(`VALID_MIMETYPE no incluye ${xlsx}; se omite`);
+    }
+
+    const form = new FormData();
+    form.append('document', fs.createReadStream(path.join(__dirname, 'assets', 'test.docx')), {
+      filename: 'disfrazado.xlsx',
+      contentType: xlsx
+    });
+
+    const response = await api.post('/document', form, {
+      headers: { 'authorization': token, ...form.getHeaders() }
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.data.error).toContain('does not match the declared mimetype');
+  });
+
   it('Should reject a permitted mimetype that has no content signature', async () => {
 
     // verifyMimetype es fail-closed: un mimetype de VALID_MIMETYPE sin firma

@@ -362,10 +362,34 @@ Añade `scan_status`, `scan_signature`, `scan_engine` y `scan_date` a `pergamo.d
 | Valores de metadatos validados | Cadenas de más de 1024 caracteres, arrays de más de 64 elementos o estructuras anidadas devuelven `400`. |
 | `REMOVE_FILE_DISK` | Antes se ignoraba y los ficheros se borraban siempre. Ahora `false` los conserva de verdad: **revisa el valor en tu `.env` antes de desplegar**. |
 | Descarga de documentos no verificados | `GET /document/:id/file` devuelve `423` si el documento no está `clean`. `GET /document/:id` sigue devolviendo `200`. |
-| Mimetype sin firma de contenido | Antes se aceptaba con un `log.warn`. Ahora devuelve `400`: **ampliar `VALID_MIMETYPE` exige añadir la firma en `src/utils/filetype.ts`**. |
+| Mimetype sin firma de contenido | Antes se aceptaba con un `log.warn`. Ahora devuelve `400`: **ampliar `VALID_MIMETYPE` exige añadir la firma en `src/infrastructure/files/filetype.ts`**. |
 | `PUT /document/:id/file` sobre un id ajeno | Antes se analizaba el fichero *antes* de comprobar la propiedad, así que un tenant podía forzar análisis de 50 MB contra ids ajenos. Ahora el `404` llega primero. |
 | `Content-Disposition` | El nombre viaja entrecomillado y con escape, más `filename*` en UTF-8 (RFC 5987). Un cliente que parseara la cabecera sin comillas debe adaptarse. |
 | `X-Content-Type-Options: nosniff` | Presente en todas las respuestas. |
+
+### Formatos admitidos
+
+`VALID_MIMETYPE` decide qué se puede subir, pero no es la última palabra:
+`verifyMimetype` es **fail-closed**, así que un mimetype sin firma en
+`src/infrastructure/files/filetype.ts` se rechaza con un `400` aunque esté en la
+allowlist. Ampliar el catálogo es siempre las dos cosas.
+
+| Formato | Cómo se verifica |
+|---|---|
+| PDF | `%PDF-` al principio. |
+| RTF | `{\rtf1` al principio. |
+| ODT, ODS, ODP | ZIP cuya primera entrada es `mimetype` sin comprimir, con el valor exacto del formato. |
+| EPUB | La misma convención que ODF, con `application/epub+zip`. |
+| DOCX, XLSX, PPTX | ZIP cuya primera entrada es `[Content_Types].xml`. La cabecera solo distingue la **familia**, así que esa entrada se descomprime y se lee el content type real: sin ese paso, un XLSX declarado como DOCX pasaría. |
+
+**HTML, Markdown, CSV y texto plano quedan fuera a propósito.** No tienen magic
+bytes, así que no hay nada que contrastar con el mimetype declarado y un diseño
+fail-closed no puede verificarlos. Añadirlos a `VALID_MIMETYPE` sin resolver eso
+los haría fallar con un `400` que no explica nada.
+
+DOC, XLS, PPT (los binarios anteriores a OOXML), las imágenes y el ZIP genérico
+tampoco están: la interfaz los anunciaba y ni se podían subir ni se van a poder
+indexar.
 
 ### 9. Pendiente
 
