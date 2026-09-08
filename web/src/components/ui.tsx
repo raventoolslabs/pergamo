@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
-import type { ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef } from 'react';
+// Con alias: `KeyboardEvent` a secas taparia el del DOM, que es el que usa el
+// manejador de Escape del dialogo.
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 
 import { ApiError } from '../api/client';
 import type { IndexStatus, ScanStatus } from '../api/types';
@@ -122,6 +124,83 @@ export const IndexState = ({ status }: { status: IndexStatus }) => (
     <span>{INDEX[status]?.label || status}</span>
   </div>
 );
+
+/* =================================================================== tabs == */
+
+export interface Tab {
+  id: string;
+  label: string;
+  panel: ReactNode;
+}
+
+/**
+ * Pestañas con teclado completo —flechas, Home y End— y un solo punto de
+ * tabulación, que es como el patrón ARIA las define: llegar con Tab entra en la
+ * pestaña activa en vez de recorrerlas una a una.
+ *
+ * Dibuja la cinta y el panel juntos a propósito: separarlos dejaría los
+ * `aria-controls` en manos de quien lo use, y un identificador que no case
+ * rompe justo lo que no se ve mirando la pantalla.
+ */
+export const Tabs = ({ tabs, active, onChange, label }: {
+  tabs: Tab[];
+  active: string;
+  onChange: (id: string) => void;
+  /** Nombre de la cinta para quien navega a ciegas: «Índice semántico». */
+  label: string;
+}) => {
+
+  const prefix = useId();
+  const current = tabs.find((tab) => tab.id === active) ?? tabs[0];
+
+  const move = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+
+    const position = tabs.findIndex((tab) => tab.id === current.id);
+
+    const next =
+      event.key === 'ArrowRight' ? (position + 1) % tabs.length
+      : event.key === 'ArrowLeft' ? (position - 1 + tabs.length) % tabs.length
+      : event.key === 'Home' ? 0
+      : event.key === 'End' ? tabs.length - 1
+      : -1;
+
+    if (next < 0) return;
+
+    event.preventDefault();
+    onChange(tabs[next].id);
+    // El foco acompaña a la selección: sin esto la flecha siguiente se calcula
+    // desde una pestaña que ya no es la que se está mirando.
+    document.getElementById(`${prefix}-tab-${tabs[next].id}`)?.focus();
+  };
+
+  return (
+    <>
+      <div className="tabs" role="tablist" aria-label={label} onKeyDown={move}>
+        {tabs.map((tab) => (
+          <button
+            type="button"
+            key={tab.id}
+            id={`${prefix}-tab-${tab.id}`}
+            className={`tab${tab.id === current.id ? ' tab--active' : ''}`}
+            role="tab"
+            aria-selected={tab.id === current.id}
+            aria-controls={`${prefix}-panel-${tab.id}`}
+            tabIndex={tab.id === current.id ? 0 : -1}
+            onClick={() => onChange(tab.id)}
+          >{tab.label}</button>
+        ))}
+      </div>
+
+      <div
+        className="tabs__panel"
+        id={`${prefix}-panel-${current.id}`}
+        role="tabpanel"
+        aria-labelledby={`${prefix}-tab-${current.id}`}
+        tabIndex={0}
+      >{current.panel}</div>
+    </>
+  );
+};
 
 /* ============================================================= pagination == */
 

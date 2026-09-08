@@ -1,4 +1,5 @@
 import { Document, DocumentSummary } from '@/domain/entities/document';
+import { StoredChunk } from '@/app/ports/repositories/document-chunk.repository';
 import { StoredVersion } from '@/app/ports/services/file-storage.service';
 
 /**
@@ -31,6 +32,24 @@ export const toIndexInfoResponse = (document:Document) => ({
   index_chunks: document.index.chunks ?? null,
   index_error: document.index.error ?? null,
   index_date: document.index.date ?? null
+});
+
+/**
+ * `content` sale tal cual se guardo, migas de pan incluidas: es exactamente el
+ * texto que se embebio, y es lo unico que permite comprobar que lo indexado y
+ * lo que se ve son lo mismo.
+ *
+ * El vector no aparece, aqui ni en ningun otro sitio.
+ */
+export const toChunkResponse = (chunk:StoredChunk) => ({
+  chunk_id: chunk.id,
+  position: chunk.position,
+  content: chunk.content,
+  page: chunk.page ?? null,
+  section: chunk.section ?? null,
+  heading_path: chunk.headingPath,
+  content_type: chunk.contentType,
+  length: chunk.length
 });
 
 export const toVersionResponse = (version:StoredVersion) => ({

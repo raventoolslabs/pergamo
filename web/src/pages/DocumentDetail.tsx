@@ -5,10 +5,12 @@ import { api } from '../api/client';
 import { useConfig } from '../api/config';
 import type { DocumentMetadata, DocumentVersion, IndexInfo, ScanInfo } from '../api/types';
 import { useToast } from '../components/toast';
+import { ChunkList } from '../components/ChunkList';
 import {
-  Datum, Dialog, ErrorNotice, INDEX, IndexState, Loading, Notice, TagsField, VERDICT,
+  Datum, Dialog, ErrorNotice, INDEX, IndexState, Loading, Notice, Tabs, TagsField, VERDICT,
   errorMessage, formatDate, formatSize, isDeliverable, verdictOf
 } from '../components/ui';
+import type { Tab } from '../components/ui';
 import { t } from '../i18n';
 
 /** Claves que fija el propio Pergamo al guardar: se muestran, no se editan. */
@@ -52,6 +54,7 @@ export const DocumentDetail = () => {
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
 
+  const [indexTab, setIndexTab] = useState('state');
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -211,6 +214,54 @@ export const DocumentDetail = () => {
   const otherFields = Object.entries(metadata).filter(([key]) =>
     !SYSTEM_FIELDS.includes(key) && !editable.includes(key) && key !== 'name' && key !== 'tags');
 
+  const indexState = indexInfo ? (
+    <>
+      <div className="index-state">
+        <IndexState status={indexInfo.index_status} />
+        {indexInfo.index_status === 'indexing' ? <span className="spinner" aria-hidden="true" /> : null}
+      </div>
+
+      <p className="section__note">{INDEX[indexInfo.index_status]?.detail}</p>
+
+      {indexInfo.index_status === 'indexed' ? (
+        <dl className="data">
+          <Datum term={t('detail.indexChunks')}>
+            {typeof indexInfo.index_chunks === 'number'
+              ? t('detail.indexChunkCount', { count: indexInfo.index_chunks })
+              : t('common.none')}
+          </Datum>
+          <Datum term={t('detail.indexModel')}>
+            <span className="mono">{indexInfo.index_model || t('common.none')}</span>
+          </Datum>
+          <Datum term={t('detail.indexDate')}>{formatDate(indexInfo.index_date)}</Datum>
+        </dl>
+      ) : null}
+
+      {/* El motivo, tal como lo guardo el trabajo. 'EMPTY_CONTENT' es el unico
+          codigo fijo y el caso frecuente —un PDF escaneado sin capa de texto—,
+          asi que se traduce; el resto es el mensaje de la excepcion y se
+          muestra tal cual antes que inventarle una explicacion. */}
+      {indexInfo.index_error ? (
+        <div className="spaced">
+          <Notice kind={indexInfo.index_status === 'error' ? 'error' : 'warn'}>
+            {indexInfo.index_error === 'EMPTY_CONTENT'
+              ? t('detail.indexEmptyContent')
+              : indexInfo.index_error}
+          </Notice>
+        </div>
+      ) : null}
+    </>
+  ) : null;
+
+  // La pestaña de trozos solo existe si hay trozos: ofrecerla sobre un
+  // documento sin indexar seria una pestaña vacia.
+  const indexTabs:Tab[] = [
+    { id: 'state', label: t('detail.indexTabState'), panel: indexState },
+    ...(indexInfo?.index_status === 'indexed'
+      ? [{ id: 'chunks', label: t('detail.indexTabChunks'), panel: <ChunkList document={id} /> }]
+      : [])
+  ];
+
   return (
     <>
       <Link to="/" className="back">{t('detail.back')}</Link>
@@ -324,41 +375,7 @@ export const DocumentDetail = () => {
       {indexInfo && (config?.indexing_enabled || indexInfo.index_status !== 'none') ? (
         <section className="section">
           <h2>{t('detail.index')}</h2>
-
-          <div className="index-state">
-            <IndexState status={indexInfo.index_status} />
-            {indexInfo.index_status === 'indexing' ? <span className="spinner" aria-hidden="true" /> : null}
-          </div>
-
-          <p className="section__note">{INDEX[indexInfo.index_status]?.detail}</p>
-
-          {indexInfo.index_status === 'indexed' ? (
-            <dl className="data">
-              <Datum term={t('detail.indexChunks')}>
-                {typeof indexInfo.index_chunks === 'number'
-                  ? t('detail.indexChunkCount', { count: indexInfo.index_chunks })
-                  : t('common.none')}
-              </Datum>
-              <Datum term={t('detail.indexModel')}>
-                <span className="mono">{indexInfo.index_model || t('common.none')}</span>
-              </Datum>
-              <Datum term={t('detail.indexDate')}>{formatDate(indexInfo.index_date)}</Datum>
-            </dl>
-          ) : null}
-
-          {/* El motivo, tal como lo guardo el trabajo. 'EMPTY_CONTENT' es el
-              unico codigo fijo y el caso frecuente —un PDF escaneado sin capa de
-              texto—, asi que se traduce; el resto es el mensaje de la excepcion
-              y se muestra tal cual antes que inventarle una explicacion. */}
-          {indexInfo.index_error ? (
-            <div className="spaced">
-              <Notice kind={indexInfo.index_status === 'error' ? 'error' : 'warn'}>
-                {indexInfo.index_error === 'EMPTY_CONTENT'
-                  ? t('detail.indexEmptyContent')
-                  : indexInfo.index_error}
-              </Notice>
-            </div>
-          ) : null}
+          <Tabs tabs={indexTabs} active={indexTab} onChange={setIndexTab} label={t('detail.index')} />
         </section>
       ) : null}
 

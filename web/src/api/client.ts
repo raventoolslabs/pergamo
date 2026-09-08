@@ -1,5 +1,5 @@
 import type {
-  DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, IndexInfo,
+  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, IndexInfo,
   Organization, OrganizationList, ScanInfo, ServerConfig
 } from './types';
 
@@ -143,6 +143,9 @@ export const api = {
   scan: (id: string) => request<ScanInfo>(`/document/${encodeURIComponent(id)}/scan`),
 
   indexInfo: (id: string) => request<IndexInfo>(`/document/${encodeURIComponent(id)}/index`),
+
+  chunks: (id: string, params: { limit?: number; offset?: number } = {}) =>
+    request<ChunkList>(`/document/${encodeURIComponent(id)}/chunks${query(params)}`),
 
   versions: (id: string) => request<DocumentVersion[]>(`/document/${encodeURIComponent(id)}/versions`),
 

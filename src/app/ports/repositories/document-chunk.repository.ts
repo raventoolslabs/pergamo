@@ -1,4 +1,4 @@
-import { EmbeddedChunk } from '@/domain/entities/chunk';
+import { Chunk, EmbeddedChunk } from '@/domain/entities/chunk';
 import { TransactionScope } from '@/app/ports/unit-of-work';
 
 export interface SearchQuery {
@@ -29,10 +29,37 @@ export interface SearchHit {
   score: number;
 }
 
+/**
+ * Un trozo tal y como se lee del almacen. Extiende Chunk con lo que solo existe
+ * una vez guardado, y NO tiene `embedding`: que el vector no pueda salir es una
+ * propiedad del tipo y no un WHERE que alguien deba acordarse de escribir.
+ */
+export interface StoredChunk extends Chunk {
+  id: number;
+  /** En caracteres, que es la unidad en que esta configurado el troceado. */
+  length: number;
+}
+
+export interface ChunkPage {
+  total: number;
+  chunks: StoredChunk[];
+}
+
+export interface ChunkPageQuery {
+  document: string;
+  // Obligatorio por el mismo motivo que en SearchQuery: sin ambito no compila.
+  organization: string;
+  limit: number;
+  offset: number;
+}
+
 export interface DocumentChunkRepository {
   replace(document:string, organization:string, chunks:EmbeddedChunk[], scope?:TransactionScope): Promise<void>;
   deleteByDocument(document:string, scope?:TransactionScope): Promise<void>;
   countByDocument(document:string): Promise<number>;
+  // Con ambito obligatorio, a diferencia de countByDocument: este si se alcanza
+  // por HTTP, y el aislamiento no puede depender de quien lo llame.
+  listByDocument(query:ChunkPageQuery): Promise<ChunkPage>;
   // El vector no sale nunca: un embedding es parcialmente reversible y hereda
   // la confidencialidad del documento.
   search(query:SearchQuery): Promise<SearchHit[]>;

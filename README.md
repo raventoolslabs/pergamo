@@ -122,7 +122,7 @@ Qué permite hacer, según con quién se entre:
 
 | Sesión | Puede |
 |---|---|
-| Organización | Listar, buscar y filtrar documentos; subirlos (varios a la vez, con arrastrar y soltar) pidiendo o no que se indexen; ver la ficha completa, con el estado del índice; editar los metadatos que permita `VALID_METADATA_MODIFY`; descargar; reemplazar el fichero; consultar las versiones; eliminar; y cambiar su propia contraseña. |
+| Organización | Listar, buscar y filtrar documentos; subirlos (varios a la vez, con arrastrar y soltar) pidiendo o no que se indexen; ver la ficha completa, con el estado del índice y sus trozos —formateados o en crudo—; editar los metadatos que permita `VALID_METADATA_MODIFY`; descargar; reemplazar el fichero; consultar las versiones; eliminar; y cambiar su propia contraseña. |
 | Master | Crear organizaciones, listarlas y cambiar la contraseña de cualquiera de ellas. |
 
 El token master **no pertenece a ninguna organización**, así que con él no se puede operar sobre
@@ -281,6 +281,7 @@ mano. Estos cuatro endpoints cubren ese hueco y son de solo lectura:
 | `GET /organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
 | `POST /search` | Autenticado | Búsqueda híbrida sobre los documentos de la organización del token. Devuelve el texto de cada fragmento y su procedencia, nunca el vector. |
 | `GET /document/:id/index` | Autenticado | Estado de la indexación semántica del documento. |
+| `GET /document/:id/chunks` | Organización | Los trozos del documento, paginados y en su orden: `{ total, limit, offset, chunks }`, con `content`, `position`, `page`, `section`, `heading_path`, `content_type` y `length`. Es lo que permite mirar dentro del índice —qué texto se extrajo y por dónde se cortó— sin entrar por SQL. `limit` va de 1 a 50 (8 por defecto), porque un trozo ronda los 1500 caracteres. **El vector no sale.** |
 | `GET /config` | Autenticado | Límites del despliegue: `enable_antivirus`, `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir —y no prometer un análisis que este despliegue no hace— en lugar de duplicar la configuración. |
 
 El aislamiento por organización se aplica igual que en el resto: el `WHERE organization` de
@@ -733,6 +734,14 @@ La alternativa —crear las tablas solo si la extensión está— dejaría dos e
 distintos bajo el mismo id en `pergamo.schema_migrations`.
 
 ### Superficie nueva
+
+El contenido de los trozos se pinta en la ficha del documento, y sale de ficheros de
+clientes. Se renderiza construyendo nodos de React y **nunca por `innerHTML`**, así que un
+documento con HTML incrustado no puede inyectar nada. El renderizador es propio
+(`web/src/components/ChunkContent.tsx`) y no una librería de markdown: el conversor emite una
+gramática de tres construcciones —tabla de tuberías, lista de guiones y párrafo, sin
+encabezados ni negritas ni enlaces—, y traerse el árbol de `unified` para eso son decenas de
+paquetes y unos 100 KB. Es el mismo criterio con que se descartó langchain para el troceado.
 
 Se introduce un parser de documentos sobre ficheros no confiables, contra un principio
 explícito del proyecto. Se acota: solo sobre documentos que ya pasaron el antivirus y el

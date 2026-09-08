@@ -416,6 +416,91 @@ a:hover { text-decoration-color: currentColor; }
 
 .index-state { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 
+/* =============================================================== pestanas == */
+
+/* Subrayado y no caja: dentro de una seccion que ya tiene su titulo, una cinta
+   de botones con fondo compite con el encabezado por la misma atencion. */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); margin-bottom: 18px; }
+.tab {
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.tab:hover { color: var(--ink); }
+.tab--active { color: var(--ink); border-bottom-color: var(--ink); }
+/* El foco se ve: la cinta se recorre con flechas y sin esto no hay forma de
+   saber donde se esta. */
+.tab:focus-visible { outline: 2px solid var(--ink); outline-offset: -4px; border-radius: 4px; }
+.tabs__panel:focus-visible { outline: none; }
+
+/* ================================================================= trozos == */
+
+.chunks { display: flex; flex-direction: column; gap: 14px; }
+
+.chunk { border: 1px solid var(--rule); border-radius: 10px; background: var(--sheet); }
+.chunk__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.chunk__position { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+.chunk__page { font-variant-numeric: tabular-nums; }
+/* La procedencia es lo que se comprueba de un vistazo, asi que se lleva el
+   espacio sobrante y empuja lo demas al otro extremo. */
+.chunk__path { flex: 1; min-width: 0; color: var(--ink-mid); }
+.chunk__meta { white-space: nowrap; }
+
+.chunk__raw { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.chunk__raw input { width: 13px; height: 13px; accent-color: var(--ink); }
+
+/* Tope de altura: un trozo son mil quinientos caracteres y ocho seguidos harian
+   una pagina por la que hay que bajar a ciegas. */
+.chunk__body { padding: 14px 16px; max-height: 320px; overflow-y: auto; font-size: 14px; }
+.chunk__body > :first-child { margin-top: 0; }
+.chunk__body > :last-child { margin-bottom: 0; }
+.chunk__body p { margin: 0 0 10px; line-height: 1.6; }
+
+/* --- markdown del trozo --- */
+
+/* Tabla propia y no '.table': aquella alinea a la derecha su ultima columna,
+   que en el contenido de un documento no significa nada. */
+/* Ajustada al contenido y no estirada al ancho del panel: una tabla de dos
+   columnas repartida en mil pixeles deja cada dato en una punta. */
+.md-table { border-collapse: collapse; font-size: 13px; max-width: 100%; }
+.md-table th, .md-table td {
+  padding: 7px 12px;
+  border: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+.md-table th { background: rgba(242, 241, 238, .025); font-weight: 500; color: var(--ink-mid); }
+
+.md-list { margin: 0 0 10px; padding-left: 20px; line-height: 1.6; }
+.md-list li { margin-bottom: 4px; }
+
+/* Se conservan los espacios y los saltos, que en un bloque de codigo son el
+   contenido, y se parten las lineas largas antes que hacer scroll horizontal. */
+.md-code {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-mid);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ============================================================= paginacion == */
 
 .pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 18px; }

@@ -36,6 +36,16 @@ export const documentListQuerySchema = z.object({
   order: z.enum(['asc', 'desc']).default('desc')
 }).strict();
 
+/**
+ * Un trozo ronda los mil quinientos caracteres, asi que la pagina es corta: con
+ * el defecto de veinticinco, una respuesta son cuarenta kilobytes de texto que
+ * casi nadie va a leer de una vez.
+ */
+export const documentChunkQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(8),
+  offset: z.coerce.number().int().min(0).default(0)
+}).strict();
+
 export const organizationListQuerySchema = z.object({
   ...paginationSchema,
   name: z.string().max(64).optional(),

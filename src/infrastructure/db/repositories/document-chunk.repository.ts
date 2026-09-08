@@ -2,7 +2,7 @@ import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import { EmbeddedChunk } from '@/domain/entities/chunk';
 import { TransactionScope } from '@/app/ports/unit-of-work';
 import {
-  DocumentChunkRepository, SearchHit, SearchQuery
+  ChunkPage, ChunkPageQuery, DocumentChunkRepository, SearchHit, SearchQuery, StoredChunk
 } from '@/app/ports/repositories/document-chunk.repository';
 
 // Postgres admite 65535 parametros por sentencia y cada trozo gasta nueve.
@@ -22,6 +22,17 @@ const toVector = (embedding:number[]) => `[${embedding.join(',')}]`;
 // literal de array y se castea en la sentencia.
 const toTextArray = (values:string[]) =>
   `{${values.map((value) => `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',')}}`;
+
+const toStoredChunk = (row:any):StoredChunk => ({
+  id: Number(row.id),
+  position: row.position,
+  content: row.content,
+  page: row.page ?? undefined,
+  section: row.section ?? undefined,
+  headingPath: row.heading_path || [],
+  contentType: row.content_type,
+  length: Number(row.length)
+});
 
 export const documentChunkRepository:DocumentChunkRepository = {
 
@@ -43,6 +54,43 @@ export const documentChunkRepository:DocumentChunkRepository = {
     });
 
     return rows[0].total;
+  },
+
+  /**
+   * Los trozos de un documento, en su orden. Filtra por documento Y por
+   * organizacion aunque el caso de uso ya haya resuelto el documento: es la
+   * unica consulta de trozos que se alcanza por HTTP pidiendo un documento
+   * concreto, y una segunda cerradura no cuesta nada.
+   *
+   * Columnas enumeradas, y `embedding` no esta entre ellas.
+   */
+  async listByDocument(query:ChunkPageQuery):Promise<ChunkPage> {
+
+    const replacements = { document: query.document, organization: query.organization };
+
+    const counted:any = await sequelize.query(
+      `SELECT count(*)::int AS total FROM pergamo.document_chunk_v1
+      WHERE document = :document AND organization = :organization;`, {
+      replacements,
+      type: QueryTypes.SELECT
+    });
+
+    const total = counted[0].total;
+
+    if(!total) return { total, chunks: [] };
+
+    const rows:any = await sequelize.query(
+      `SELECT id, position, content, page, section, heading_path, content_type,
+        length(content) AS length
+      FROM pergamo.document_chunk_v1
+      WHERE document = :document AND organization = :organization
+      ORDER BY position
+      LIMIT :limit OFFSET :offset;`, {
+      replacements: { ...replacements, limit: query.limit, offset: query.offset },
+      type: QueryTypes.SELECT
+    });
+
+    return { total, chunks: rows.map(toStoredChunk) };
   },
 
   /**

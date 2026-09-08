@@ -66,6 +66,35 @@ export interface IndexInfo {
   index_date: string | null;
 }
 
+/** Lo que el troceador dejó en la fila; describe el cuerpo entero del trozo,
+    porque el trozo se cierra al cambiar de tipo. */
+export type ChunkContentType = 'text' | 'table' | 'code' | 'list';
+
+/**
+ * Un trozo del índice. `content` viene tal cual se guardó, con la ruta de
+ * encabezados por delante: es exactamente el texto que se embebió.
+ *
+ * El vector no está aquí ni lo sirve la API.
+ */
+export interface DocumentChunk {
+  chunk_id: number;
+  position: number;
+  content: string;
+  page: number | null;
+  section: string | null;
+  heading_path: string[];
+  content_type: ChunkContentType;
+  /** En caracteres, que es la unidad en que está configurado el troceado. */
+  length: number;
+}
+
+export interface ChunkList {
+  total: number;
+  limit: number;
+  offset: number;
+  chunks: DocumentChunk[];
+}
+
 export interface DocumentVersion {
   version: number;
   created_at: string;

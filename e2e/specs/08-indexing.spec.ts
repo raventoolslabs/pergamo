@@ -52,6 +52,74 @@ test.describe('Semantic index', () => {
     expect(Number(document.index_chunks)).toBeGreaterThan(0);
   });
 
+  test('Should show the chunks with their provenance and formatting', async ({ page }) => {
+    test.setTimeout(90000);
+
+    await page.getByRole('button', { name: /subir documento/i }).click();
+
+    const dialog = page.getByRole('dialog');
+    // Este produce encabezados y una tabla, que es lo que hace falta para ver
+    // que el renderizador pinta algo y no vuelca tuberias.
+    await dialog.locator('input[type=file]').setInputFiles(asset('structured.docx'));
+    await dialog.getByRole('checkbox').check();
+    await dialog.getByRole('button', { name: /^subir/i }).click();
+    await expect(dialog.getByText(/subido/i)).toBeVisible();
+    await closeDialog(page);
+
+    await page.getByRole('link', { name: 'structured' }).first().click();
+    await expect(page.getByText(/^indexado$/i).first()).toBeVisible({ timeout: 60000 });
+
+    await page.getByRole('tab', { name: /trozos/i }).click();
+
+    // La tabla del documento se ve como tabla, con sus celdas, y no como el
+    // markdown de tuberias con que se guardo.
+    const table = page.getByRole('table').first();
+    await expect(table).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: 'Concepto' })).toBeVisible();
+    await expect(table.getByRole('cell', { name: 'Alta' })).toBeVisible();
+    await expect(table.getByRole('cell', { name: '100' })).toBeVisible();
+
+    // Y la procedencia, que es lo que permite comprobar que la cita es correcta.
+    await expect(page.getByText('Guia de Pergamo > Cuentas').first()).toBeVisible();
+
+    await shot(page, 'detail-chunks');
+
+    // El interruptor de crudo ensena el texto exacto que se embebio: las migas
+    // por delante y las tuberias sin formatear.
+    //
+    // El trozo no se guarda en una variable filtrada por «tiene tabla»: el
+    // localizador se resuelve de nuevo en cada uso, y en cuanto se pulsa el
+    // interruptor ese trozo deja de tener tabla y el filtro deja de casar.
+    const panel = page.locator('.chunks');
+
+    await panel.locator('.chunk').filter({ has: page.getByRole('table') }).first()
+      .getByRole('checkbox').check();
+
+    // Era la unica tabla del documento, asi que no queda ninguna dibujada.
+    await expect(panel.getByRole('table')).toHaveCount(0);
+    await expect(panel.locator('pre.md-code')).toContainText('| Concepto | Importe |');
+    await expect(panel.locator('pre.md-code')).toContainText('Guia de Pergamo > Cuentas');
+
+    await shot(page, 'detail-chunks-raw');
+  });
+
+  test('Should move between the index tabs with the keyboard', async ({ page }) => {
+
+    await page.getByRole('link', { name: 'structured' }).first().click();
+    await expect(page.getByRole('tab', { name: /trozos/i })).toBeVisible();
+
+    // El patron ARIA: se entra en la pestana activa y se cambia con flechas, no
+    // recorriendo una a una con Tab.
+    await page.getByRole('tab', { name: /^estado$/i }).focus();
+    await page.keyboard.press('ArrowRight');
+
+    await expect(page.getByRole('tab', { name: /trozos/i })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: /trozos/i })).toBeFocused();
+
+    await page.keyboard.press('Home');
+    await expect(page.getByRole('tab', { name: /^estado$/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
   test('Should leave a document out of the index when the box is not ticked', async ({ page }) => {
     await page.getByRole('button', { name: /subir documento/i }).click();
 

@@ -4,8 +4,12 @@ import log from '@/shared/logger';
 import { documentDeps as deps } from '@/container';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { formatIssues } from '@/shared/validation';
-import { documentListQuerySchema, documentUploadQuerySchema } from '@/api/http/dto/list-query.dto';
-import { toDocumentResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse } from '@/api/http/dto/document.dto';
+import {
+  documentChunkQuerySchema, documentListQuerySchema, documentUploadQuerySchema
+} from '@/api/http/dto/list-query.dto';
+import {
+  toChunkResponse, toDocumentResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
+} from '@/api/http/dto/document.dto';
 import { contentDisposition } from '@/api/http/content-disposition';
 
 import { uploadDocument } from '@/app/use-cases/document/commands/upload-document.handler';
@@ -16,6 +20,7 @@ import { getDocument } from '@/app/use-cases/document/queries/get-document.handl
 import { getDocumentFile } from '@/app/use-cases/document/queries/get-document-file.handler';
 import { listDocuments } from '@/app/use-cases/document/queries/list-documents.handler';
 import { listDocumentVersions } from '@/app/use-cases/document/queries/list-document-versions.handler';
+import { listDocumentChunks } from '@/app/use-cases/document/queries/list-document-chunks.handler';
 
 const trace = (req:any) => `${req.method} ${req.originalUrl} - ${req.id}`;
 
@@ -229,9 +234,40 @@ const indexInfo = async (req, res, next) => {
   }
 };
 
+// Para mirar dentro del indice: que texto se extrajo y por donde se corto. Sale
+// paginado porque un documento largo son miles de trozos de mil y pico
+// caracteres cada uno.
+const chunks = async (req, res, next) => {
+
+  try {
+
+    const query = documentChunkQuerySchema.safeParse(req.query);
+
+    if(!query.success) throw new ValidationError('INVALID_QUERY', formatIssues(query.error));
+
+    const { limit, offset } = query.data;
+
+    const page = await listDocumentChunks(
+      { organization: req.user.organization, document: requireId(req), limit, offset }, deps);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({
+        total: page.total,
+        limit,
+        offset,
+        chunks: page.chunks.map(toChunkResponse)
+      }));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   upload,
   indexInfo,
+  chunks,
   list,
   scanInfo,
   getMetadata,
