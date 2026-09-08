@@ -11,5 +11,11 @@ module.exports = {
   //
   // El coste es despreciable (la bateria entera baja de cinco segundos) y a
   // cambio el resultado deja de depender de como reparta Jest los ficheros.
-  maxWorkers: 1
+  maxWorkers: 1,
+
+  // El alias @/ de tsconfig.json: ts-jest compila, pero quien resuelve el
+  // modulo en tiempo de ejecucion es Jest.
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1'
+  }
 };

@@ -133,7 +133,7 @@ const arrancar = async () => {
 
   console.log(gris('→ Preparando esquema y claves…'));
 
-  const init = spawnSync('npx', ['ts-node', 'src/init.ts'], {
+  const init = spawnSync('npx', ['ts-node', '-r', 'tsconfig-paths/register', 'src/init.ts'], {
     cwd: RAIZ,
     stdio: 'inherit',
     env: process.env
@@ -209,7 +209,7 @@ const arrancar = async () => {
   process.on('SIGINT', () => apagar(0));
   process.on('SIGTERM', () => apagar(0));
 
-  lanzar('La API', path.join(RAIZ, 'node_modules', '.bin', 'ts-node'), ['src/index.ts']);
+  lanzar('La API', path.join(RAIZ, 'node_modules', '.bin', 'ts-node'), ['-r', 'tsconfig-paths/register', 'src/index.ts']);
 
   // PERGAMO_API es lo que hace que el proxy de Vite hable con ESTA API y no con
   // otra. PERGAMO_WEB_HOST es lo que permite que la interfaz se sirva por el

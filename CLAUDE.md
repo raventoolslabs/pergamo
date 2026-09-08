@@ -14,6 +14,23 @@ en espanol— y el flujo de git que envuelve la tarea: toda rama nace de un
 
 Aplica tambien al terminar la tarea, para la parte de subida y PR.
 
+**Antes de crear un fichero nuevo bajo `src/` o de mover codigo entre capas,
+invoca la skill `ddd-architecture`** (`Skill(skill: "ddd-architecture")`).
+Define las cinco capas, que puede importar a que, y donde vive cada cosa.
+
+## Arquitectura
+
+```
+src/api/              controladores, rutas, middleware, DTO
+src/app/              casos de uso y puertos
+src/domain/           entidades, value objects, excepciones
+src/infrastructure/   base de datos, ficheros, antivirus, criptografia
+src/shared/           configuracion y utilidades transversales
+```
+
+Dependencias: `api → app → domain`, `infrastructure → domain`, y `shared` la
+importa cualquiera. Lo demas esta prohibido.
+
 ## Comandos
 
 ```bash
