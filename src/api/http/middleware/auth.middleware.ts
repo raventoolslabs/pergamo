@@ -1,6 +1,6 @@
-import log from '..//utils/log';
-import JWTUtil from '../utils/jwt';
-import { StatusCodes, ValidationError } from './error.middleware';
+import log from '@/infrastructure/logging/logger';
+import JWTUtil from '@/infrastructure/security/jwt';
+import { StatusCodes, ValidationError } from '@/api/http/middleware/error.middleware';
 
 export const authHandler = async (req, res, next) => {
 

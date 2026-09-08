@@ -1,7 +1,7 @@
 import * as UUID from 'uuid';
 
-import log from '../utils/log';
-import Config from '../config';
+import log from '@/infrastructure/logging/logger';
+import Config from '@/shared/config';
 
 export const globalHandler = (req, res, next) => {
   req.id = UUID.v4();

@@ -4,17 +4,17 @@ import mime from 'mime-types';
 import path from 'path';
 import archiver from 'archiver';
 
-import log from '../utils/log';
-import Config from "../config";
-import antivirus, { ScannerUnavailableError } from "../utils/antivirus";
-import { detectActiveContent, activeContentSignature } from "../utils/activecontent";
-import FilesUtils from "../utils/files";
-import { verifyMimetype } from "../utils/filetype";
-import { metadataValueSchema, documentListQuerySchema, escapeLike, formatIssues } from "../utils/validation";
-import { sha256File } from "../utils/hash";
-import sequelize, { QueryTypes } from "../utils/db";
-import Document from "../models/document.models";
-import { ValidationError, StatusCodes } from "../middleware/error.middleware";
+import log from '@/infrastructure/logging/logger';
+import Config from "@/shared/config";
+import antivirus, { ScannerUnavailableError } from "@/infrastructure/antivirus/clamav.service";
+import { detectActiveContent, activeContentSignature } from "@/infrastructure/antivirus/active-content";
+import FilesUtils from "@/infrastructure/files/storage";
+import { verifyMimetype } from "@/infrastructure/files/filetype";
+import { metadataValueSchema, documentListQuerySchema, escapeLike, formatIssues } from "@/shared/validation";
+import { sha256File } from "@/infrastructure/security/hash";
+import sequelize, { QueryTypes } from "@/infrastructure/db/client";
+import Document from "@/domain/entities/document";
+import { ValidationError, StatusCodes } from "@/api/http/middleware/error.middleware";
 
 /**
  * Traduce el analisis de una subida a las columnas de estado.

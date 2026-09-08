@@ -2,7 +2,7 @@ import {
 	StatusCodes,
   getReasonPhrase,
 } from 'http-status-codes';
-import log from '../utils/log';
+import log from '@/infrastructure/logging/logger';
 
 class ValidationError extends Error {
 

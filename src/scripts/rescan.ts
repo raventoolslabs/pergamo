@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 
-import Config from '../config';
-import log from '../utils/log';
-import sequelize, { QueryTypes } from '../utils/db';
-import antivirus, { ScannerUnavailableError } from '../utils/antivirus';
+import Config from '@/shared/config';
+import log from '@/infrastructure/logging/logger';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import antivirus, { ScannerUnavailableError } from '@/infrastructure/antivirus/clamav.service';
 
 /**
  * Reescaneo del corpus almacenado, tras cada actualizacion de firmas.

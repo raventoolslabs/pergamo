@@ -1,4 +1,4 @@
-import Config from "../config";
+import Config from "@/shared/config";
 
 const pino = require('pino')
 

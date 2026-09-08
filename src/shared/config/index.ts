@@ -2,11 +2,11 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { Dialect } from 'sequelize';
 
-import { configSchema, formatIssues, parseBoolean } from '../utils/validation';
+import { configSchema, formatIssues, parseBoolean } from '@/shared/validation';
 
 dotenv.config();
 
-const path_base = process.env.DIR_DATA ? process.env.DIR_DATA : path.join(__dirname, '..','..', 'data');
+const path_base = process.env.DIR_DATA ? process.env.DIR_DATA : path.join(__dirname, '..', '..', '..', 'data');
 const valid_metadata_modify:string[] = process.env.VALID_METADATA_MODIFY ?
   process.env.VALID_METADATA_MODIFY.split(';').map((value) => value.trim()) : [];
 const valid_mimetype:string[] = process.env.VALID_MIMETYPE ?

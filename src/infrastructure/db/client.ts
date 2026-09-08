@@ -1,6 +1,6 @@
 import { Sequelize, QueryTypes, DataTypes } from 'sequelize';
 import pg from 'pg'
-import Config from '../config';
+import Config from '@/shared/config';
 
 const configDatabase:any = {
   username: Config.db.username,

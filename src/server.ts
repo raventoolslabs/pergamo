@@ -1,10 +1,10 @@
-import Middleware from './middleware';
-import Routes from './routes';
-import Config from './config';
-import log from './utils/log';
-import antivirus from './utils/antivirus';
-import { activeContentRules } from './utils/activecontent';
-import FilesUtils from './utils/files';
+import Middleware from '@/api/http/middleware';
+import Routes from '@/api/http/routes';
+import Config from '@/shared/config';
+import log from '@/infrastructure/logging/logger';
+import antivirus from '@/infrastructure/antivirus/clamav.service';
+import { activeContentRules } from '@/infrastructure/antivirus/active-content';
+import FilesUtils from '@/infrastructure/files/storage';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';

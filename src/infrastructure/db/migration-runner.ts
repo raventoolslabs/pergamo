@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 
-import sequelize, { QueryTypes } from "./db";
-import log from "./log";
+import sequelize, { QueryTypes } from "@/infrastructure/db/client";
+import log from "@/infrastructure/logging/logger";
 
-const MIGRATIONS_DIR = path.join(__dirname, '..', 'migrations');
+const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
 // Esquema que crea config/init.sql. Las instalaciones anteriores al runner ya
 // lo tienen aplicado, asi que se marca en vez de volver a ejecutarlo.

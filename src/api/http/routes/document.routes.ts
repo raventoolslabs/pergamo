@@ -1,7 +1,7 @@
 import multer from 'multer';
-import Middleware from '../middleware';
-import Config from '../config';
-import * as Controllers from '../controllers/document.controllers';
+import Middleware from '@/api/http/middleware';
+import Config from '@/shared/config';
+import * as Controllers from '@/api/http/controllers/document.controller';
 
 const upload = multer({
   dest: Config.tmp_base,

@@ -1,5 +1,5 @@
-import log from '../utils/log';
-import sequelize, { QueryTypes } from '../utils/db';
+import log from '@/infrastructure/logging/logger';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 
 /**
  * Liberacion de un falso positivo.

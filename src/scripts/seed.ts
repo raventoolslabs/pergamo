@@ -2,10 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import http from 'http';
 
-import Config from '../config';
-import log from '../utils/log';
-import sequelize, { QueryTypes } from '../utils/db';
-import { app } from '../app';
+import Config from '@/shared/config';
+import log from '@/infrastructure/logging/logger';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import { app } from '@/server';
 
 /**
  * Siembra de documentos de ejemplo, uno por cada estado de analisis.

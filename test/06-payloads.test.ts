@@ -4,12 +4,12 @@ import fs from 'fs';
 import FormData from 'form-data';
 import { StatusCodes } from 'http-status-codes';
 
-import { app } from '../src/app';
-import Config from '../src/config';
-import sequelize, { QueryTypes } from '../src/utils/db';
-import { sha256File } from '../src/utils/hash';
-import { verifyMimetype } from '../src/utils/filetype';
-import { detectActiveContent } from '../src/utils/activecontent';
+import { app } from '@/server';
+import Config from '@/shared/config';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import { sha256File } from '@/infrastructure/security/hash';
+import { verifyMimetype } from '@/infrastructure/files/filetype';
+import { detectActiveContent } from '@/infrastructure/antivirus/active-content';
 
 /**
  * Corpus de PDF con contenido activo (PayloadsAllThePDFs, Apache-2.0).

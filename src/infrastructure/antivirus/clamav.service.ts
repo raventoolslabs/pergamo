@@ -1,9 +1,9 @@
 import fs from 'fs';
 import NodeClam from 'clamscan';
 
-import log from './log';
-import Config from '../config';
-import { StatusCodes, ValidationError } from '../middleware/error.middleware';
+import log from '@/infrastructure/logging/logger';
+import Config from '@/shared/config';
+import { StatusCodes, ValidationError } from '@/api/http/middleware/error.middleware';
 
 // El escaner no esta disponible. Se distingue de una infeccion porque la
 // respuesta es otra: la infeccion es un 400 al cliente, esto no es culpa suya.

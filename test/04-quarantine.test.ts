@@ -4,9 +4,9 @@ import fs from 'fs';
 import FormData from 'form-data';
 import { StatusCodes } from 'http-status-codes';
 
-import { app } from '../src/app';
-import sequelize, { QueryTypes } from '../src/utils/db';
-import Config from '../src/config';
+import { app } from '@/server';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import Config from '@/shared/config';
 
 /**
  * Estado de cuarentena y bloqueo de descarga.

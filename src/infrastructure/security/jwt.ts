@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path"
 import jwt from 'jsonwebtoken';
 
-import Config from "../config";
-import { StatusCodes, ValidationError } from "../middleware/error.middleware";
+import Config from "@/shared/config";
+import { StatusCodes, ValidationError } from "@/api/http/middleware/error.middleware";
 
 const privateKey = fs.readFileSync(path.join(Config.path_base, '.key', 'private-key.pem'), 'utf8');
 const publicKey = fs.readFileSync(path.join(Config.path_base, '.key', 'public-key.pem'), 'utf8');

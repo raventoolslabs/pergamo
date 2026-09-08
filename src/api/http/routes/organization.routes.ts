@@ -1,9 +1,9 @@
 import rateLimit from 'express-rate-limit';
 
-import * as Controllers from '../controllers/organization.controllers';
-import { StatusCodes } from '../middleware/error.middleware';
-import Middleware from '../middleware';
-import Config from '../config';
+import * as Controllers from '@/api/http/controllers/organization.controller';
+import { StatusCodes } from '@/api/http/middleware/error.middleware';
+import Middleware from '@/api/http/middleware';
+import Config from '@/shared/config';
 
 const router = require('express').Router();
 

@@ -1,5 +1,5 @@
-import { app } from './app';
-import log from './utils/log';
+import { app } from '@/server';
+import log from '@/infrastructure/logging/logger';
 
 process.on('unhandledRejection', (reason:any) => {
   log.error(`Unhandled rejection: ${reason?.stack || reason}`);

@@ -3,7 +3,7 @@ import fs_extra from "fs-extra";
 import path from "path";
 import mv from "mv";
 
-import Config from '../config'
+import Config from '@/shared/config'
 
 const mvAsync = async (origen, destino) => {
   return new Promise((resolve, reject) => {

@@ -7,12 +7,12 @@ import { Readable } from 'stream';
 import FormData from 'form-data';
 import mime from 'mime-types';
 
-import { app } from '../src/app';
-import sequelize, { QueryTypes } from '../src/utils/db';
-import Config from '../src/config'
-import { sha256File } from '../src/utils/hash';
-import { verifyMimetype } from '../src/utils/filetype';
-import FilesUtils from "../src/utils/files";
+import { app } from '@/server';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import Config from '@/shared/config'
+import { sha256File } from '@/infrastructure/security/hash';
+import { verifyMimetype } from '@/infrastructure/files/filetype';
+import FilesUtils from "@/infrastructure/files/storage";
 
 const EICAR = `X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`;
 

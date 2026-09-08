@@ -1,7 +1,7 @@
 import fs from 'fs';
 import zlib from 'zlib';
 
-import Config from '../config';
+import Config from '@/shared/config';
 
 /**
  * Deteccion de contenido activo en un PDF.

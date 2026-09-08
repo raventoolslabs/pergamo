@@ -1,11 +1,11 @@
 
-import sequelize, { QueryTypes } from "../utils/db";
-import JWTUtils from '../utils/jwt';
-import { timingSafeEqualStr } from '../utils/hash';
-import Config from '../config';
-import { ValidationError, StatusCodes } from "../middleware/error.middleware";
+import sequelize, { QueryTypes } from "@/infrastructure/db/client";
+import JWTUtils from '@/infrastructure/security/jwt';
+import { timingSafeEqualStr } from '@/infrastructure/security/hash';
+import Config from '@/shared/config';
+import { ValidationError, StatusCodes } from "@/api/http/middleware/error.middleware";
 import owasp from 'owasp-password-strength-test';
-import { organizationListQuerySchema, escapeLike, formatIssues } from '../utils/validation';
+import { organizationListQuerySchema, escapeLike, formatIssues } from '@/shared/validation';
 
 owasp.config({
   allowPassphrases: true,
