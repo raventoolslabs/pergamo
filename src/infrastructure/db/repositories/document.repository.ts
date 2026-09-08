@@ -23,14 +23,15 @@ const scanReplacements = (scan:ScanRecord) => ({
 
 export const documentRepository:DocumentRepository = {
 
-  async create(organization, metadata, scan, scope?:TransactionScope):Promise<Document> {
+  async create(organization, metadata, scan, indexStatus, scope?:TransactionScope):Promise<Document> {
 
     const result:any = await sequelize.query(
-      `INSERT INTO pergamo.document(metadata, organization, scan_status, scan_signature, scan_engine, scan_date)
-      VALUES (:metadata::jsonb, :organization, :scan_status, :scan_signature, :scan_engine, :scan_date) RETURNING *;`, {
+      `INSERT INTO pergamo.document(metadata, organization, scan_status, scan_signature, scan_engine, scan_date, index_status)
+      VALUES (:metadata::jsonb, :organization, :scan_status, :scan_signature, :scan_engine, :scan_date, :index_status) RETURNING *;`, {
       replacements: {
         metadata: JSON.stringify(metadata),
         organization,
+        index_status: indexStatus,
         ...scanReplacements(scan)
       },
       type: QueryTypes.INSERT,

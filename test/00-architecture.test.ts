@@ -10,7 +10,7 @@ import path from 'path';
 const SRC = path.join(__dirname, '..', 'src');
 
 // Fuera de las capas: cablean implementaciones concretas, que es su trabajo.
-const COMPOSITION = ['container.ts', 'server.ts', 'index.ts', 'init.ts'];
+const COMPOSITION = ['container.ts', 'server.ts', 'index.ts', 'init.ts', 'worker.ts'];
 
 const FORBIDDEN:Record<string, string[]> = {
   domain: ['api', 'app', 'infrastructure'],

@@ -18,6 +18,7 @@ router.put('/:id', Middleware.auth, Controllers.modifyMetadata);
 router.get('/:id/file', Middleware.auth, Controllers.getFile);
 router.put('/:id/file', Middleware.auth, upload.single('document'), Controllers.modifyFile);
 router.get('/:id/scan', Middleware.auth, Controllers.scanInfo);
+router.get('/:id/index', Middleware.auth, Controllers.indexInfo);
 router.get('/:id/versions', Middleware.auth, Controllers.versionsFile);
 router.delete('/:id', Middleware.auth, Controllers.remove);
 

@@ -4,8 +4,8 @@ import log from '@/shared/logger';
 import { documentDeps as deps } from '@/container';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { formatIssues } from '@/shared/validation';
-import { documentListQuerySchema } from '@/api/http/dto/list-query.dto';
-import { toDocumentResponse, toScanInfoResponse, toVersionResponse } from '@/api/http/dto/document.dto';
+import { documentListQuerySchema, documentUploadQuerySchema } from '@/api/http/dto/list-query.dto';
+import { toDocumentResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse } from '@/api/http/dto/document.dto';
 import { contentDisposition } from '@/api/http/content-disposition';
 
 import { uploadDocument } from '@/app/use-cases/document/commands/upload-document.handler';
@@ -33,12 +33,17 @@ const upload = async (req, res, next) => {
 
   try {
 
+    const query = documentUploadQuerySchema.safeParse(req.query);
+
+    if(!query.success) throw new ValidationError('INVALID_QUERY', formatIssues(query.error));
+
     const file = requireFile(req);
     const { organization } = req.user;
 
     log.debug(`${trace(req)} | Request file: ${JSON.stringify(file)}`);
 
-    const document = await uploadDocument({ organization, file, trace: trace(req) }, deps);
+    const document = await uploadDocument(
+      { organization, file, index: query.data.index, trace: trace(req) }, deps);
 
     log.debug(`${trace(req)} | Document: ${JSON.stringify(document)}`);
 
@@ -207,8 +212,26 @@ const scanInfo = async (req, res, next) => {
   }
 };
 
+// Gemelo de scanInfo, y por el mismo motivo: el cuerpo de getMetadata es el
+// JSONB tal cual, y anadirle claves cambiaria un contrato que ya se consume.
+const indexInfo = async (req, res, next) => {
+
+  try {
+
+    const document = await getDocument(req.user.organization, requireId(req), deps);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify(toIndexInfoResponse(document)));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   upload,
+  indexInfo,
   list,
   scanInfo,
   getMetadata,

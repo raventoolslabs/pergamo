@@ -23,9 +23,14 @@ import { officeParserConverter } from '@/infrastructure/indexing/converters/offi
 import { chunker } from '@/infrastructure/indexing/chunker';
 import { openAiCompatibleEmbedder } from '@/infrastructure/indexing/embedders/openai-compatible.embedder';
 import { SearchIndexDescriptor } from '@/domain/entities/search-index';
+import { indexQueue } from '@/infrastructure/queue/index.queue';
+import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
+import { connection, QUEUE_NAME } from '@/infrastructure/queue/connection';
 
 export const documentDeps:DocumentDeps = {
   documents: documentRepository,
+  chunks: documentChunkRepository,
+  queue: indexQueue,
   storage: documentStorage,
   scanner: antivirus,
   activeContent: activeContentDetector,
@@ -59,3 +64,16 @@ export const searchIndex = ():SearchIndexDescriptor => ({
   chunkerVersion: chunker.version,
   version: 1
 });
+
+export { QUEUE_NAME };
+export const queueConnection = connection;
+
+/**
+ * Lo que hay que comprobar antes de indexar nada, este el worker embebido o
+ * suelto: que el esquema y el proveedor dicen lo mismo, y que el proveedor
+ * responde.
+ */
+export const prepareIndexing = async () => {
+  await assertEmbeddingSchema(searchIndex());
+  await indexingDeps.embedder.init();
+};

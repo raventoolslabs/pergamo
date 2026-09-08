@@ -36,7 +36,7 @@ export interface DocumentPage {
 }
 
 export interface DocumentRepository {
-  create(organization:string, metadata:DocumentMetadata, scan:ScanRecord, scope?:TransactionScope): Promise<Document>;
+  create(organization:string, metadata:DocumentMetadata, scan:ScanRecord, indexStatus:IndexStatus, scope?:TransactionScope): Promise<Document>;
   findById(organization:string, id:string): Promise<Document | null>;
   replaceFile(organization:string, id:string, metadata:DocumentMetadata, scan:ScanRecord, scope?:TransactionScope): Promise<Document>;
   updateMetadata(organization:string, id:string, metadata:DocumentMetadata): Promise<Document>;

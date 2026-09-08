@@ -42,3 +42,14 @@ export const organizationListQuerySchema = z.object({
   include_discharged: z.enum(['true', 'false']).default('false')
     .transform((value) => value === 'true')
 }).strict();
+
+/**
+ * La indexacion se pide por query string y NO como campo del multipart: multer
+ * solo puebla req.body con los campos que llegan ANTES del fichero, asi que un
+ * cliente que lo mandara detras pediria indexar y no lo obtendria, sin error.
+ *
+ * .strict() para que '?indexx=true' sea un 400 y no una peticion que se ignora.
+ */
+export const documentUploadQuerySchema = z.object({
+  index: z.enum(['true', 'false']).default('false').transform((value) => value === 'true')
+}).strict();

@@ -52,11 +52,19 @@ rompe la compilacion: sin esa prueba, la arquitectura se erosiona en silencio.
 
 ### `api/`
 
-Controladores, rutas, middleware y DTO de entrada y salida. Solo transporte:
-leer la peticion, invocar un caso de uso, dar forma a la respuesta. Aqui vive la
-traduccion de una excepcion de dominio a codigo HTTP, y ningun sitio mas.
+Todo lo que **invoca** un caso de uso desde fuera. HTTP es la puerta principal
+—controladores, rutas, middleware y DTO en `api/http`—, pero no la unica: un
+consumidor de cola es otra, y vive en `api/queue`.
+
+Solo transporte: leer la peticion o el trabajo, invocar un caso de uso, dar
+forma a la respuesta. Aqui vive la traduccion de una excepcion de dominio a
+codigo HTTP, y ningun sitio mas.
 
 **No contiene logica de negocio ni SQL.**
+
+La distincion con `infrastructure` no es la tecnologia sino la direccion: el
+PRODUCTOR de la cola implementa un puerto que un caso de uso usa, y por eso es
+infraestructura; el CONSUMIDOR llama al caso de uso, y por eso es `api`.
 
 ### `app/`
 

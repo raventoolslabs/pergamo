@@ -407,7 +407,8 @@ npm test
 
 Las pruebas son de **integración**: levantan la aplicación real y necesitan
 
-* una instancia de PostgreSQL accesible, ya inicializada con `npm run init`;
+* una instancia de PostgreSQL accesible, con pgvector instalado y ya inicializada con `npm run init`;
+* un Redis alcanzable en `REDIS_URL`, que usa la suite de la cola con el prefijo `pergamo-test` para no tocar nada más de esa instancia;
 * un demonio ClamAV alcanzable en `CLAMAV_HOST`/`CLAMAV_PORT` si `ENABLE_ANTIVIRUS` está activo;
 * `RATE_LIMIT_MAX` suficientemente alto para no toparse con el límite de intentos;
 * `USER_MASTER` distinto del nombre de la organización `pergamo`, y `PASSWORD_MASTER` **entrecomillado** en el `.env` si contiene `#` (dotenv trataría el resto de la línea como comentario).
@@ -418,6 +419,10 @@ la que `01-organization.test.ts` le cambia la contraseña a mitad de recorrido. 
 cualquier otra suite que entrase en esa ventana recibía un `401` que no tenía nada que ver con lo
 que estaba probando. La batería entera baja de cinco segundos, así que el paralelismo no compraba
 nada.
+
+`npm test` pasa `--experimental-vm-modules` porque `officeParser` carga sus analizadores con
+`import` dinámico, que el registro de módulos de Jest no resuelve sin esa opción. Por eso el
+comando es `npm test` y no `npx jest` a secas.
 
 * `test/02-document.test.ts` — ciclo de vida del documento, detección de virus, preservación byte a byte de un PDF firmado y análisis hasta `MAX_FILE_SIZE`.
 * `test/03-isolation.test.ts` — aislamiento entre organizaciones, rechazo de tokens manipulados y validaciones de fichero y metadatos.
@@ -594,6 +599,54 @@ cosas **al arrancar**. Lo mismo con la anchura del vector: la columna se crea co
 `EMBEDDING_DIMENSION` y el arranque aborta si dejan de coincidir, en lugar de fallar en
 el primer trabajo.
 
+### Cola y worker
+
+La API no convierte nada: encola `{ document, organization }` y devuelve. El payload no
+lleva más que esos dos identificadores porque un trabajo puede pasar horas esperando y
+todo lo demás se relee de la base —meter la ruta ahí es como se acaba convirtiendo el
+fichero anterior después de un reemplazo—.
+
+El encolado ocurre **después del commit** y no se espera: Redis caído no puede tumbar un
+depósito ya confirmado, y lo que se quede sin encolar lo recupera `npm run reindex`.
+Redis es transporte; el estado de verdad son las columnas `index_*` de PostgreSQL.
+
+Dos claves gobiernan el worker, y son dos y no un enum de tres valores para que no exista
+el estado imposible «worker embebido con la indexación desactivada»:
+
+| Clave | Defecto | Qué hace |
+|---|---|---|
+| `INDEXING_ENABLED` | `false` | La API acepta `?index=true` y existe la cola. |
+| `INDEXING_WORKER_EMBEDDED` | `true` | El worker corre dentro del proceso de la API. En el `docker-compose.yml` va a `false` y se levanta `pergamo-worker`, la misma imagen con `PERGAMO_ROLE=worker`. |
+
+En producción interesa separarlo: abre ficheros no confiables con un parser de documentos,
+y una reindexación no debe competir por CPU con las peticiones.
+
+```bash
+npm run worker              # worker suelto
+npm run reindex             # devuelve a la cola lo pendiente y lo del modelo viejo
+npm run reindex -- --all    # además, el corpus que la migración dejó en 'none'
+```
+
+El barrido **encola, no indexa**: recorre por keyset lo que está en `pending`, lo indexado
+con otro modelo y lo que lleva demasiado en `indexing` —un worker que murió a media
+faena—, así que no depende de que la máquina de inferencia responda en ese momento.
+
+### El disparo
+
+`POST /document?index=true`, en la query string y **no** como campo del multipart: multer
+solo puebla `req.body` con los campos que llegan *antes* del fichero, así que un cliente
+que lo mandara detrás pediría indexar y no lo obtendría, sin error. El esquema es
+`.strict()`, de modo que `?indexx=true` es un `400` y no una petición que se ignora.
+
+Pedir indexación con la funcionalidad desactivada también es un `400`: el cliente no debe
+creer que tiene vectores. Y reemplazar el fichero (`PUT /document/:id/file`) tira los
+vectores del contenido anterior y vuelve a `pending` conservando la intención, porque
+sustituir un fichero no debe poder desindexar un documento por omisión.
+
+`GET /document/:id/index` devuelve el estado, gemelo de `/scan` y por el mismo motivo: el
+cuerpo de `GET /document/:id` es el JSONB tal cual y añadirle claves cambiaría un contrato
+que ya se consume.
+
 ### Prerrequisito
 
 pgvector es requisito de **toda** instalación, indexe o no: la migración `005` lo exige.
@@ -605,10 +658,9 @@ distintos bajo el mismo id en `pergamo.schema_migrations`.
 
 Se introduce un parser de documentos sobre ficheros no confiables, contra un principio
 explícito del proyecto. Se acota: solo sobre documentos que ya pasaron el antivirus y el
-filtro de contenido activo, con tope de tiempo por documento y límites de descompresión,
-que es lo que el propio `officeParser` pide hacer —su README declara mantenedor único y
-hardening «best-effort, not a guarantee»—. Cuando exista el worker suelto, además en otro
-proceso.
+filtro de contenido activo, en el proceso del worker y con tope de tiempo por documento y
+límites de descompresión, que es lo que el propio `officeParser` pide hacer —su README
+declara mantenedor único y hardening «best-effort, not a guarantee»—.
 
 ## Licencia
 

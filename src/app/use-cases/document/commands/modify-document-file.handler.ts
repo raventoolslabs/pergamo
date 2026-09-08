@@ -2,6 +2,7 @@ import path from 'path';
 import mime from 'mime-types';
 
 import Config from '@/shared/config';
+import log from '@/shared/logger';
 import { sha256File } from '@/shared/hash';
 import { Document } from '@/domain/entities/document';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
@@ -41,18 +42,36 @@ export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:Doc
     hash: await sha256File(file.path) as string
   };
 
+  // Reemplazar el fichero no puede desindexar un documento por omision: se
+  // conserva la intencion, se tiran los vectores del contenido anterior y
+  // vuelve a la cola. Dejarlos hasta que el trabajo corra los haria buscables
+  // apuntando a un contenido que ya no esta.
+  const reindex = current.index.status !== 'none';
+
   // Se confirma en base de datos solo despues de que el fichero este en su
   // sitio, para no dejar metadatos describiendo un contenido que no existe.
-  return deps.unitOfWork.run(async (scope) => {
+  const document = await deps.unitOfWork.run(async (scope) => {
 
-    const document = await deps.documents.replaceFile(organization, id, metadata, scan, scope);
+    const updated = await deps.documents.replaceFile(organization, id, metadata, scan, scope);
 
-    const filePath = deps.storage.resolve(organization, document.path);
+    if(reindex) {
+      await deps.chunks.deleteByDocument(id, scope);
+      await deps.documents.setIndexStatus(id, scan.scanStatus === 'clean' ? 'pending' : 'none', null, scope);
+    }
+
+    const filePath = deps.storage.resolve(organization, updated.path);
 
     if(Config.max_version_file > 1) await deps.storage.archiveVersion(id, filePath);
 
     await deps.storage.move(file.path, filePath);
 
-    return document;
+    return updated;
   });
+
+  if(reindex && scan.scanStatus === 'clean') {
+    deps.queue.enqueue(id, organization)
+      .catch((error:any) => log.error(`${trace} | Document ${id} replaced but not queued: ${error.message}`));
+  }
+
+  return document;
 }

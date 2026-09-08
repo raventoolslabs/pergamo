@@ -63,6 +63,23 @@ services:
     networks:
       - "steamfront"
 
+  redis:
+    container_name: "pergamo-redis"
+    image: "redis:7-alpine"
+    restart: "always"
+    # Solo transporte de la cola: el estado de verdad vive en PostgreSQL, asi
+    # que perder este volumen no pierde nada que no recupere `npm run reindex`.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: "10s"
+      timeout: "5s"
+      retries: 5
+    networks:
+      - "steamfront"
+
   pergamo:
     container_name: "pergamo"
     #image: "pergamo"
@@ -92,11 +109,43 @@ services:
       # El escaner se alcanza por el nombre del servicio, no por localhost.
       CLAMAV_HOST: "clamav"
       CLAMAV_PORT: "3310"
+      REDIS_URL: "redis://redis:6379"
+      # El worker va en su propio contenedor: abre ficheros no confiables con un
+      # parser de documentos, y una reindexacion no debe competir por CPU con
+      # las peticiones. Con INDEXING_ENABLED=false ninguno de los dos hace nada.
+      INDEXING_WORKER_EMBEDDED: "false"
     depends_on:
       clamav:
         # La API espera a que el escaner este sano. Con ENABLE_ANTIVIRUS
         # desactivado esta espera sigue aplicandose; si no quieres el escaner en
         # este despliegue, elimina el servicio y esta dependencia.
+        condition: "service_healthy"
+      redis:
+        condition: "service_healthy"
+    networks:
+      - "steamfront"
+
+  # La misma imagen, otro rol. Arranca despues de la API porque es ella quien
+  # aplica las migraciones.
+  pergamo-worker:
+    container_name: "pergamo-worker"
+    restart: "always"
+    build:
+      context: ".."
+      dockerfile: "Dockerfile"
+    volumes:
+      - "./data:/usr/src/app/data"
+    env_file:
+      - ".env"
+    environment:
+      PERGAMO_ROLE: "worker"
+      CLAMAV_HOST: "clamav"
+      CLAMAV_PORT: "3310"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      pergamo:
+        condition: "service_started"
+      redis:
         condition: "service_healthy"
     networks:
       - "steamfront"

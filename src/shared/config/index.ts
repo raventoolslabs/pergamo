@@ -54,6 +54,17 @@ const config = {
   // exactamente como antes de que existiera.
   indexing: {
     enabled: parseBoolean(process.env.INDEXING_ENABLED, false, 'INDEXING_ENABLED'),
+    // Dos claves y no un enum de tres valores: asi no existe el estado
+    // imposible «worker embebido con la indexacion desactivada».
+    worker_embedded: parseBoolean(process.env.INDEXING_WORKER_EMBEDDED, true, 'INDEXING_WORKER_EMBEDDED'),
+    concurrency: process.env.INDEXING_CONCURRENCY ? Number.parseInt(process.env.INDEXING_CONCURRENCY) : 1,
+    redis_url: optionalValue(process.env.REDIS_URL) || 'redis://127.0.0.1:6379',
+    // Redis puede estar compartido: el prefijo mantiene las claves de Pergamo
+    // separadas de las de cualquier otra cosa que viva ahi.
+    queue_prefix: optionalValue(process.env.INDEXING_QUEUE_PREFIX) || 'pergamo',
+    // Un trabajo que se queda en 'indexing' mas de esto es un worker que murio
+    // a media faena, y lo recupera el barrido.
+    stale_after_ms: process.env.INDEXING_STALE_AFTER_MS ? Number.parseInt(process.env.INDEXING_STALE_AFTER_MS) : 3600000,
     // Superarlo es ConversionUnsupportedError: un documento que produce miles de
     // trozos casi siempre es una extraccion que salio mal.
     max_chunks: process.env.INDEX_MAX_CHUNKS ? Number.parseInt(process.env.INDEX_MAX_CHUNKS) : 2000,

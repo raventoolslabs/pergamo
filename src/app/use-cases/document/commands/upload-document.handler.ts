@@ -2,9 +2,11 @@ import path from 'path';
 import mime from 'mime-types';
 
 import Config from '@/shared/config';
+import log from '@/shared/logger';
 import { sha256File } from '@/shared/hash';
 import { Document, DocumentMetadata } from '@/domain/entities/document';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
+import { IndexStatus } from '@/domain/value-objects/index-status';
 import { DocumentDeps } from '../dependencies';
 import { inspectUpload, verifyContent } from '../inspect-upload';
 
@@ -18,12 +20,18 @@ export interface UploadedFile {
 export interface UploadDocumentInput {
   organization: string;
   file: UploadedFile;
+  index: boolean;
   trace: string;
 }
 
 export const uploadDocument = async (input:UploadDocumentInput, deps:DocumentDeps):Promise<Document> => {
 
-  const { organization, file, trace } = input;
+  const { organization, file, index, trace } = input;
+
+  // Lo primero de todo: pedir indexacion en un despliegue que no la tiene es un
+  // 400 y no un silencio. El cliente no debe creer que tiene vectores.
+  if(index && !Config.indexing.enabled) throw new ValidationError(
+    'INDEXING_DISABLED', 'This deployment does not index documents');
 
   // La comprobacion de la allowlist va antes del escaneo: no cuesta E/S y
   // evita transmitir a clamd ficheros que se van a rechazar igualmente.
@@ -48,14 +56,27 @@ export const uploadDocument = async (input:UploadDocumentInput, deps:DocumentDep
     tags: []
   };
 
+  // Lo retenido no se abre, asi que un deposito que no queda limpio no entra en
+  // la cola aunque se haya pedido indexarlo.
+  const indexStatus:IndexStatus = index && scan.scanStatus === 'clean' ? 'pending' : 'none';
+
   // Se confirma en base de datos solo despues de que el fichero este en su
   // sitio: un fallo del `mv` dejaria una fila sin contenido.
-  return deps.unitOfWork.run(async (scope) => {
+  const document = await deps.unitOfWork.run(async (scope) => {
 
-    const document = await deps.documents.create(organization, metadata, scan, scope);
+    const created = await deps.documents.create(organization, metadata, scan, indexStatus, scope);
 
-    await deps.storage.move(file.path, deps.storage.resolve(organization, document.path));
+    await deps.storage.move(file.path, deps.storage.resolve(organization, created.path));
 
-    return document;
+    return created;
   });
+
+  // Despues del commit, y sin poder tumbar la subida: Redis caido no invalida
+  // un deposito ya confirmado, y el barrido de reserva lo recupera.
+  if(indexStatus === 'pending') {
+    deps.queue.enqueue(document.id, organization)
+      .catch((error:any) => log.error(`${trace} | Document ${document.id} stored but not queued: ${error.message}`));
+  }
+
+  return document;
 }

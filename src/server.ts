@@ -5,7 +5,9 @@ import log from '@/shared/logger';
 import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { activeContentRules } from '@/infrastructure/antivirus/active-content';
 import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
-import { indexingDeps, searchIndex } from '@/container';
+import { startWorker, stopWorker } from '@/api/queue/index.worker';
+import { indexQueue } from '@/infrastructure/queue/index.queue';
+import { searchIndex } from '@/container';
 import FilesUtils from '@/infrastructure/files/storage';
 import express from 'express';
 import path from 'path';
@@ -80,9 +82,12 @@ export const app = async (port:any = Config.port) => {
   // El esquema y el proveedor tienen que decir lo mismo ANTES de aceptar nada:
   // una dimension que no cuadra o un operador equivocado no fallan solos, dan
   // resultados que no significan nada.
+  //
+  // Con el worker suelto la API no habla con la maquina de inferencia, asi que
+  // no la prueba: comprueba el esquema, que es lo que si le incumbe.
   if(Config.indexing.enabled) {
-    await assertEmbeddingSchema(searchIndex());
-    await indexingDeps.embedder.init();
+    if(Config.indexing.worker_embedded) await startWorker();
+    else await assertEmbeddingSchema(searchIndex());
   } else {
     log.warn('Indexing DISABLED (INDEXING_ENABLED is not enabled): documents are stored without being indexed');
   }
@@ -110,7 +115,9 @@ export const app = async (port:any = Config.port) => {
       valid_mimetype: Config.valid_mimetype,
       valid_metadata_modify: Config.valid_metadata_modify,
       max_file_size: Config.max_file_size,
-      max_version_file: Config.max_version_file
+      max_version_file: Config.max_version_file,
+      // La interfaz lo necesita para no ofrecer una casilla que solo da un 400.
+      indexing_enabled: Config.indexing.enabled
     })
   });
 
@@ -153,7 +160,13 @@ export const app = async (port:any = Config.port) => {
 
   cleanup.unref();
 
-  server.on('close', () => clearInterval(cleanup));
+  server.on('close', () => {
+    clearInterval(cleanup);
+    // Sin esto, una suite que cierra su servidor deja abiertos los sockets de
+    // Redis y Jest se queda esperando.
+    stopWorker().catch((error:any) => log.warn(`Worker shutdown failed: ${error.message}`));
+    indexQueue.close().catch((error:any) => log.warn(`Queue shutdown failed: ${error.message}`));
+  });
 
   return server;
 }

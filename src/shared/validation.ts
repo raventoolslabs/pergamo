@@ -77,6 +77,11 @@ export const configSchema = z.object({
   malicious_active_content_ignore: z.array(z.string()),
   indexing: z.object({
     enabled: z.boolean(),
+    worker_embedded: z.boolean(),
+    concurrency: z.number().int().positive(),
+    redis_url: z.string().min(1),
+    queue_prefix: z.string().min(1),
+    stale_after_ms: z.number().int().positive(),
     max_chunks: z.number().int().positive(),
     chunk_size: z.number().int().positive(),
     chunk_overlap: z.number().int().min(0),

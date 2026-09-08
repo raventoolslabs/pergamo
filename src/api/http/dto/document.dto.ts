@@ -23,6 +23,16 @@ export const toScanInfoResponse = (document:Document) => ({
   scan_date: document.scanDate ?? null
 });
 
+export const toIndexInfoResponse = (document:Document) => ({
+  index_status: document.index.status,
+  index_model: document.index.model ?? null,
+  index_converter: document.index.converter ?? null,
+  index_chunker_version: document.index.chunkerVersion ?? null,
+  index_chunks: document.index.chunks ?? null,
+  index_error: document.index.error ?? null,
+  index_date: document.index.date ?? null
+});
+
 export const toVersionResponse = (version:StoredVersion) => ({
   version: version.version,
   created_at: version.createdAt
