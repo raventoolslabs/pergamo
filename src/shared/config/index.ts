@@ -68,6 +68,10 @@ const config = {
     // Superarlo es ConversionUnsupportedError: un documento que produce miles de
     // trozos casi siempre es una extraccion que salio mal.
     max_chunks: process.env.INDEX_MAX_CHUNKS ? Number.parseInt(process.env.INDEX_MAX_CHUNKS) : 2000,
+    // Cuanto se pide de mas antes de recortar. Es lo que deja sitio a un
+    // reranker sin cambiar el endpoint ni el almacen.
+    search_candidates_factor: process.env.SEARCH_CANDIDATES_FACTOR ?
+      Number.parseInt(process.env.SEARCH_CANDIDATES_FACTOR) : 4,
     chunk_size: process.env.INDEX_CHUNK_SIZE ? Number.parseInt(process.env.INDEX_CHUNK_SIZE) : 1500,
     chunk_overlap: process.env.INDEX_CHUNK_OVERLAP ? Number.parseInt(process.env.INDEX_CHUNK_OVERLAP) : 200,
     // Tope de tiempo por documento. El conversor abre ficheros no confiables:

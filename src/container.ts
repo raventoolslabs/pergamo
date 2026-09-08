@@ -8,6 +8,7 @@
  */
 import { DocumentDeps } from '@/app/use-cases/document/dependencies';
 import { IndexingDeps } from '@/app/use-cases/indexing/dependencies';
+import { SearchDeps } from '@/app/use-cases/search/dependencies';
 import { OrganizationDeps } from '@/app/use-cases/organization/dependencies';
 
 import { documentRepository } from '@/infrastructure/db/repositories/document.repository';
@@ -53,6 +54,11 @@ export const indexingDeps:IndexingDeps = {
   unitOfWork: sequelizeUnitOfWork
 };
 
+export const searchDeps:SearchDeps = {
+  chunks: documentChunkRepository,
+  embedder: openAiCompatibleEmbedder
+};
+
 // Identidad del indice activo: la mitad la aporta el proveedor y la otra mitad
 // el troceado, asi que solo se puede componer aqui.
 export const searchIndex = ():SearchIndexDescriptor => ({
@@ -69,11 +75,20 @@ export { QUEUE_NAME };
 export const queueConnection = connection;
 
 /**
- * Lo que hay que comprobar antes de indexar nada, este el worker embebido o
- * suelto: que el esquema y el proveedor dicen lo mismo, y que el proveedor
- * responde.
+ * Lo que hay que comprobar antes de indexar o buscar: que el esquema y el
+ * proveedor dicen lo mismo, y que el proveedor responde.
+ *
+ * Memoizado porque lo piden dos: el arranque de la API —que necesita el
+ * proveedor para /search aunque el worker vaya suelto— y el propio worker.
  */
-export const prepareIndexing = async () => {
-  await assertEmbeddingSchema(searchIndex());
-  await indexingDeps.embedder.init();
+let prepared:Promise<void> = null;
+
+export const prepareIndexing = () => {
+
+  if(!prepared) prepared = (async () => {
+    await assertEmbeddingSchema(searchIndex());
+    await indexingDeps.embedder.init();
+  })().catch((error) => { prepared = null; throw error; });
+
+  return prepared;
 };

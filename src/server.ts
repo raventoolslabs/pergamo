@@ -4,10 +4,9 @@ import Config from '@/shared/config';
 import log from '@/shared/logger';
 import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { activeContentRules } from '@/infrastructure/antivirus/active-content';
-import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
 import { startWorker, stopWorker } from '@/api/queue/index.worker';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
-import { searchIndex } from '@/container';
+import { prepareIndexing } from '@/container';
 import FilesUtils from '@/infrastructure/files/storage';
 import express from 'express';
 import path from 'path';
@@ -19,7 +18,7 @@ const bodyParser = require('body-parser')
 // Prefijos de la API. El fallback de la interfaz no puede tragarselos: un GET
 // desconocido bajo uno de ellos debe seguir devolviendo el 404 JSON de la API y
 // no el index.html de la SPA.
-const API_PREFIXES = ['/organization', '/document', '/version', '/config'];
+const API_PREFIXES = ['/organization', '/document', '/search', '/version', '/config'];
 
 /**
  * Sirve la interfaz compilada, si existe. Vite deja el resultado en dist/web,
@@ -83,11 +82,11 @@ export const app = async (port:any = Config.port) => {
   // una dimension que no cuadra o un operador equivocado no fallan solos, dan
   // resultados que no significan nada.
   //
-  // Con el worker suelto la API no habla con la maquina de inferencia, asi que
-  // no la prueba: comprueba el esquema, que es lo que si le incumbe.
+  // La API necesita el proveedor aunque el worker vaya suelto, porque /search
+  // tiene que embeber la consulta.
   if(Config.indexing.enabled) {
+    await prepareIndexing();
     if(Config.indexing.worker_embedded) await startWorker();
-    else await assertEmbeddingSchema(searchIndex());
   } else {
     log.warn('Indexing DISABLED (INDEXING_ENABLED is not enabled): documents are stored without being indexed');
   }
@@ -123,6 +122,7 @@ export const app = async (port:any = Config.port) => {
 
   app.use('/organization', Routes.organization);
   app.use('/document', Routes.document);
+  app.use('/search', Routes.search);
 
   serveWeb(app);
 

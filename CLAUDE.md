@@ -36,7 +36,7 @@ importa cualquiera. Lo demas esta prohibido.
 ```bash
 npm run dev          # API + interfaz en desarrollo
 npm run dev:seed     # datos de prueba
-npx tsc --noEmit     # comprobacion de tipos
+npm run typecheck    # tipos, src y test (tsc --noEmit solo mira src)
 npm test             # tests (jest necesita --experimental-vm-modules)
 ./e2e/run.sh         # tests end-to-end (Playwright)
 ```

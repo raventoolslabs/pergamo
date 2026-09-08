@@ -249,9 +249,9 @@ describe('Document indexing', () => {
 
     // Amplio a proposito: el limite no puede ser lo que oculte una fuga.
     const mineHits = await documentChunkRepository.search({
-      organization: 'index-a', embedding: vector(0), limit: 500 });
+      organization: 'index-a', embedding: vector(0), text: 'pergamo', candidates: 500, limit: 500 });
     const theirHits = await documentChunkRepository.search({
-      organization: 'index-b', embedding: vector(0), limit: 500 });
+      organization: 'index-b', embedding: vector(0), text: 'pergamo', candidates: 500, limit: 500 });
 
     expect(mineHits.some((hit) => hit.document === mine.id)).toBe(true);
     expect(mineHits.some((hit) => hit.document === theirs.id)).toBe(false);
@@ -263,11 +263,11 @@ describe('Document indexing', () => {
   it('Should not return the vector itself', async () => {
 
     const hits = await documentChunkRepository.search({
-      organization: 'index-a', embedding: vector(0), limit: 1 });
+      organization: 'index-a', embedding: vector(0), text: 'pergamo', candidates: 10, limit: 1 });
 
     expect(hits[0]).not.toHaveProperty('embedding');
     expect(Object.keys(hits[0]).sort()).toEqual(
-      ['chunk', 'content', 'document', 'headingPath', 'page', 'section', 'similarity']);
+      ['chunk', 'content', 'document', 'headingPath', 'page', 'score', 'section', 'similarity']);
   });
 
   it('Should take the chunks with the document when it is removed', async () => {

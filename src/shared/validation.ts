@@ -83,6 +83,7 @@ export const configSchema = z.object({
     queue_prefix: z.string().min(1),
     stale_after_ms: z.number().int().positive(),
     max_chunks: z.number().int().positive(),
+    search_candidates_factor: z.number().int().positive(),
     chunk_size: z.number().int().positive(),
     chunk_overlap: z.number().int().min(0),
     convert_timeout: z.number().int().positive(),

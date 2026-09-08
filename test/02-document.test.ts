@@ -142,7 +142,7 @@ describe('Document Tests', () => {
     const chunk = Buffer.alloc(1024 * 1024, 0x41);
     archive.append(new Readable({
       read() {
-        if(produced >= target) return this.push(null);
+        if(produced >= target) { this.push(null); return; }
         produced += chunk.length;
         this.push(chunk);
       }

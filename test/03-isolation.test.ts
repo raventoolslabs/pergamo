@@ -170,7 +170,7 @@ describe('Isolation and input validation', () => {
     const source = new Readable({
       read() {
         if(sent === 0) { this.push(Buffer.from('%PDF-')); sent = 5; return; }
-        if(sent >= total) return this.push(null);
+        if(sent >= total) { this.push(null); return; }
         const size = Math.min(chunk.length, total - sent);
         sent += size;
         this.push(size === chunk.length ? chunk : chunk.subarray(0, size));

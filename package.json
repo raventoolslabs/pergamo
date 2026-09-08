@@ -65,6 +65,7 @@
     "dev:init": "npx ts-node -r tsconfig-paths/register src/init.ts",
     "dev:seed": "npx ts-node -r tsconfig-paths/register src/scripts/seed.ts",
     "dev:worker": "npx ts-node -r tsconfig-paths/register src/worker.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
     "test": "NODE_OPTIONS=--experimental-vm-modules npx jest --detectOpenHandles",
     "test:e2e": "./e2e/run.sh"
   }

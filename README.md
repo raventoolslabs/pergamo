@@ -270,6 +270,8 @@ mano. Estos cuatro endpoints cubren ese hueco y son de solo lectura:
 | `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis —incluido `scan_engine`, que es lo que distingue un documento analizado de uno depositado sin análisis—. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status` (uno o varios separados por comas: `scan_status=infected,malicious`), `from` y `to` (franja inclusiva de fecha de depósito, instantes ISO), y orden por `creation_date` o `modification_date`. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
 | `GET /document/:id/scan` | Organización | `scan_status`, `scan_signature`, `scan_engine` y `scan_date` del documento. Va aparte de `GET /document/:id` porque el cuerpo de ese endpoint es el JSONB de metadatos tal cual, y añadirle claves rompería a quien ya lo consume. |
 | `GET /organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
+| `POST /search` | Autenticado | Búsqueda híbrida sobre los documentos de la organización del token. Devuelve el texto de cada fragmento y su procedencia, nunca el vector. |
+| `GET /document/:id/index` | Autenticado | Estado de la indexación semántica del documento. |
 | `GET /config` | Autenticado | Límites del despliegue: `enable_antivirus`, `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir —y no prometer un análisis que este despliegue no hace— en lugar de duplicar la configuración. |
 
 El aislamiento por organización se aplica igual que en el resto: el `WHERE organization` de
@@ -646,6 +648,61 @@ sustituir un fichero no debe poder desindexar un documento por omisión.
 `GET /document/:id/index` devuelve el estado, gemelo de `/scan` y por el mismo motivo: el
 cuerpo de `GET /document/:id` es el JSONB tal cual y añadirle claves cambiaría un contrato
 que ya se consume.
+
+### Búsqueda
+
+`POST /search`, con **la misma autenticación que todo lo demás**: se entra por
+`POST /organization/login`, y el token que devuelve sirve para buscar igual que para
+depositar un documento. El ámbito sale del token y de ningún otro sitio, así que no hay
+forma de pedir que se busque en el fondo de otra organización. El token maestro no lleva
+organización y recibe un `400`, como en el listado.
+
+```http
+POST /search
+Authorization: <token>
+
+{ "query": "condiciones de entrega", "limit": 10, "min_similarity": 0.35 }
+```
+
+Devuelve por fragmento `content`, `document_id`, `chunk_id`, `section`, `heading_path`,
+`page`, `similarity` y `score`. **El vector no sale nunca**: un embedding es parcialmente
+reversible y hereda la confidencialidad del documento.
+
+Dense y léxica, fusionadas con **Reciprocal Rank Fusion** en una sola consulta. Las dos
+hacen falta y ninguna sustituye a la otra: el vector encuentra lo que se dice de otra
+manera, y el texto encuentra un número de factura o un nombre propio que el modelo no vio
+nunca. RRF las combina por *posición* y no por puntuación, que es lo que permite sumarlas
+sin normalizar dos escalas que no tienen nada que ver.
+
+Se piden más candidatos de los que se devuelven (`SEARCH_CANDIDATES_FACTOR`) y se recorta
+después: es la sutura por la que entraría un reranker sin tocar ni el almacén ni el
+endpoint.
+
+`min_similarity` es opcional y conviene usarlo. Sin umbral, un fondo sin nada relevante
+devuelve igualmente los trozos menos malos, y quien pregunte los tomará por buenos.
+
+### Elegir proveedor de embeddings
+
+`EMBEDDING_PROVIDER=openai-compatible` cubre Ollama, vLLM y OpenAI con un solo cliente:
+los tres exponen `POST /embeddings` con `{ model, input }`.
+
+| | Configuración |
+|---|---|
+| Ollama (máquina propia) | `EMBEDDING_BASE_URL=http://maquina-ia:11434/v1`, `EMBEDDING_MODEL=bge-m3`, sin clave |
+| OpenAI | `EMBEDDING_BASE_URL=https://api.openai.com/v1`, `EMBEDDING_MODEL=text-embedding-3-small`, `EMBEDDING_API_KEY=sk-...` |
+
+La anchura se pide con el parámetro `dimensions`, así que un modelo de otra anchura nativa
+—los `text-embedding-3` de OpenAI son 1536— entrega vectores del tamaño que tiene la
+columna y cambiar de proveedor no exige una versión nueva del índice. Un proveedor que no
+lo respete falla en el arranque, no en el primer trabajo.
+
+Lo que sí exige reindexar es **cambiar de modelo**: dos modelos nunca comparten espacio
+vectorial, por muy iguales que sean las dimensiones. Se hace con `npm run reindex`, que
+recoge lo indexado bajo otro `index_model`.
+
+Y una consecuencia del despliegue que conviene decir en voz alta: **con OpenAI el
+contenido de los documentos sale de la instalación**. Para probar está bien; para un fondo
+con documentos de clientes, la máquina propia es lo que evita ese viaje.
 
 ### Prerrequisito
 

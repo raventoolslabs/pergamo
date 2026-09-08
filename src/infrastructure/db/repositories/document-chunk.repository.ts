@@ -8,6 +8,11 @@ import {
 // Postgres admite 65535 parametros por sentencia y cada trozo gasta nueve.
 const INSERT_BATCH = 200;
 
+// Constante de RRF. Amortigua las primeras posiciones: sin ella, el primero de
+// una mitad aplasta a todo lo que la otra haya encontrado. 60 es el valor del
+// articulo original y el que usa casi todo el mundo.
+const RRF_K = 60;
+
 // pgvector acepta la representacion textual, asi que no hay que ensenarle el
 // tipo a Sequelize.
 const toVector = (embedding:number[]) => `[${embedding.join(',')}]`;
@@ -78,33 +83,59 @@ export const documentChunkRepository:DocumentChunkRepository = {
   },
 
   /**
-   * La unica consulta ANN del proyecto, y vive aqui a proposito.
+   * Denso y lexico fusionados con Reciprocal Rank Fusion, en una sola consulta.
+   *
+   * Las dos mitades hacen falta y ninguna sustituye a la otra: el vector
+   * encuentra lo que se dice de otra manera, y el texto encuentra un numero de
+   * factura o un nombre propio que el modelo no vio nunca. RRF las combina por
+   * POSICION y no por puntuacion, que es lo que permite sumarlas sin normalizar
+   * dos escalas que no tienen nada que ver.
    *
    * El indice es vector_cosine_ops, que OBLIGA a '<=>'. Con '<->' o '<#>' el
-   * planificador deja de usarlo y cae a seq scan sin error y sin aviso, asi que
-   * el operador no puede estar suelto en un controlador.
-   *
-   * `embedding` no se selecciona: un vector es parcialmente reversible y
-   * hereda la confidencialidad del documento.
+   * planificador deja de poder usarlo y recorre la tabla entera: sin error y
+   * sin aviso. Por eso este operador vive en un solo sitio del proyecto.
    *
    * El WHERE de organizacion y el indice ANN compiten: HNSW no filtra, asi que
    * el planificador elige entre recorrerlo y descartar lo ajeno, o usar el
    * btree de organization y ordenar exacto. Con pocos documentos por inquilino
    * lo segundo es mejor y ademas no puede devolver de menos; cuando deje de
    * serlo, la salida es un indice parcial por organizacion.
+   *
+   * `embedding` no se selecciona nunca: un vector es parcialmente reversible y
+   * hereda la confidencialidad del documento.
    */
   async search(query:SearchQuery):Promise<SearchHit[]> {
 
     const rows:any = await sequelize.query(
-      `SELECT id, document, content, page, section, heading_path,
-        1 - (embedding <=> :embedding::vector) AS similarity
-      FROM pergamo.document_chunk_v1
-      WHERE organization = :organization
-      ORDER BY embedding <=> :embedding::vector
+      `WITH dense AS (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> :embedding::vector) AS rank
+        FROM pergamo.document_chunk_v1
+        WHERE organization = :organization
+        ORDER BY embedding <=> :embedding::vector
+        LIMIT :candidates
+      ), lexical AS (
+        SELECT id, ROW_NUMBER() OVER (ORDER BY ts_rank_cd(content_tsv, query) DESC) AS rank
+        FROM pergamo.document_chunk_v1, websearch_to_tsquery('spanish', :text) AS query
+        WHERE organization = :organization AND content_tsv @@ query
+        LIMIT :candidates
+      ), fused AS (
+        SELECT COALESCE(dense.id, lexical.id) AS id,
+          COALESCE(1.0 / (:rrfK + dense.rank), 0) + COALESCE(1.0 / (:rrfK + lexical.rank), 0) AS score
+        FROM dense FULL OUTER JOIN lexical ON dense.id = lexical.id
+      )
+      SELECT c.id, c.document, c.content, c.page, c.section, c.heading_path,
+        1 - (c.embedding <=> :embedding::vector) AS similarity,
+        fused.score
+      FROM fused
+      JOIN pergamo.document_chunk_v1 c ON c.id = fused.id
+      ORDER BY fused.score DESC, similarity DESC
       LIMIT :limit;`, {
       replacements: {
         organization: query.organization,
         embedding: toVector(query.embedding),
+        text: query.text,
+        candidates: query.candidates,
+        rrfK: RRF_K,
         limit: query.limit
       },
       type: QueryTypes.SELECT
@@ -117,7 +148,8 @@ export const documentChunkRepository:DocumentChunkRepository = {
       page: row.page ?? undefined,
       section: row.section ?? undefined,
       headingPath: row.heading_path || [],
-      similarity: Number(row.similarity)
+      similarity: Number(row.similarity),
+      score: Number(row.score)
     }));
   }
 };

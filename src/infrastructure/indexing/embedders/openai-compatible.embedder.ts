@@ -34,7 +34,13 @@ const request = async (input:string[]):Promise<number[][]> => {
     response = await fetch(endpoint(), {
       method: 'POST',
       headers: headers(),
-      body: JSON.stringify({ model, input }),
+      // `dimensions` viaja siempre: es lo que permite que un modelo de otra
+      // anchura nativa —los text-embedding-3 de OpenAI son 1536— entregue
+      // vectores del tamano que tiene la columna, en vez de obligar a una
+      // version nueva del indice por cambiar de proveedor. Ollama, vLLM y
+      // OpenAI lo aceptan; uno que no, falla en init() y no en el primer
+      // trabajo.
+      body: JSON.stringify({ model, input, dimensions: dimension }),
       signal: AbortSignal.timeout(timeout)
     });
 
@@ -68,7 +74,8 @@ const request = async (input:string[]):Promise<number[][]> => {
   vectors.forEach((vector, index) => {
     if(!Array.isArray(vector) || vector.length !== dimension) throw new Error(
       `Embedding provider returned ${vector?.length} dimensions for input ${index}, and the index is ${dimension}. ` +
-      'Either EMBEDDING_MODEL or EMBEDDING_DIMENSION is wrong: they are part of the schema and cannot disagree.');
+      'Either the model does not honour the requested "dimensions" or EMBEDDING_DIMENSION is wrong: ' +
+      'the width is part of the schema and the two cannot disagree.');
   });
 
   return vectors;
