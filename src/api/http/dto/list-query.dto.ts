@@ -63,3 +63,14 @@ export const organizationListQuerySchema = z.object({
 export const documentUploadQuerySchema = z.object({
   index: z.enum(['true', 'false']).default('false').transform((value) => value === 'true')
 }).strict();
+
+/**
+ * El mismo parametro al reemplazar el fichero, pero OPCIONAL y sin defecto:
+ * ausente significa «no lo dijo» y conserva la intencion anterior, mientras que
+ * '?index=false' la retira. Un defecto los fundiria, y con el todo reemplazo
+ * sin parametro dejaria de reindexar lo que hoy reindexa.
+ */
+export const documentReplaceQuerySchema = z.object({
+  index: z.enum(['true', 'false']).optional()
+    .transform((value) => value === undefined ? undefined : value === 'true')
+}).strict();

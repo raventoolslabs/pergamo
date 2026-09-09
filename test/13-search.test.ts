@@ -202,6 +202,37 @@ describe('Document search', () => {
     expect(theirResponse.data.results.every((hit:any) => hit.document_id === theirs)).toBe(true);
   });
 
+  /**
+   * Lo retenido se descarta al final de la consulta, no dentro de las dos
+   * mitades: un documento que un reescaneo pasa a 'infected' deja de salir sin
+   * que haya que reindexar ni borrar sus trozos.
+   */
+  it('Should never return a chunk of a quarantined document', async () => {
+
+    const withheld = await seedDocument('pergamo', [
+      'El presupuesto aprobado para el ejercicio asciende a 42000 euros.'
+    ]);
+
+    const query = { query: 'presupuesto aprobado ejercicio', limit: 50 };
+    const found = (response:any) => response.data.results.some((hit:any) => hit.document_id === withheld);
+
+    expect(found(await search(query))).toBe(true);
+
+    for(const status of ['infected', 'malicious', 'error']) {
+
+      await sequelize.query('UPDATE pergamo.document SET scan_status = :status WHERE id = :id;', {
+        replacements: { id: withheld, status }, type: QueryTypes.UPDATE });
+
+      const response = await search(query);
+
+      expect(response.status).toBe(200);
+      expect(found(response)).toBe(false);
+    }
+
+    await sequelize.query('DELETE FROM pergamo.document WHERE id = :id;', {
+      replacements: { id: withheld }, type: QueryTypes.DELETE });
+  });
+
   it('Should refuse a master token, which has no organization', async () => {
 
     const response = await search({ query: 'presupuesto' }, masterToken);

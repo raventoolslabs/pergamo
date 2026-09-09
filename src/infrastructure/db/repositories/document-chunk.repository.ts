@@ -1,5 +1,6 @@
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import { EmbeddedChunk } from '@/domain/entities/chunk';
+import { QUARANTINED_STATUS } from '@/domain/value-objects/scan-status';
 import { TransactionScope } from '@/app/ports/unit-of-work';
 import {
   ChunkPage, ChunkPageQuery, DocumentChunkRepository, SearchHit, SearchQuery, StoredChunk
@@ -151,6 +152,10 @@ export const documentChunkRepository:DocumentChunkRepository = {
    *
    * `embedding` no se selecciona nunca: un vector es parcialmente reversible y
    * hereda la confidencialidad del documento.
+   *
+   * Lo retenido se descarta al final y no dentro de las dos mitades: asi la
+   * condicion vive en un sitio y no compite con el indice ANN. Lo que el filtro
+   * quite sale del colchon de SEARCH_CANDIDATES_FACTOR, que ya pide de mas.
    */
   async search(query:SearchQuery):Promise<SearchHit[]> {
 
@@ -176,6 +181,8 @@ export const documentChunkRepository:DocumentChunkRepository = {
         fused.score
       FROM fused
       JOIN pergamo.document_chunk_v1 c ON c.id = fused.id
+      JOIN pergamo.document d ON d.id = c.document
+      WHERE d.scan_status NOT IN (:quarantined)
       ORDER BY fused.score DESC, similarity DESC
       LIMIT :limit;`, {
       replacements: {
@@ -184,6 +191,7 @@ export const documentChunkRepository:DocumentChunkRepository = {
         text: query.text,
         candidates: query.candidates,
         rrfK: RRF_K,
+        quarantined: QUARANTINED_STATUS,
         limit: query.limit
       },
       type: QueryTypes.SELECT

@@ -38,6 +38,16 @@ describe('Indexing queue', () => {
     });
   };
 
+  const replace = (id:string, query = '', file = 'multipage.pdf', mimetype = 'application/pdf') => {
+
+    const form = new FormData();
+    form.append('document', fs.createReadStream(asset(file)), { contentType: mimetype });
+
+    return api.put(`/document/${id}/file${query}`, form, {
+      headers: { 'authorization': token, ...form.getHeaders() }
+    });
+  };
+
   const indexStatusOf = async (id:string) => {
     const rows:any = await sequelize.query(
       'SELECT index_status FROM pergamo.document WHERE id = :id;', {
@@ -231,6 +241,86 @@ describe('Indexing queue', () => {
     // buscables los vectores de un contenido que ya no esta.
     expect(await indexStatusOf(id)).toBe('pending');
     expect(await waitForJob(id)).toBeDefined();
+
+    await remove(id);
+  });
+
+  it('Should let a replacement ask for an index the document never had', async () => {
+
+    Config.indexing.enabled = true;
+
+    // Sin '?index' en la subida: entra en 'none', que hasta ahora era la unica
+    // decision que no tenia vuelta atras salvo reindexando el corpus entero.
+    const response = await upload();
+    const id = response.data.uuid;
+
+    expect(await indexStatusOf(id)).toBe('none');
+
+    await queue.obliterate({ force: true });
+
+    const replaced = await replace(id, '?index=true');
+
+    expect(replaced.status).toBe(200);
+    expect(await indexStatusOf(id)).toBe('pending');
+    expect(await waitForJob(id)).toBeDefined();
+
+    await remove(id);
+  });
+
+  it('Should retire the index, and its chunks, when the replacement says no', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    // Como si el worker ya hubiera terminado.
+    await sequelize.query(
+      `UPDATE pergamo.document SET index_status = 'indexed', index_chunks = 1 WHERE id = :id;`, {
+      replacements: { id }, type: QueryTypes.UPDATE });
+    await queue.obliterate({ force: true });
+
+    const replaced = await replace(id, '?index=false');
+
+    expect(replaced.status).toBe(200);
+    // Los vectores se van igual: describian un fichero que ya no esta.
+    expect(await indexStatusOf(id)).toBe('none');
+    expect(await queue.getJob(id)).toBeUndefined();
+
+    await remove(id);
+  });
+
+  it('Should refuse a replacement that asks for an index the deployment has not', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload();
+    const id = response.data.uuid;
+
+    Config.indexing.enabled = false;
+
+    const replaced = await replace(id, '?index=true');
+
+    // El mismo 400 que la subida, y por lo mismo: sin el, el documento quedaria
+    // en 'pending' contra una cola que nadie consume.
+    expect(replaced.status).toBe(400);
+    expect(replaced.data.error).toContain('does not index');
+
+    Config.indexing.enabled = true;
+
+    await remove(id);
+  });
+
+  it('Should reject an unknown query parameter on the replacement too', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload();
+    const id = response.data.uuid;
+
+    const replaced = await replace(id, '?indexx=true');
+
+    expect(replaced.status).toBe(400);
 
     await remove(id);
   });

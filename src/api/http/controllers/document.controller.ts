@@ -5,7 +5,7 @@ import { documentDeps as deps } from '@/container';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { formatIssues } from '@/shared/validation';
 import {
-  documentChunkQuerySchema, documentListQuerySchema, documentUploadQuerySchema
+  documentChunkQuerySchema, documentListQuerySchema, documentReplaceQuerySchema, documentUploadQuerySchema
 } from '@/api/http/dto/list-query.dto';
 import {
   toChunkResponse, toDocumentResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
@@ -99,13 +99,17 @@ const modifyFile = async (req, res, next) => {
 
   try {
 
+    const query = documentReplaceQuerySchema.safeParse(req.query);
+
+    if(!query.success) throw new ValidationError('INVALID_QUERY', formatIssues(query.error));
+
     const id = requireId(req);
     const file = requireFile(req);
 
     log.debug(`${trace(req)} | Request file: ${JSON.stringify(file)}`);
 
     const document = await modifyDocumentFile(
-      { organization: req.user.organization, id, file, trace: trace(req) }, deps);
+      { organization: req.user.organization, id, file, index: query.data.index, trace: trace(req) }, deps);
 
     log.debug(`${trace(req)} | Document: ${JSON.stringify(document)}`);
 

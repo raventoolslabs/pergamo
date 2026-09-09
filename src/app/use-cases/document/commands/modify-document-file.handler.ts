@@ -16,12 +16,19 @@ export interface ModifyDocumentFileInput {
   organization: string;
   id: string;
   file: UploadedFile;
+  // Ausente conserva la intencion anterior; true y false la cambian.
+  index?: boolean;
   trace: string;
 }
 
 export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:DocumentDeps):Promise<Document> => {
 
-  const { organization, id, file, trace } = input;
+  const { organization, id, file, index, trace } = input;
+
+  // Por delante incluso de la propiedad, como en la subida: es una propiedad
+  // del despliegue —/config ya la publica— y no dice nada del documento pedido.
+  if(index && !Config.indexing.enabled) throw new ValidationError(
+    'INDEXING_DISABLED', 'This deployment does not index documents');
 
   // La propiedad va primero: con el escaneo delante, un tenant podia forzar
   // analisis de 50 MB contra identificadores ajenos y recibir el 404 despues.
@@ -43,11 +50,16 @@ export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:Doc
     hash: await sha256File(file.path) as string
   };
 
-  // Reemplazar el fichero no puede desindexar un documento por omision: se
-  // conserva la intencion, se tiran los vectores del contenido anterior y
-  // vuelve a la cola. Dejarlos hasta que el trabajo corra los haria buscables
-  // apuntando a un contenido que ya no esta.
-  const reindex = current.index.status !== 'none';
+  const hadIndex = current.index.status !== 'none';
+
+  // Reemplazar el fichero no desindexa por omision: sin '?index' se conserva lo
+  // que hubiera. Con el se pide o se retira de forma expresa, y es la unica via
+  // para sacar un documento de 'none' sin reindexar el corpus entero.
+  const wantIndex = index ?? hadIndex;
+
+  // Con la indexacion apagada no se hereda una intencion que nadie puede
+  // cumplir: quedaria en 'pending' contra una cola sin consumidor.
+  const willIndex = wantIndex && Config.indexing.enabled && !isQuarantined(scan.scanStatus);
 
   // Se confirma en base de datos solo despues de que el fichero este en su
   // sitio, para no dejar metadatos describiendo un contenido que no existe.
@@ -55,10 +67,11 @@ export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:Doc
 
     const updated = await deps.documents.replaceFile(organization, id, metadata, scan, scope);
 
-    if(reindex) {
+    // Los vectores del contenido anterior se van aunque ya no se quiera indice:
+    // dejarlos los haria buscables apuntando a un fichero que ya no esta.
+    if(hadIndex || wantIndex) {
       await deps.chunks.deleteByDocument(id, scope);
-      await deps.documents.setIndexStatus(
-        id, isQuarantined(scan.scanStatus) ? 'none' : 'pending', null, scope);
+      await deps.documents.setIndexStatus(id, willIndex ? 'pending' : 'none', null, scope);
     }
 
     const filePath = deps.storage.resolve(organization, updated.path);
@@ -70,7 +83,7 @@ export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:Doc
     return updated;
   });
 
-  if(reindex && !isQuarantined(scan.scanStatus)) {
+  if(willIndex) {
     deps.queue.enqueue(id, organization)
       .catch((error:any) => log.error(`${trace} | Document ${id} replaced but not queued: ${error.message}`));
   }

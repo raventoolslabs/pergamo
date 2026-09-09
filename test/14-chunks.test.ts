@@ -156,6 +156,37 @@ describe('Document chunks', () => {
     expect(response.data).toEqual({ total: 0, limit: 8, offset: 0, chunks: [] });
   });
 
+  /**
+   * La otra puerta de la cuarentena: estos trozos son el texto del fichero, y
+   * entregarlos con la descarga bloqueada no bloquea nada.
+   */
+  it('Should refuse the chunks of a quarantined document', async () => {
+
+    const setStatus = (status:string) => sequelize.query(
+      'UPDATE pergamo.document SET scan_status = :status, scan_signature = :signature WHERE id = :id;', {
+      replacements: { id: mine, status, signature: 'Test.Signature-1' },
+      type: QueryTypes.UPDATE });
+
+    for(const status of ['infected', 'malicious', 'error']) {
+
+      await setStatus(status);
+
+      expect((await chunks(mine)).status).toBe(423);
+    }
+
+    // El motivo viaja en el 423, porque cada uno se resuelve de otra manera:
+    // 'error' manda mirar el almacen y no habla de cuarentena.
+    await setStatus('infected');
+
+    expect((await chunks(mine)).data.error).toContain('Test.Signature-1');
+
+    await sequelize.query(
+      "UPDATE pergamo.document SET scan_status = 'clean', scan_signature = NULL WHERE id = :id;", {
+      replacements: { id: mine }, type: QueryTypes.UPDATE });
+
+    expect((await chunks(mine)).status).toBe(200);
+  });
+
   /* -------------------------------------------------------- aislamiento -- */
 
   /**
