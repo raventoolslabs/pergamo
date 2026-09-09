@@ -23,7 +23,15 @@ const config = {
   // Sin esto NodeClam ejecuta el binario clamdscan local en vez de abrir
   // conexion, y con clamd en su propio contenedor eso no funciona.
   antivirus: {
-    host: optionalValue(process.env.CLAMAV_HOST),
+    // Sin destino declarado se asume la misma maquina. En Docker el compose fija
+    // CLAMAV_HOST al nombre del servicio, asi que este defecto solo alcanza a un
+    // clamd local; sin el, activar el antivirus en desarrollo no arrancaba, y el
+    // error hablaba de una variable que .env.example ni siquiera nombraba.
+    //
+    // No se aplica con socket: ahi el destino ya esta dicho, y un host ademas
+    // haria que NodeClam eligiera cual de los dos usar.
+    host: optionalValue(process.env.CLAMAV_HOST) ||
+      (optionalValue(process.env.CLAMAV_SOCKET) ? undefined : '127.0.0.1'),
     port: process.env.CLAMAV_PORT ? Number.parseInt(process.env.CLAMAV_PORT) : 3310,
     socket: optionalValue(process.env.CLAMAV_SOCKET),
     timeout: process.env.CLAMAV_TIMEOUT ? Number.parseInt(process.env.CLAMAV_TIMEOUT) : 60000,
