@@ -121,14 +121,26 @@ const arrancar = async () => {
   // el fallo aparece mas tarde y disfrazado: sin clamd, cada subida queda
   // 'pending' sin decir por que; sin Redis, se deposita y no se encola nada.
 
+  if (ANTIVIRUS && CLAMAV_SOCKET && !fs.existsSync(CLAMAV_SOCKET)) {
+    morir(
+      `No existe el socket ${CLAMAV_SOCKET}, y ENABLE_ANTIVIRUS=true.`,
+      '  systemctl status clamav-daemon\n\n' +
+      '  El paquete de Debian lo pone en /run/clamav/clamd.ctl; comprueba la\n' +
+      '  ruta en LocalSocket de /etc/clamav/clamd.conf.'
+    );
+  }
+
   if (ANTIVIRUS && !CLAMAV_SOCKET && !(await puedeConectar(CLAMAV_HOST, CLAMAV_PORT))) {
     morir(
       `No responde clamd en ${CLAMAV_HOST}:${CLAMAV_PORT}, y ENABLE_ANTIVIRUS=true.`,
+      '  Un clamav-daemon instalado en el sistema NO escucha en TCP: el paquete\n' +
+      '  de Debian declara solo LocalSocket. Si lo tienes, apunta ahi:\n\n' +
+      '    CLAMAV_SOCKET=/run/clamav/clamd.ctl\n\n' +
       '  ENABLE_ANTIVIRUS=false   para seguir sin antivirus (los depositos\n' +
       '                           quedan «Analisis pendiente», que se entrega).\n\n' +
       '  La pila de docker/ NO publica el 3310 al host a proposito: clamd no\n' +
-      '  autentica. Para alcanzarlo desde aqui, publica el puerto en\n' +
-      '  docker/docker-compose.yml o levanta un clamd nativo.'
+      '  autentica. Para alcanzarlo por red hay que publicarlo en\n' +
+      '  docker/docker-compose.yml.'
     );
   }
 
