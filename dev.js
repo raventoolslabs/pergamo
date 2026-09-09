@@ -57,8 +57,8 @@ for (const linea of fs.readFileSync(ENV_FILE, 'utf8').split('\n')) {
 const PUERTO_API = Number.parseInt(entorno.PORT || '3001', 10);
 
 /**
- * Los mismos defectos que shared/config: vacio es 127.0.0.1:3310, y el worker va
- * embebido salvo que se diga lo contrario.
+ * Los mismos defectos que shared/config: sin destino declarado el antivirus va
+ * al socket del paquete, y el worker va embebido salvo que se diga lo contrario.
  *
  * El entorno gana al fichero porque dotenv hace justo eso —no pisa lo que ya
  * esta en process.env—, y asi `ENABLE_ANTIVIRUS=true npm run dev` prueba una
@@ -67,9 +67,9 @@ const PUERTO_API = Number.parseInt(entorno.PORT || '3001', 10);
 const ajuste = (clave) => process.env[clave] ?? entorno[clave];
 
 const ANTIVIRUS = ajuste('ENABLE_ANTIVIRUS') === 'true';
-const CLAMAV_HOST = ajuste('CLAMAV_HOST') || '127.0.0.1';
+const CLAMAV_HOST = ajuste('CLAMAV_HOST') || '';
 const CLAMAV_PORT = Number.parseInt(ajuste('CLAMAV_PORT') || '3310', 10);
-const CLAMAV_SOCKET = ajuste('CLAMAV_SOCKET') || '';
+const CLAMAV_SOCKET = ajuste('CLAMAV_SOCKET') || (CLAMAV_HOST ? '' : '/run/clamav/clamd.ctl');
 
 const INDEXA = ajuste('INDEXING_ENABLED') === 'true';
 const WORKER_EMBEBIDO = ajuste('INDEXING_WORKER_EMBEDDED') !== 'false';

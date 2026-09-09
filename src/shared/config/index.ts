@@ -14,6 +14,10 @@ const valid_mimetype:string[] = process.env.VALID_MIMETYPE ?
 const malicious_active_content_ignore:string[] = process.env.MALICIOUS_ACTIVE_CONTENT_IGNORE ?
   process.env.MALICIOUS_ACTIVE_CONTENT_IGNORE.split(';').map((value) => value.trim()).filter(Boolean) : [];
 
+// La ruta del paquete de Debian, que es donde clamd escucha si nadie dice otra
+// cosa. Otras distribuciones la cambian, y para eso esta CLAMAV_SOCKET.
+const DEFAULT_CLAMAV_SOCKET = '/run/clamav/clamd.ctl';
+
 const config = {
   path_base,
   tmp_base: path.join(path_base, 'tmp'),
@@ -23,17 +27,19 @@ const config = {
   // Sin esto NodeClam ejecuta el binario clamdscan local en vez de abrir
   // conexion, y con clamd en su propio contenedor eso no funciona.
   antivirus: {
-    // Sin destino declarado se asume la misma maquina. En Docker el compose fija
-    // CLAMAV_HOST al nombre del servicio, asi que este defecto solo alcanza a un
-    // clamd local; sin el, activar el antivirus en desarrollo no arrancaba, y el
-    // error hablaba de una variable que .env.example ni siquiera nombraba.
-    //
-    // No se aplica con socket: ahi el destino ya esta dicho, y un host ademas
-    // haria que NodeClam eligiera cual de los dos usar.
-    host: optionalValue(process.env.CLAMAV_HOST) ||
-      (optionalValue(process.env.CLAMAV_SOCKET) ? undefined : '127.0.0.1'),
+    // Solo lo declarado: el defecto vive en `socket`, y un host ademas obligaria
+    // a NodeClam a elegir entre dos destinos.
+    host: optionalValue(process.env.CLAMAV_HOST),
     port: process.env.CLAMAV_PORT ? Number.parseInt(process.env.CLAMAV_PORT) : 3310,
-    socket: optionalValue(process.env.CLAMAV_SOCKET),
+    // Sin destino declarado se asume el socket local y no 127.0.0.1:3310, porque
+    // un clamav-daemon instalado del paquete NO escucha en ningun puerto: el de
+    // Debian declara LocalSocket y ningun TCPSocket, de modo que el TCP se
+    // rechaza con el demonio vivo y las firmas al dia.
+    //
+    // En Docker el compose fija CLAMAV_HOST al nombre del servicio, asi que este
+    // defecto no le llega; declarar un host lo desactiva.
+    socket: optionalValue(process.env.CLAMAV_SOCKET) ||
+      (optionalValue(process.env.CLAMAV_HOST) ? undefined : DEFAULT_CLAMAV_SOCKET),
     timeout: process.env.CLAMAV_TIMEOUT ? Number.parseInt(process.env.CLAMAV_TIMEOUT) : 60000,
     init_retries: process.env.CLAMAV_INIT_RETRIES ? Number.parseInt(process.env.CLAMAV_INIT_RETRIES) : 10,
     init_retry_delay_ms: process.env.CLAMAV_INIT_RETRY_DELAY_MS ? Number.parseInt(process.env.CLAMAV_INIT_RETRY_DELAY_MS) : 3000

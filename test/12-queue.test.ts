@@ -171,7 +171,11 @@ describe('Indexing queue', () => {
 
     // Contenido activo: la subida entra y queda en cuarentena por si sola, sin
     // necesidad de un ClamAV con firmas reales.
-    const response = await upload('?index=true', 'payloads/payload1.pdf');
+    //
+    // payload3 y no payload1: payload1 es el unico del corpus que ClamAV
+    // reconoce, asi que con el antivirus encendido la subida se rechaza con un
+    // 400 y este caso —entrar y quedar retenido— no llega a darse.
+    const response = await upload('?index=true', 'payloads/payload3.pdf');
 
     expect(response.status).toBe(200);
 

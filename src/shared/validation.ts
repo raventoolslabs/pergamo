@@ -108,14 +108,12 @@ export const configSchema = z.object({
     ssl: z.boolean()
   })
 })
-// El antivirus activado sin destino al que conectarse es una configuracion que
-// solo puede fallar en la primera subida. Se detecta en el arranque.
-.refine((config) => !config.enable_antivirus || !!(config.antivirus.host || config.antivirus.socket), {
-  message: 'ENABLE_ANTIVIRUS requires CLAMAV_HOST or CLAMAV_SOCKET',
-  path: ['antivirus', 'host']
-})
-// Mismo motivo: sin destino al que pedir vectores, la indexacion solo puede
-// fallar en el primer trabajo.
+// El antivirus no necesita esta regla: sin host ni socket declarados,
+// shared/config pone el socket del paquete, asi que destino hay siempre. Que ese
+// destino responda no lo puede saber un esquema, y lo comprueba dev.js.
+//
+// Sin destino al que pedir vectores, en cambio, la indexacion solo puede fallar
+// en el primer trabajo. Se detecta en el arranque.
 .refine((config) => !config.indexing.enabled || !!config.indexing.embedding.base_url, {
   message: 'INDEXING_ENABLED requires EMBEDDING_BASE_URL',
   path: ['indexing', 'embedding', 'base_url']
