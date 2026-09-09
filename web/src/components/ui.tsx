@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 
 import { ApiError } from '../api/client';
+import { useConfig } from '../api/config';
 import type { IndexStatus, ScanStatus } from '../api/types';
 import { t } from '../i18n';
 
@@ -26,8 +27,19 @@ const WITHHELD: ScanStatus[] = ['infected', 'malicious', 'error'];
 
 export const isDeliverable = (status: ScanStatus) => !WITHHELD.includes(status);
 
-export const verdictOf = (status: ScanStatus, engine?: string | null): VerdictState =>
-  status === 'clean' && !engine ? 'unscanned' : status;
+/**
+ * `antivirus` es `enable_antivirus` de /config. Sin él —un servidor que no lo
+ * publica— se deja el estado tal cual: decir «el analizador no respondió» sin
+ * saber si hay analizador sería inventarse la mitad de la frase.
+ *
+ * El 'clean' sin motor es el legado: así se guardaba lo depositado con el
+ * antivirus apagado antes de que eso pasara a 'pending'.
+ */
+export const verdictOf = (status: ScanStatus, engine?: string | null, antivirus?: boolean): VerdictState => {
+  if (engine) return status;
+  if (status === 'clean') return 'unscanned';
+  return status === 'pending' && antivirus === false ? 'unscanned' : status;
+};
 
 /**
  * Ninguno comparte etiqueta con otro: dos estados con la misma palabra son un
@@ -72,7 +84,10 @@ const VERDICT_ICON: Record<VerdictState, ReactNode> = {
  */
 export const Verdict = ({ status, engine }: { status: ScanStatus; engine?: string | null }) => {
 
-  const state = verdictOf(status, engine);
+  // El despliegue se consulta aqui y no se pasa por prop: es configuracion de
+  // arranque, la misma para toda la pantalla, y atravesaria tres componentes.
+  const config = useConfig();
+  const state = verdictOf(status, engine, config?.enable_antivirus);
 
   return (
     <div className={`verdict verdict--${state}`} title={VERDICT[state]?.detail}>

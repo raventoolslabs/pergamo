@@ -70,7 +70,7 @@ describe('Scan quarantine gate', () => {
     await sequelize.close();
   });
 
-  it('Should store a freshly uploaded document as clean', async () => {
+  it('Should record a verdict on deposit only when something gave one', async () => {
 
     const rows:any = await sequelize.query(
       'SELECT scan_status, scan_engine FROM pergamo.document WHERE id = :id;', {
@@ -79,11 +79,29 @@ describe('Scan quarantine gate', () => {
     });
 
     expect(rows.length).toBe(1);
-    expect(rows[0].scan_status).toBe('clean');
 
-    // Con el antivirus activo queda registrado con que motor y base de firmas
-    // se aprobo: es lo que define despues que hay que reescanear.
-    if(Config.enable_antivirus) expect(rows[0].scan_engine).toBeTruthy();
+    if(Config.enable_antivirus) {
+      // Con el antivirus activo queda registrado con que motor y base de firmas
+      // se aprobo: es lo que define despues que hay que reescanear.
+      expect(rows[0].scan_status).toBe('clean');
+      expect(rows[0].scan_engine).toBeTruthy();
+    } else {
+      // Sin antivirus no hay veredicto que escribir. 'clean' seria un veredicto
+      // que nadie emitio, y quien consuma la API por fuera de la interfaz lo
+      // leeria como «analizado y limpio».
+      expect(rows[0].scan_status).toBe('pending');
+      expect(rows[0].scan_engine).toBeNull();
+    }
+  });
+
+  it('Should still deliver a document deposited without a verdict', async () => {
+
+    const response = await api.get(`/document/${documentId}/file`, {
+      headers: { authorization: token }
+    });
+
+    // 'pending' es una verificacion que falta, no un hallazgo: no retiene.
+    expect(response.status).toBe(200);
   });
 
   it('Should block the download of an infected document with 423', async () => {

@@ -4,6 +4,7 @@ import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
 import { searchIndex } from '@/container';
 import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
+import { QUARANTINED_STATUS } from '@/domain/value-objects/scan-status';
 
 /**
  * Barrido de reserva: devuelve a la cola lo que se quedo por el camino.
@@ -29,12 +30,15 @@ const all = process.argv.includes('--all');
 /**
  * Paginacion por keyset y no por OFFSET: la cola cambia mientras se recorre, y
  * un OFFSET se saltaria filas al reordenarse.
+ *
+ * Se excluye lo retenido, no se exige 'clean': la regla es la misma que la de
+ * la entrega, y pedir 'clean' dejaria fuera todo lo depositado sin antivirus.
  */
 const pending = async (model:string, stale:Date, offsetId:string|null):Promise<Row[]> =>
   sequelize.query(
     `SELECT id, organization, index_status
     FROM pergamo.document
-    WHERE scan_status = 'clean'
+    WHERE scan_status NOT IN (:quarantined)
       AND (
         index_status = 'pending'
         OR (index_status = 'indexed' AND index_model IS DISTINCT FROM :model)
@@ -44,7 +48,7 @@ const pending = async (model:string, stale:Date, offsetId:string|null):Promise<R
       AND (:offsetId::varchar IS NULL OR id > :offsetId)
     ORDER BY id
     LIMIT :limit;`, {
-    replacements: { model, stale, all, offsetId, limit: BATCH_SIZE },
+    replacements: { model, stale, all, offsetId, limit: BATCH_SIZE, quarantined: QUARANTINED_STATUS },
     type: QueryTypes.SELECT
   }) as any;
 

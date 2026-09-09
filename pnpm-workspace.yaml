@@ -15,6 +15,8 @@ allowBuilds:
   # aceleraria `jest --watch`, que este proyecto no usa en ningun script, y no
   # se ejecuta codigo de instalacion por una comodidad que nadie ejerce.
   '@parcel/watcher': false
+  msgpackr-extract: false
+  tesseract.js: false
   # jest-resolve si lo necesita. Su script (napi-postinstall) enlaza el binding
   # nativo que corresponde a la plataforma; aqui funciona sin el porque pnpm ha
   # instalado el binding opcional de linux-x64-gnu, pero en musl o con otra

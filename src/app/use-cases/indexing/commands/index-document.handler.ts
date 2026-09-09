@@ -1,5 +1,6 @@
 import log from '@/shared/logger';
 import { EmbeddedChunk } from '@/domain/entities/chunk';
+import { isQuarantined } from '@/domain/value-objects/scan-status';
 import { ConversionUnsupportedError } from '@/domain/exceptions/indexing.exception';
 import { IndexingDeps } from '../dependencies';
 
@@ -28,8 +29,11 @@ export const indexDocument = async (input:IndexDocumentInput, deps:IndexingDeps)
   // Se borro entre el encolado y la ejecucion. No es un fallo.
   if(!document) return 'skipped';
 
-  // Paso a cuarentena mientras esperaba: lo retenido no se abre.
-  if(document.scanStatus !== 'clean') {
+  // Paso a cuarentena mientras esperaba: lo retenido no se abre, y convertir es
+  // abrirlo con un parser. Se comprueba la cuarentena y no que este 'clean':
+  // un deposito sin veredicto —sin antivirus, o con clamd caido— se entrega, y
+  // por tanto tambien se indexa.
+  if(isQuarantined(document.scanStatus)) {
     await deps.documents.setIndexStatus(id, 'none');
     return 'skipped';
   }

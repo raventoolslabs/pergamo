@@ -12,14 +12,20 @@ import { DocumentDeps } from './dependencies';
  * el documento entra, se entrega y queda en la cola del proximo reescaneo.
  * Retenerlo convertia una caida de clamd en un archivo que deja de servir.
  *
- * Con el antivirus desactivado no hay intencion de verificar, asi que queda
- * 'clean' con scan_engine nulo: 'pending' dejaria el despliegue sin descargas y
- * sin salida, porque el reescaneo tampoco puede correr sin escaner.
+ * Con el antivirus desactivado tampoco hay veredicto, asi que tambien es
+ * 'pending' y no 'clean'. 'clean' es un veredicto, y escribir uno que nadie
+ * emitio es justo lo que un archivo no puede hacer: quien consuma la API por
+ * fuera de la interfaz lee 'clean' y entiende «analizado y limpio». No retiene
+ * nada —'pending' se entrega— y el reescaneo lo resuelve en cuanto haya
+ * escaner, porque selecciona por scan_engine nulo.
+ *
+ * Los dos casos comparten estado y no explicacion: cual de los dos es se
+ * distingue por enable_antivirus, que /config ya publica.
  */
 const scanUpload = async (filePath:string, deps:DocumentDeps, trace:string):Promise<ScanRecord> => {
 
   if(!Config.enable_antivirus) {
-    return { scanStatus: 'clean', scanSignature: null, scanEngine: null, scanDate: null };
+    return { scanStatus: 'pending', scanSignature: null, scanEngine: null, scanDate: null };
   }
 
   try {

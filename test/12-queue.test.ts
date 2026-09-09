@@ -150,6 +150,32 @@ describe('Indexing queue', () => {
     await remove(response.data.uuid);
   });
 
+  /**
+   * La otra mitad de la regla. Indexar convierte el fichero, es decir lo abre
+   * con un parser, y eso es exactamente lo que un documento en cuarentena no
+   * puede provocar: se guarda, pero nadie lo toca.
+   */
+  it('Should not queue a quarantined deposit even when indexing was asked for', async () => {
+
+    Config.indexing.enabled = true;
+
+    // Contenido activo: la subida entra y queda en cuarentena por si sola, sin
+    // necesidad de un ClamAV con firmas reales.
+    const response = await upload('?index=true', 'payloads/payload1.pdf');
+
+    expect(response.status).toBe(200);
+
+    const stored:any = await sequelize.query(
+      'SELECT scan_status FROM pergamo.document WHERE id = :id;', {
+      replacements: { id: response.data.uuid }, type: QueryTypes.SELECT });
+
+    expect(stored[0].scan_status).toBe('malicious');
+    expect(await indexStatusOf(response.data.uuid)).toBe('none');
+    expect(await queue.getJob(response.data.uuid)).toBeUndefined();
+
+    await remove(response.data.uuid);
+  });
+
   it('Should not queue a document that did not ask for it', async () => {
 
     Config.indexing.enabled = true;

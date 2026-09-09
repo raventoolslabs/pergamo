@@ -5,6 +5,7 @@ import Config from '@/shared/config';
 import log from '@/shared/logger';
 import { sha256File } from '@/shared/hash';
 import { Document } from '@/domain/entities/document';
+import { isQuarantined } from '@/domain/value-objects/scan-status';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { DocumentDeps } from '../dependencies';
 import { inspectUpload, verifyContent } from '../inspect-upload';
@@ -56,7 +57,8 @@ export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:Doc
 
     if(reindex) {
       await deps.chunks.deleteByDocument(id, scope);
-      await deps.documents.setIndexStatus(id, scan.scanStatus === 'clean' ? 'pending' : 'none', null, scope);
+      await deps.documents.setIndexStatus(
+        id, isQuarantined(scan.scanStatus) ? 'none' : 'pending', null, scope);
     }
 
     const filePath = deps.storage.resolve(organization, updated.path);
@@ -68,7 +70,7 @@ export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:Doc
     return updated;
   });
 
-  if(reindex && scan.scanStatus === 'clean') {
+  if(reindex && !isQuarantined(scan.scanStatus)) {
     deps.queue.enqueue(id, organization)
       .catch((error:any) => log.error(`${trace} | Document ${id} replaced but not queued: ${error.message}`));
   }

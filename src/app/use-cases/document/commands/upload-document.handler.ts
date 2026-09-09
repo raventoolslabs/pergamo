@@ -7,6 +7,7 @@ import { sha256File } from '@/shared/hash';
 import { Document, DocumentMetadata } from '@/domain/entities/document';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { IndexStatus } from '@/domain/value-objects/index-status';
+import { isQuarantined } from '@/domain/value-objects/scan-status';
 import { DocumentDeps } from '../dependencies';
 import { inspectUpload, verifyContent } from '../inspect-upload';
 
@@ -56,9 +57,11 @@ export const uploadDocument = async (input:UploadDocumentInput, deps:DocumentDep
     tags: []
   };
 
-  // Lo retenido no se abre, asi que un deposito que no queda limpio no entra en
-  // la cola aunque se haya pedido indexarlo.
-  const indexStatus:IndexStatus = index && scan.scanStatus === 'clean' ? 'pending' : 'none';
+  // Lo retenido no se abre, asi que un deposito en cuarentena no entra en la
+  // cola aunque se haya pedido indexarlo. La regla es la misma que la de la
+  // entrega y no «solo lo aprobado»: exigir 'clean' dejaria sin indice a todo
+  // despliegue sin antivirus, y tambien a lo depositado con clamd caido.
+  const indexStatus:IndexStatus = index && !isQuarantined(scan.scanStatus) ? 'pending' : 'none';
 
   // Se confirma en base de datos solo despues de que el fichero este en su
   // sitio: un fallo del `mv` dejaria una fila sin contenido.

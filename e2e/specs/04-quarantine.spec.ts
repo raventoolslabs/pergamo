@@ -65,7 +65,7 @@ test.describe('Quarantine', () => {
     await sql(`DELETE FROM pergamo.document WHERE metadata->>'name' = 'payload3';`);
   });
 
-  test('Should deliver a pending scan and say so', async ({ page }) => {
+  test('Should deliver a deposit that has no verdict and say so', async ({ page }) => {
 
     // La otra mitad de la politica, y la que se rompe sin que nadie se entere:
     // 'pending' no retiene. Si alguien vuelve a meterlo en la lista de estados
@@ -77,10 +77,13 @@ test.describe('Quarantine', () => {
     await page.getByRole('link', { name: 'test' }).first().click();
 
     await expect(page.getByRole('button', { name: /descargar/i })).toBeVisible();
-    // Por texto y no por rol: el aviso de 'pending' es un `warn`, y el rol
-    // 'alert' —asertivo, interrumpe al lector de pantalla— se reserva a los
-    // errores.
-    await expect(page.getByText(/se entrega igual/i)).toBeVisible();
+
+    // Este recorrido corre con ENABLE_ANTIVIRUS=false, y ahi 'pending' solo
+    // puede significar que no hay analizador: la pantalla dice eso y no «el
+    // analizador no respondio», que seria inventarse un escaner que no existe.
+    // Por texto y no por rol: el aviso es un `warn`, y el rol 'alert'
+    // —asertivo, interrumpe al lector de pantalla— se reserva a los errores.
+    await expect(page.getByText(/nadie ha verificado su contenido/i)).toBeVisible();
 
     await shot(page, 'detail-pending-scan');
   });

@@ -462,15 +462,17 @@ Cada documento lleva `scan_status`, `scan_signature`, `scan_engine` y `scan_date
 
 | Estado | Significado | Descarga |
 |---|---|---|
-| `clean` | Analizado y aprobado (o antivirus desactivado por configuración: ver abajo). | Permitida |
-| `pending` | No hay veredicto todavía: el antivirus estaba habilitado pero no disponible en la subida, o un reescaneo no llegó a completarse sobre ese fichero. Se reintenta solo en el siguiente barrido. | Permitida |
+| `clean` | Analizado y aprobado. `scan_engine` dice con qué motor y qué base de firmas. | Permitida |
+| `pending` | **No hay veredicto**: el antivirus no estaba disponible en la subida, no llegó a completarse un reescaneo, o este despliegue no tiene antivirus. Se resuelve solo en el siguiente barrido. | Permitida |
 | `infected` | Una firma lo señaló, en la subida o en un reescaneo posterior. | **423** |
 | `error` | El fichero no está en disco (`scan_signature` = `FILE_MISSING`). Es el **único** caso que lo produce: no es un análisis pendiente, es un documento roto, y un reescaneo no lo arregla. | **423** |
 | `malicious` | El documento lleva contenido activo: JavaScript, acciones al abrir, ficheros embebidos. Lo decide Pergamo, no el escáner, y **no lo levanta un reescaneo** —solo una liberación manual—. | **423** |
 
-**`clean` no siempre quiere decir «analizado».** Con `ENABLE_ANTIVIRUS` desactivado no hay intención de verificar, así que la subida se guarda como `clean` con **`scan_engine` nulo**; marcarla `pending` dejaría el despliegue sin descargas y sin salida, porque el reescaneo tampoco puede correr sin escáner. `scan_engine` es entonces la única columna que separa un documento aprobado por un motor de uno que nadie miró, y por eso viaja también en el listado (`GET /document`) y `GET /config` publica `enable_antivirus`.
+**`clean` es un veredicto, y solo se escribe cuando alguien lo emitió.** Con `ENABLE_ANTIVIRUS` desactivado nadie mira el fichero, así que la subida se guarda `pending` con `scan_engine` nulo, no `clean`. La razón es que `scan_status` lo consume gente que no es esta interfaz: quien lee `clean` entiende «analizado y limpio», y afirmar eso de un fichero que nadie abrió es justo lo que un archivo no puede permitirse. No cuesta nada, porque `pending` **se entrega** igual que `clean`, y el reescaneo lo recoge en cuanto haya escáner —selecciona por `scan_engine` nulo—.
 
-La interfaz usa exactamente esa distinción: un `clean` con motor se llama «Analizado» (verde), y uno sin motor, «Sin analizar», en gris y con la explicación al lado —se entrega, pero nadie ha verificado su contenido—. No comparte palabra con `pending`, que es «Análisis pendiente» y **no** se entrega. Cualquier otro consumidor de la API debería mirar las dos columnas por el mismo motivo: llamar analizado a lo que no lo está es precisamente la afirmación que un archivo no puede permitirse.
+`pending` cubre entonces dos situaciones que comparten estado y no explicación: **no hay antivirus** en este despliegue, o **lo hay y no respondió**. Las separa `enable_antivirus`, que `GET /config` publica, y la interfaz usa exactamente eso: sin antivirus lo llama «Sin analizar» —se entrega, pero nadie ha verificado su contenido—; con antivirus, «Análisis pendiente», que el próximo barrido resuelve. Cualquier otro consumidor debería mirar `scan_engine` por el mismo motivo: es la columna que separa lo aprobado por un motor de lo que nadie miró.
+
+Los depósitos anteriores a este cambio siguen en `clean` con `scan_engine` nulo, y la interfaz los sigue mostrando como «Sin analizar». No se reescriben en una migración: `npm run rescan` les da veredicto de verdad en cuanto haya escáner, que es mejor que cambiarles la etiqueta.
 
 El bloqueo se aplica en `GET /document/:id/file` y **no** en `GET /document/:id`: los metadatos de un documento en cuarentena siguen siendo consultables, porque es como el cliente descubre por qué está bloqueado.
 
@@ -478,7 +480,9 @@ El bloqueo se aplica en `GET /document/:id/file` y **no** en `GET /document/:id`
 
 Es una decisión con su coste, y conviene verlo escrito: un documento `pending` es contenido que se pretendía verificar y no se verificó, y aun así sale del archivo. A cambio, una caída de clamd deja de convertir el archivo en un almacén que no entrega nada, y el coste de esa caída no recae sobre depósitos que en su inmensa mayoría no tienen nada y cuyos autores no hicieron nada mal. El estado no se esconde: la interfaz lo llama «Análisis pendiente» y lo explica en la ficha, y el siguiente barrido lo resuelve sin que nadie tenga que intervenir.
 
-**Política ante escáner no disponible**: la subida se acepta, se entrega y queda `pending`, en la cola del próximo reescaneo.
+**Política ante escáner no disponible —o ausente—**: la subida se acepta, se entrega y queda `pending`, en la cola del próximo reescaneo.
+
+Lo mismo vale para la indexación: entra en la cola todo lo que **no** está retenido, y no solo lo `clean`. Exigir `clean` dejaba sin índice a cualquier despliegue sin antivirus, y también a lo depositado con clamd caído. Lo retenido sí se queda fuera, y por un motivo concreto: indexar convierte el fichero, es decir lo abre con un parser, que es exactamente lo que un documento en cuarentena no debe provocar.
 
 `pending` y `error` no significan lo mismo y por eso no se han fundido nunca: `pending` se resuelve solo —queda en la cola de reescaneo con `scan_engine` nulo—, mientras que `error` sale de esa cola y exige que alguien mire por qué falta el fichero. De ahí que uno se entregue y el otro no.
 

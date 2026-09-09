@@ -262,7 +262,17 @@ describe('Active-content PDF corpus', () => {
     const uploaded = await upload(UNDETECTED);
 
     expect(uploaded.status).toBe(StatusCodes.OK);
-    expect((await status(uploaded.data.uuid)).scan_status).toBe('clean');
+
+    // No se afirma 'clean': con el antivirus apagado nadie lo miro y el
+    // deposito queda 'pending'. Lo que esta prueba sostiene es que no se
+    // retiene, que es lo que se puede comprobar sin escaner.
+    expect((await status(uploaded.data.uuid)).scan_status)
+      .toBe(Config.enable_antivirus ? 'clean' : 'pending');
+
+    const download = await api.get(`/document/${uploaded.data.uuid}/file`,
+      { headers: { authorization: token } });
+
+    expect(download.status).toBe(StatusCodes.OK);
   });
 
   itAntivirus('Should reject the payload ClamAV recognises before it is stored', async () => {
