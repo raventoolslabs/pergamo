@@ -63,7 +63,7 @@ export const UploadDialog = ({ onClose, onUploaded }: {
   const [uploaded, setUploaded] = useState(0);
 
   // Comprobacion previa con los mismos limites que aplica el servidor. No
-  // sustituye a la suya: solo evita subir 50 MB para recibir un 400.
+  // sustituye a la suya: solo evita subir el fichero entero para recibir un 400.
   const problemWith = useCallback((file: File): string | null => {
     if (!config) return null;
 

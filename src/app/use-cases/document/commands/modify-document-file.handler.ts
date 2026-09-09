@@ -31,7 +31,8 @@ export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:Doc
     'INDEXING_DISABLED', 'This deployment does not index documents');
 
   // La propiedad va primero: con el escaneo delante, un tenant podia forzar
-  // analisis de 50 MB contra identificadores ajenos y recibir el 404 despues.
+  // analisis de un fichero entero contra identificadores ajenos y recibir el
+  // 404 despues.
   const current = await getDocument(organization, id, deps);
 
   if(file.mimetype !== current.metadata.mimetype) throw new ValidationError(

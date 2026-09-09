@@ -56,7 +56,14 @@ const config = {
   // entero. Se anota siempre por que se ignora.
   malicious_active_content_ignore,
   max_version_file: process.env.MAX_VERSION_FILES ? Number.parseInt(process.env.MAX_VERSION_FILES) : 1,
-  max_file_size: process.env.MAX_FILE_SIZE ? Number.parseInt(process.env.MAX_FILE_SIZE) : 52428800,
+  // 25 MiB, que es el tope que clamd analiza con su configuracion de serie
+  // (StreamMaxLength y MaxFileSize valen 25M en el paquete de las
+  // distribuciones). Aceptar mas de lo que el escaner mira deja entrar
+  // documentos sin analizar y sin decirlo: se guardan 'pending' porque el
+  // escaner corta la conexion, y ese estado no se distingue de una caida.
+  // docker/clamav/clamd.conf sube esos limites a 64M, de modo que ahi si se
+  // puede subir este valor.
+  max_file_size: process.env.MAX_FILE_SIZE ? Number.parseInt(process.env.MAX_FILE_SIZE) : 26214400,
   port: process.env.PORT || 3000,
   jwt_expires_in: process.env.JWT_EXPIRES_IN ? process.env.JWT_EXPIRES_IN : '8h',
   trust_proxy: process.env.TRUST_PROXY ? Number.parseInt(process.env.TRUST_PROXY) : 0,
