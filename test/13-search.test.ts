@@ -165,6 +165,22 @@ describe('Document search', () => {
   const search = (body:any, authorization = token) =>
     api.post('/search', body, { headers: { authorization } });
 
+  /**
+   * La organizacion de cada documento devuelto, sin repetir. Es lo que permite
+   * afirmar el aislamiento sin exigir que el inquilino solo tenga los documentos
+   * de esta prueba: cualquiera puede sembrar ejemplos en la misma base.
+   */
+  const organizationsOf = async (ids:string[]) => {
+
+    if(!ids.length) return [];
+
+    const rows:any = await sequelize.query(
+      'SELECT DISTINCT organization FROM pergamo.document WHERE id IN (:ids);', {
+      replacements: { ids }, type: QueryTypes.SELECT });
+
+    return rows.map((row:any) => row.organization).sort();
+  };
+
   /* ---------------------------------------------------------- proveedor -- */
 
   it('Should ask the provider for the width the index has', async () => {
@@ -191,15 +207,28 @@ describe('Document search', () => {
    */
   it('Should never return a chunk from another organization', async () => {
 
-    const response = await search({ query: 'presupuesto aprobado ejercicio', limit: 50 });
+    const consulta = { query: 'presupuesto aprobado ejercicio', limit: 50 };
+
+    const response = await search(consulta);
 
     expect(response.status).toBe(200);
     expect(response.data.results.length).toBeGreaterThan(0);
-    expect(response.data.results.every((hit:any) => hit.document_id === mine)).toBe(true);
 
-    const theirResponse = await search({ query: 'presupuesto aprobado ejercicio', limit: 50 }, otherToken);
+    // Se comprueba la organizacion de cada documento devuelto, y no que todos
+    // sean `mine`: el inquilino puede tener mas cosas indexadas —las tiene en
+    // cuanto alguien siembra ejemplos— y eso no es un fallo de aislamiento.
+    expect(await organizationsOf(response.data.results.map((hit:any) => hit.document_id)))
+      .toEqual(['pergamo']);
 
-    expect(theirResponse.data.results.every((hit:any) => hit.document_id === theirs)).toBe(true);
+    // Y el propio se encuentra: sin esto lo anterior lo cumpliria una respuesta
+    // vacia.
+    expect(response.data.results.some((hit:any) => hit.document_id === mine)).toBe(true);
+
+    const theirResponse = await search(consulta, otherToken);
+
+    expect(theirResponse.data.results.length).toBeGreaterThan(0);
+    expect(await organizationsOf(theirResponse.data.results.map((hit:any) => hit.document_id)))
+      .toEqual([OTHER]);
   });
 
   /**
@@ -262,9 +291,14 @@ describe('Document search', () => {
 
   it('Should return the provenance of each fragment', async () => {
 
-    const [hit] = (await search({ query: 'presupuesto', limit: 1 })).data.results;
+    // Se busca el trozo propio entre los resultados en vez de dar por hecho que
+    // sale el primero: la posicion depende de que mas tenga indexado el
+    // inquilino, y lo que se comprueba aqui es la procedencia, no el orden.
+    const { results } = (await search({ query: 'presupuesto', limit: 50 })).data;
 
-    expect(hit.document_id).toBe(mine);
+    const hit = results.find((resultado:any) => resultado.document_id === mine);
+
+    expect(hit).toBeDefined();
     expect(hit.section).toBe('Seccion');
     expect(hit.heading_path).toEqual(['Seccion']);
     expect(typeof hit.page).toBe('number');
