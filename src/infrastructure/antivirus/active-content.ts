@@ -31,7 +31,18 @@ export interface ActiveContentResult {
  */
 const NAME_END = '(?![A-Za-z0-9#])';
 
-const RULES:{ name:string; pattern:RegExp; why:string }[] = [
+/**
+ * Hay claves que condenan por estar y claves que solo condenan por lo que
+ * valen. `pattern` encuentra a las candidatas; `refine`, cuando existe, decide.
+ */
+interface Rule {
+  name: string;
+  pattern: RegExp;
+  refine?: (text:string) => boolean;
+  why: string;
+}
+
+const RULES:Rule[] = [
   {
     name: 'JavaScript',
     pattern: new RegExp(`\\/(?:JavaScript|JS)${NAME_END}`),
@@ -40,6 +51,7 @@ const RULES:{ name:string; pattern:RegExp; why:string }[] = [
   {
     name: 'OpenAction',
     pattern: new RegExp(`\\/OpenAction${NAME_END}`),
+    refine: (text) => openActionExecutes(text),
     why: 'action triggered when the document is opened'
   },
   {
@@ -84,6 +96,46 @@ const RULES:{ name:string; pattern:RegExp; why:string }[] = [
     why: 'URI with a javascript: scheme'
   }
 ];
+
+// Subtipos de accion que no ejecutan nada dentro del visor: abrir un enlace es
+// lo que hace un documento normal.
+const INERT_ACTIONS = ['URI', 'URL'];
+
+const OPEN_ACTION = new RegExp(`\\/OpenAction${NAME_END}\\s*`, 'g');
+
+/**
+ * `/OpenAction` no es contenido activo por si sola: `/OpenAction[1 0 R /XYZ
+ * null null 0]` es un DESTINO —«abrete en esta pagina»— y lo emite cualquier
+ * suite ofimatica. Lo ejecutable es el diccionario `/OpenAction<</S/...>>`, y
+ * ahi manda su subtipo.
+ *
+ * Ante una referencia indirecta se marca: seguirla exige un parser, y este
+ * modulo no lo tiene. Falso positivo antes que falso negativo.
+ *
+ * Que el refinamiento se equivoque a la baja no abre un agujero: los subtipos
+ * que de verdad ejecutan —JavaScript, Launch, SubmitForm, XFA— tienen cada uno
+ * su propia regla por presencia.
+ */
+const openActionExecutes = (text:string) => {
+
+  for(const match of text.matchAll(OPEN_ACTION)) {
+
+    const value = text.slice(match.index + match[0].length).slice(0, 512);
+
+    if(value.startsWith('[')) continue;
+
+    if(value.startsWith('<<')) {
+
+      const subtype = value.match(/\/S\s*\/([A-Za-z0-9#]+)/);
+
+      if(subtype && INERT_ACTIONS.includes(subtype[1])) continue;
+    }
+
+    return true;
+  }
+
+  return false;
+}
 
 // `/J#61vaScript` es `/JavaScript` para cualquier visor: sin deshacer los
 // escapes hexadecimales, el filtro se esquiva cambiando una letra por su codigo.
@@ -174,7 +226,8 @@ export const detectActiveContent = async (filePath:string, mimetype:string):Prom
   const ignored = Config.malicious_active_content_ignore;
 
   const markers = RULES
-    .filter((rule) => !ignored.includes(rule.name) && rule.pattern.test(text))
+    .filter((rule) => !ignored.includes(rule.name) && rule.pattern.test(text)
+      && (!rule.refine || rule.refine(text)))
     .map((rule) => rule.name);
 
   return { active: markers.length > 0, markers };

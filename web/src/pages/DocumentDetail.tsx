@@ -209,7 +209,7 @@ export const DocumentDetail = () => {
   // donde un 'clean' sin motor no es un analisis.
   const scan = scanInfo?.scan_status ?? 'pending';
   const downloadable = isDeliverable(scan);
-  const state = verdictOf(scan, scanInfo?.scan_engine, config?.enable_antivirus);
+  const state = verdictOf(scan, scanInfo?.scan_engine);
 
   const otherFields = Object.entries(metadata).filter(([key]) =>
     !SYSTEM_FIELDS.includes(key) && !editable.includes(key) && key !== 'name' && key !== 'tags');

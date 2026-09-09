@@ -175,6 +175,32 @@ describe('Active-content PDF corpus', () => {
     }
   });
 
+  /**
+   * `/OpenAction[3 0 R /XYZ null null 0]` es un destino —«abrete en esta pagina
+   * con este encuadre»— y lo emite cualquier suite ofimatica. Marcarlo dejaba en
+   * cuarentena a media biblioteca por decir donde abrirse.
+   */
+  it('Should not flag an OpenAction that is only a destination', async () => {
+
+    const result = await detectActiveContent(
+      path.join(__dirname, 'assets', 'open-action-destination.pdf'), 'application/pdf');
+
+    expect(result).toEqual({ active: false, markers: [] });
+  });
+
+  /**
+   * La otra mitad, sin la cual lo anterior seria un agujero. El subtipo es
+   * '/Movie' a proposito: ninguna otra regla lo mira, asi que lo que se prueba
+   * es el refinamiento de OpenAction y no el solapamiento con '/JavaScript'.
+   */
+  it('Should flag an OpenAction that carries an action dictionary', async () => {
+
+    const result = await detectActiveContent(
+      path.join(__dirname, 'assets', 'open-action-dictionary.pdf'), 'application/pdf');
+
+    expect(result).toEqual({ active: true, markers: ['OpenAction'] });
+  });
+
   it('Should quarantine an active-content deposit instead of rejecting it', async () => {
 
     // Lo que separa esto del antivirus: un fichero infectado no entra (400),

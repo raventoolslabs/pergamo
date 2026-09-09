@@ -4,7 +4,6 @@ import { useEffect, useId, useMemo, useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 
 import { ApiError } from '../api/client';
-import { useConfig } from '../api/config';
 import type { IndexStatus, ScanStatus } from '../api/types';
 import { t } from '../i18n';
 
@@ -28,18 +27,18 @@ const WITHHELD: ScanStatus[] = ['infected', 'malicious', 'error'];
 export const isDeliverable = (status: ScanStatus) => !WITHHELD.includes(status);
 
 /**
- * `antivirus` es `enable_antivirus` de /config. Sin él —un servidor que no lo
- * publica— se deja el estado tal cual: decir «el analizador no respondió» sin
- * saber si hay analizador sería inventarse la mitad de la frase.
+ * El 'clean' sin motor es el legado, y el único caso que queda: así se guardaba
+ * lo depositado con el antivirus apagado antes de que eso pasara a 'pending'.
+ * Llamar «Analizado» a eso es lo que un archivo no puede permitirse.
  *
- * El 'clean' sin motor es el legado: así se guardaba lo depositado con el
- * antivirus apagado antes de que eso pasara a 'pending'.
+ * 'pending' NO se traduce aquí. Significa una sola cosa —no hay veredicto— la
+ * haya provocado un analizador que no respondió o un despliegue que no tiene
+ * ninguno, y darle dos nombres segun una bandera global describía el servidor
+ * en la ficha de cada documento. Que este despliegue no analice se cuenta una
+ * vez, en el aviso de la pantalla de subida.
  */
-export const verdictOf = (status: ScanStatus, engine?: string | null, antivirus?: boolean): VerdictState => {
-  if (engine) return status;
-  if (status === 'clean') return 'unscanned';
-  return status === 'pending' && antivirus === false ? 'unscanned' : status;
-};
+export const verdictOf = (status: ScanStatus, engine?: string | null): VerdictState =>
+  !engine && status === 'clean' ? 'unscanned' : status;
 
 /**
  * Ninguno comparte etiqueta con otro: dos estados con la misma palabra son un
@@ -49,9 +48,8 @@ export const verdictOf = (status: ScanStatus, engine?: string | null, antivirus?
  * un documento intacto sobre el que hay que decidir y 'error' es un fichero que
  * falta del almacen: le tocan a personas distintas.
  *
- * 'unscanned' y 'pending' tampoco: en el primero no hay antivirus en este
- * despliegue, en el segundo lo hay y no respondio. Comparten destino, no
- * explicacion.
+ * 'unscanned' es solo el legado: un 'clean' que ningun motor emitio. No se usa
+ * para 'pending', que significa que no hay veredicto todavia y se resuelve.
  */
 export const VERDICT: Record<VerdictState, { label: string; detail: string }> = {
   clean: { label: t('verdict.clean.label'), detail: t('verdict.clean.detail') },
@@ -84,10 +82,7 @@ const VERDICT_ICON: Record<VerdictState, ReactNode> = {
  */
 export const Verdict = ({ status, engine }: { status: ScanStatus; engine?: string | null }) => {
 
-  // El despliegue se consulta aqui y no se pasa por prop: es configuracion de
-  // arranque, la misma para toda la pantalla, y atravesaria tres componentes.
-  const config = useConfig();
-  const state = verdictOf(status, engine, config?.enable_antivirus);
+  const state = verdictOf(status, engine);
 
   return (
     <div className={`verdict verdict--${state}`} title={VERDICT[state]?.detail}>
