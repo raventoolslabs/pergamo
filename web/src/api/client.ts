@@ -172,6 +172,9 @@ export const api = {
 
   indexInfo: (id: string) => request<IndexInfo>(`/document/${encodeURIComponent(id)}/index`),
 
+  reindex: (id: string) =>
+    request<IndexInfo>(`/document/${encodeURIComponent(id)}/index`, { method: 'POST' }),
+
   chunks: (id: string, params: { limit?: number; offset?: number } = {}) =>
     request<ChunkList>(`/document/${encodeURIComponent(id)}/chunks${query(params)}`),
 

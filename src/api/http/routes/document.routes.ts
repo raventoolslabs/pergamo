@@ -25,6 +25,7 @@ router.get('/:id/scan', Middleware.auth, Controllers.scanInfo);
 router.post('/:id/scan', Middleware.auth, Controllers.rescan);
 router.post('/:id/release', Middleware.auth, Controllers.release);
 router.get('/:id/index', Middleware.auth, Controllers.indexInfo);
+router.post('/:id/index', Middleware.auth, Controllers.reindex);
 router.get('/:id/chunks', Middleware.auth, Controllers.chunks);
 router.get('/:id/versions', Middleware.auth, Controllers.versionsFile);
 router.get('/:id/versions/:version/file', Middleware.auth, Controllers.getVersionFile);

@@ -145,4 +145,20 @@ test.describe('Semantic index', () => {
     await shot(page, 'detail-not-indexed');
   });
 
+  test('Should index on demand a document that was left out', async ({ page }) => {
+    // Igual que el primero: la cola y la maquina de inferencia van por delante
+    // del margen que Playwright da por defecto.
+    test.setTimeout(90000);
+
+    await page.getByRole('link', { name: 'test' }).first().click();
+    await page.getByRole('tab', { name: /índice semántico/i }).click();
+
+    // Quedarse fuera del indice al depositar ya no es definitivo: se pide desde
+    // la propia ficha, sin volver a subir el fichero.
+    await page.getByRole('button', { name: /indexar ahora/i }).click();
+
+    await expect(page.getByText(/^indexado$/i).first()).toBeVisible({ timeout: 60000 });
+    await shot(page, 'detail-indexed-on-demand');
+  });
+
 });

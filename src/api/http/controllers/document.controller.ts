@@ -19,6 +19,7 @@ import { modifyDocumentMetadata } from '@/app/use-cases/document/commands/modify
 import { removeDocument } from '@/app/use-cases/document/commands/remove-document.handler';
 import { rescanDocument } from '@/app/use-cases/document/commands/rescan-document.handler';
 import { releaseDocument } from '@/app/use-cases/document/commands/release-document.handler';
+import { reindexDocument } from '@/app/use-cases/document/commands/reindex-document.handler';
 import { startRescanSweep } from '@/app/use-cases/document/commands/start-rescan-sweep.handler';
 import { getDocument } from '@/app/use-cases/document/queries/get-document.handler';
 import { getDocumentFile } from '@/app/use-cases/document/queries/get-document-file.handler';
@@ -339,6 +340,24 @@ const indexInfo = async (req, res, next) => {
   }
 };
 
+// Gemelo en POST del indexInfo de arriba: vuelve a encolar el documento y
+// devuelve el estado del indice, con la misma forma.
+const reindex = async (req, res, next) => {
+
+  try {
+
+    const document = await reindexDocument(
+      { organization: req.user.organization, id: requireId(req), trace: trace(req) }, deps);
+
+    res.status(StatusCodes.ACCEPTED)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify(toIndexInfoResponse(document)));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Para mirar dentro del indice: que texto se extrajo y por donde se corto. Sale
 // paginado porque un documento largo son miles de trozos de mil y pico
 // caracteres cada uno.
@@ -372,6 +391,7 @@ const chunks = async (req, res, next) => {
 export {
   upload,
   indexInfo,
+  reindex,
   chunks,
   list,
   scanInfo,

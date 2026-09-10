@@ -400,7 +400,10 @@ const ERROR_MESSAGE: Record<string, TranslationKey> = {
   FILE_TOO_LARGE_TO_SCAN: 'error.fileTooLargeToScan',
   FILE_MISSING: 'error.fileMissing',
   SCAN_NOT_CLEAN: 'error.scanNotClean',
-  VERSION_NOT_FOUND: 'error.versionNotFound'
+  VERSION_NOT_FOUND: 'error.versionNotFound',
+  INDEXING_DISABLED: 'error.indexingDisabled',
+  INDEXING_IN_PROGRESS: 'error.indexingInProgress',
+  QUEUE_UNAVAILABLE: 'error.queueUnavailable'
 };
 
 /**

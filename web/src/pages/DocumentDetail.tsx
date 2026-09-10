@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client';
 import { useConfig } from '../api/config';
-import type { DocumentMetadata, DocumentVersion, IndexInfo, ScanInfo } from '../api/types';
+import type { DocumentMetadata, DocumentVersion, IndexInfo, IndexStatus, ScanInfo } from '../api/types';
 import { useToast } from '../components/toast';
 import { ChunkList } from '../components/ChunkList';
 import {
@@ -52,6 +52,13 @@ const RESCANNABLE: VerdictState[] = ['pending', 'unscanned', 'infected'];
  */
 const RELEASABLE: VerdictState[] = ['infected', 'malicious'];
 
+/**
+ * Estados del indice que una pasada nueva puede resolver. Fuera quedan
+ * 'pending' e 'indexing' —el trabajo ya esta pedido—, 'indexed' y
+ * 'unsupported', donde sin conversor la pasada devuelve el mismo veredicto.
+ */
+const REINDEXABLE: IndexStatus[] = ['none', 'error'];
+
 const asTags = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
@@ -86,7 +93,7 @@ const SizeIcon = () => (
 const DownloadIcon = ({ size = 15 }: { size?: number }) => (
   <Icon size={size}><path d="M12 3v12" /><path d="M7 11l5 5 5-5" /><path d="M5 20h14" /></Icon>
 );
-const RescanIcon = () => <Icon size={13}><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></Icon>;
+const RetryIcon = () => <Icon size={13}><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></Icon>;
 const BackIcon = () => <Icon size={14}><path d="M19 12H5" /><path d="M11 18l-6-6 6-6" /></Icon>;
 // Candado abierto: lo que se levanta es la retencion, no el veredicto.
 const ReleaseIcon = () => (
@@ -263,6 +270,22 @@ export const DocumentDetail = () => {
     }
   };
 
+  const reindex = async () => {
+    setBusy('reindex');
+
+    try {
+      setIndexInfo(await api.reindex(id));
+      // El sondeo se para a las quince vueltas: pedir la indexacion a mano
+      // vuelve a abrirlo, o la cola recien pedida se quedaria sin mirar.
+      refreshes.current = 0;
+      toast(t('detail.reindexQueued'));
+    } catch (failure) {
+      toast(errorMessage(failure), 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const release = async () => {
     setBusy('release');
 
@@ -343,7 +366,7 @@ export const DocumentDetail = () => {
     <button type="button" className="btn btn--tiny" onClick={rescan} disabled={busy === 'rescan'}>
       {busy === 'rescan'
         ? <><span className="spinner" aria-hidden="true" /> {t('detail.rescanning')}</>
-        : <><RescanIcon /> {t('detail.rescan')}</>}
+        : <><RetryIcon /> {t('detail.rescan')}</>}
     </button>
   ) : null;
 
@@ -546,6 +569,21 @@ export const DocumentDetail = () => {
     </div>
   );
 
+  // Indexar no toca el fichero, pero si lo abre con un parser: en cuarentena la
+  // API lo rechaza, asi que aqui no se ofrece.
+  const canReindex = config?.indexing_enabled === true && downloadable
+    && indexInfo !== null && REINDEXABLE.includes(indexInfo.index_status);
+
+  const reindexButton = canReindex && indexInfo ? (
+    <button type="button" className="btn btn--tiny" onClick={reindex} disabled={busy === 'reindex'}>
+      {busy === 'reindex'
+        ? <><span className="spinner" aria-hidden="true" /> {t('detail.reindexing')}</>
+        : <><RetryIcon /> {indexInfo.index_status === 'error'
+            ? t('detail.reindexRetry')
+            : t('detail.reindex')}</>}
+    </button>
+  ) : null;
+
   const semanticIndex = indexInfo ? (
     <div className="doc-panel">
       <Notice
@@ -556,6 +594,7 @@ export const DocumentDetail = () => {
           : 'info'}
         title={INDEX[indexInfo.index_status]?.label}
         icon={<IndexIcon status={indexInfo.index_status} />}
+        action={reindexButton}
       >
         {INDEX[indexInfo.index_status]?.detail}
       </Notice>

@@ -4,6 +4,7 @@ import path from 'path';
 import FormData from 'form-data';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { StatusCodes } from 'http-status-codes';
 
 import { app } from '@/server';
 import Config from '@/shared/config';
@@ -344,6 +345,114 @@ describe('Indexing queue', () => {
     expect(info.data).toMatchObject({ index_status: 'pending' });
     expect(info.data).toHaveProperty('index_model');
     expect(info.data).toHaveProperty('index_error');
+
+    await remove(id);
+  });
+
+  /* ------------------------------------------ indexacion bajo demanda -- */
+
+  it('Should index on demand a document deposited without an index', async () => {
+
+    Config.indexing.enabled = true;
+
+    // Sin '?index': hasta ahora salir de 'none' pedia reemplazar el fichero.
+    const response = await upload();
+    const id = response.data.uuid;
+
+    await queue.obliterate({ force: true });
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    expect(asked.status).toBe(StatusCodes.ACCEPTED);
+    expect(asked.data).toMatchObject({ index_status: 'pending' });
+    expect(await indexStatusOf(id)).toBe('pending');
+    expect(await waitForJob(id)).toBeDefined();
+
+    await remove(id);
+  });
+
+  it('Should send a document that failed to index back to the queue', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    // Como si el worker lo hubiera dado por fallido.
+    await sequelize.query(
+      `UPDATE pergamo.document SET index_status = 'error', index_error = 'EMPTY_CONTENT' WHERE id = :id;`, {
+      replacements: { id }, type: QueryTypes.UPDATE });
+    await queue.obliterate({ force: true });
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    expect(asked.status).toBe(StatusCodes.ACCEPTED);
+    // El motivo anterior se va con el estado: describe una pasada que ya no es
+    // la ultima.
+    expect(asked.data).toMatchObject({ index_status: 'pending', index_error: null });
+    expect(await waitForJob(id)).toBeDefined();
+
+    await remove(id);
+  });
+
+  it('Should refuse an on-demand index while the document is being indexed', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    await sequelize.query(
+      `UPDATE pergamo.document SET index_status = 'indexing' WHERE id = :id;`, {
+      replacements: { id }, type: QueryTypes.UPDATE });
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    // Una segunda pasada sobre lo que un worker ya tiene dentro duplica el
+    // trabajo y no adelanta nada.
+    expect(asked.status).toBe(400);
+    expect(asked.data.code).toBe('INDEXING_IN_PROGRESS');
+    expect(await indexStatusOf(id)).toBe('indexing');
+
+    await remove(id);
+  });
+
+  it('Should refuse an on-demand index that the deployment cannot run', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload();
+    const id = response.data.uuid;
+
+    Config.indexing.enabled = false;
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    expect(asked.status).toBe(400);
+    expect(asked.data.error).toContain('does not index');
+    expect(await indexStatusOf(id)).toBe('none');
+
+    Config.indexing.enabled = true;
+
+    await remove(id);
+  });
+
+  it('Should refuse to index a quarantined document on demand', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('', 'payloads/payload3.pdf');
+    const id = response.data.uuid;
+
+    await queue.obliterate({ force: true });
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    // Convertir es abrir el fichero con un parser, y eso es justo lo que la
+    // cuarentena impide.
+    expect(asked.status).toBe(StatusCodes.LOCKED);
+    expect(await indexStatusOf(id)).toBe('none');
+    expect(await queue.getJob(id)).toBeUndefined();
 
     await remove(id);
   });
