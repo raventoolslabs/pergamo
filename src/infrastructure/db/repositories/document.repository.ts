@@ -86,6 +86,21 @@ export const documentRepository:DocumentRepository = {
     return toDocument(result[0][0] as DocumentRow);
   },
 
+  async recordScan(organization, id, scan, scope?:TransactionScope):Promise<Document> {
+
+    const result:any = await sequelize.query(
+      `UPDATE pergamo.document
+      SET scan_status = :scan_status, scan_signature = :scan_signature,
+          scan_engine = :scan_engine, scan_date = :scan_date
+      WHERE organization = :organization AND id = :id RETURNING *;`, {
+      replacements: { organization, id, ...scanReplacements(scan) },
+      type: QueryTypes.INSERT,
+      transaction: scope as any
+    });
+
+    return toDocument(result[0][0] as DocumentRow);
+  },
+
   async remove(organization, id):Promise<string | null> {
 
     const result:any = await sequelize.query(

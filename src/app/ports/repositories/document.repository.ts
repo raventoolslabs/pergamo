@@ -40,6 +40,9 @@ export interface DocumentRepository {
   findById(organization:string, id:string): Promise<Document | null>;
   replaceFile(organization:string, id:string, metadata:DocumentMetadata, scan:ScanRecord, scope?:TransactionScope): Promise<Document>;
   updateMetadata(organization:string, id:string, metadata:DocumentMetadata): Promise<Document>;
+  // Solo el veredicto: un reanalisis no toca el contenido, asi que tampoco
+  // modification_date, que describe el documento y no lo que se sabe de el.
+  recordScan(organization:string, id:string, scan:ScanRecord, scope?:TransactionScope): Promise<Document>;
   // Devuelve la ruta de la fila borrada, o null si no existia.
   remove(organization:string, id:string): Promise<string | null>;
   list(filter:DocumentListFilter): Promise<DocumentPage>;

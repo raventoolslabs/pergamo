@@ -11,7 +11,8 @@ const STATUS:Record<DomainErrorKind, number> = {
   validation: StatusCodes.BAD_REQUEST,
   unauthorized: StatusCodes.UNAUTHORIZED,
   not_found: StatusCodes.NOT_FOUND,
-  locked: StatusCodes.LOCKED
+  locked: StatusCodes.LOCKED,
+  unavailable: StatusCodes.SERVICE_UNAVAILABLE
 };
 
 const errorHandler = (err, req, res, next) => {

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef } from 'react';
+import { createContext, useContext, useEffect, useId, useMemo, useRef } from 'react';
 // Con alias: `KeyboardEvent` a secas taparia el del DOM, que es el que usa el
 // manejador de Escape del dialogo.
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
@@ -74,18 +74,31 @@ const VERDICT_ICON: Record<VerdictState, ReactNode> = {
   error: <><path d="M12 4.2l8 14.4H4z" /><path d="M12 10v3.4" /><path d="M12 16.4h.01" /></>
 };
 
+/** Solo el glifo, para un aviso que ya lleva la palabra en su titulo. */
+export const VerdictIcon = ({ state, size = 20 }: { state: VerdictState; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {VERDICT_ICON[state]}
+  </svg>
+);
+
 /**
  * Icono y palabra, nunca uno de los dos solo: el color no puede ser el unico
  * portador de la informacion.
  *
  * `engine` es opcional porque no todas las respuestas de la API lo traen.
  */
-export const Verdict = ({ status, engine }: { status: ScanStatus; engine?: string | null }) => {
+export const Verdict = ({ status, engine, chip }: {
+  status: ScanStatus;
+  engine?: string | null;
+  /** Pildora con borde y fondo, para la fila de estado de la ficha. */
+  chip?: boolean;
+}) => {
 
   const state = verdictOf(status, engine);
 
   return (
-    <div className={`verdict verdict--${state}`} title={VERDICT[state]?.detail}>
+    <div className={`verdict verdict--${state}${chip ? ' verdict--chip' : ''}`} title={VERDICT[state]?.detail}>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
         strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {VERDICT_ICON[state]}
@@ -124,9 +137,17 @@ const INDEX_ICON: Record<IndexStatus, ReactNode> = {
   error: <><path d="M4 6.5h16M4 11h9" /><path d="M16 11.6l5.2 9.4h-10.4z" /><path d="M16 15v2.2" /><path d="M16 18.9h.01" /></>
 };
 
+/** Solo el glifo, como en el veredicto. */
+export const IndexIcon = ({ status, size = 20 }: { status: IndexStatus; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {INDEX_ICON[status]}
+  </svg>
+);
+
 /** Icono y palabra, como el veredicto: el color nunca lleva solo el mensaje. */
-export const IndexState = ({ status }: { status: IndexStatus }) => (
-  <div className={`verdict verdict--index-${status}`} title={INDEX[status]?.detail}>
+export const IndexState = ({ status, chip }: { status: IndexStatus; chip?: boolean }) => (
+  <div className={`verdict verdict--index-${status}${chip ? ' verdict--chip' : ''}`} title={INDEX[status]?.detail}>
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {INDEX_ICON[status]}
@@ -140,28 +161,67 @@ export const IndexState = ({ status }: { status: IndexStatus }) => (
 export interface Tab {
   id: string;
   label: string;
+  /** Glifo opcional a la izquierda de la palabra, como en la cinta de la ficha. */
+  icon?: ReactNode;
   panel: ReactNode;
 }
 
+interface TabsValue {
+  tabs: Tab[];
+  current: Tab;
+  prefix: string;
+  label: string;
+  onChange: (id: string) => void;
+}
+
+const TabsContext = createContext<TabsValue | null>(null);
+
+const useTabs = () => {
+
+  const value = useContext(TabsContext);
+
+  // Un identificador que no case rompe justo lo que no se ve mirando la
+  // pantalla, asi que la cinta y el panel no existen fuera del proveedor.
+  if(!value) throw new Error('TabStrip and TabPanel must be used inside Tabs');
+
+  return value;
+};
+
 /**
- * Pestañas con teclado completo —flechas, Home y End— y un solo punto de
- * tabulación, que es como el patrón ARIA las define: llegar con Tab entra en la
- * pestaña activa en vez de recorrerlas una a una.
- *
- * Dibuja la cinta y el panel juntos a propósito: separarlos dejaría los
- * `aria-controls` en manos de quien lo use, y un identificador que no case
- * rompe justo lo que no se ve mirando la pantalla.
+ * Proveedor de una cinta de pestañas. Cinta y panel se pintan por separado
+ * —en la ficha el titulo y las acciones van entre una y otro—, pero los
+ * identificadores que los enlazan se quedan aqui dentro.
  */
-export const Tabs = ({ tabs, active, onChange, label }: {
+export const Tabs = ({ tabs, active, onChange, label, children }: {
   tabs: Tab[];
   active: string;
   onChange: (id: string) => void;
   /** Nombre de la cinta para quien navega a ciegas: «Índice semántico». */
   label: string;
+  children: ReactNode;
 }) => {
 
   const prefix = useId();
   const current = tabs.find((tab) => tab.id === active) ?? tabs[0];
+
+  return (
+    <TabsContext.Provider value={{ tabs, current, prefix, label, onChange }}>
+      {children}
+    </TabsContext.Provider>
+  );
+};
+
+/**
+ * Teclado completo —flechas, Home y End— y un solo punto de tabulación, que es
+ * como el patrón ARIA lo define: llegar con Tab entra en la pestaña activa en
+ * vez de recorrerlas una a una.
+ */
+export const TabStrip = ({ segmented }: {
+  /** Botones sobre una barra, y no subrayados: la forma de la cabecera de la ficha. */
+  segmented?: boolean;
+}) => {
+
+  const { tabs, current, prefix, label, onChange } = useTabs();
 
   const move = (event: ReactKeyboardEvent<HTMLDivElement>) => {
 
@@ -184,31 +244,41 @@ export const Tabs = ({ tabs, active, onChange, label }: {
   };
 
   return (
-    <>
-      <div className="tabs" role="tablist" aria-label={label} onKeyDown={move}>
-        {tabs.map((tab) => (
-          <button
-            type="button"
-            key={tab.id}
-            id={`${prefix}-tab-${tab.id}`}
-            className={`tab${tab.id === current.id ? ' tab--active' : ''}`}
-            role="tab"
-            aria-selected={tab.id === current.id}
-            aria-controls={`${prefix}-panel-${tab.id}`}
-            tabIndex={tab.id === current.id ? 0 : -1}
-            onClick={() => onChange(tab.id)}
-          >{tab.label}</button>
-        ))}
-      </div>
+    <div
+      className={`tabs${segmented ? ' tabs--segmented' : ''}`}
+      role="tablist"
+      aria-label={label}
+      onKeyDown={move}
+    >
+      {tabs.map((tab) => (
+        <button
+          type="button"
+          key={tab.id}
+          id={`${prefix}-tab-${tab.id}`}
+          className={`tab${tab.id === current.id ? ' tab--active' : ''}`}
+          role="tab"
+          aria-selected={tab.id === current.id}
+          aria-controls={`${prefix}-panel-${tab.id}`}
+          tabIndex={tab.id === current.id ? 0 : -1}
+          onClick={() => onChange(tab.id)}
+        >{tab.icon}{tab.label}</button>
+      ))}
+    </div>
+  );
+};
 
-      <div
-        className="tabs__panel"
-        id={`${prefix}-panel-${current.id}`}
-        role="tabpanel"
-        aria-labelledby={`${prefix}-tab-${current.id}`}
-        tabIndex={0}
-      >{current.panel}</div>
-    </>
+export const TabPanel = () => {
+
+  const { current, prefix } = useTabs();
+
+  return (
+    <div
+      className="tabs__panel"
+      id={`${prefix}-panel-${current.id}`}
+      role="tabpanel"
+      aria-labelledby={`${prefix}-tab-${current.id}`}
+      tabIndex={0}
+    >{current.panel}</div>
   );
 };
 
@@ -342,14 +412,23 @@ export const errorMessage = (error: unknown): string => {
   return error.message;
 };
 
-export const Notice = ({ kind = 'info', title, children }: {
+export const Notice = ({ kind = 'info', title, icon, action, children }: {
   kind?: 'info' | 'error' | 'warn' | 'success';
   title?: string;
+  /** Glifo del estado, a la izquierda del texto. */
+  icon?: ReactNode;
+  /** Lo que se puede hacer al respecto, debajo del cuerpo. */
+  action?: ReactNode;
   children: ReactNode;
 }) => (
   <div className={`notice notice--${kind}`} role={kind === 'error' ? 'alert' : undefined}>
-    {title ? <strong>{title}</strong> : null}
-    {children}
+    {icon ? <span className="notice__icon" aria-hidden="true">{icon}</span> : null}
+    <div className="notice__text">
+      {/* Bajo un titulo el cuerpo baja al gris del papel: el color lo llevan la
+          palabra y el glifo, y un parrafo entero en ambar se lee peor. */}
+      {title ? <><strong>{title}</strong><p className="notice__body">{children}</p></> : children}
+      {action ? <div className="notice__action">{action}</div> : null}
+    </div>
   </div>
 );
 
@@ -456,6 +535,32 @@ export const formatSize = (bytes: number) => {
 
   return `${value % 1 === 0 ? value : value.toFixed(1)} ${units[unit]}`;
 };
+
+/**
+ * Un dato de la ficha como tarjeta: rotulo con glifo arriba y valor debajo. Es
+ * la unidad de la rejilla, y por eso lleva su propio nombre y no el de `Datum`,
+ * que sigue siendo la fila de una lista de definiciones.
+ */
+export const Card = ({ term, icon, action, wide, children }: {
+  term: string;
+  icon?: ReactNode;
+  /** Un boton pequeño en la esquina, como el de copiar la huella. */
+  action?: ReactNode;
+  /** Ocupa la fila entera: para un valor largo que no se debe partir. */
+  wide?: boolean;
+  children: ReactNode;
+}) => (
+  <div className={`card${wide ? ' card--wide' : ''}`}>
+    <div className="card__head">
+      <span className="card__term">
+        {icon ? <span className="card__icon" aria-hidden="true">{icon}</span> : null}
+        {term}
+      </span>
+      {action}
+    </div>
+    <div className="card__value">{children}</div>
+  </div>
+);
 
 export const Datum = ({ term, children }: { term: string; children: ReactNode }) => (
   <div className="datum">

@@ -8,6 +8,21 @@ import { Empty, ErrorNotice, Loading, PAGE_SIZES, Pagination } from './ui';
 
 const BREADCRUMB = ' > ';
 
+const PageIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" />
+  </svg>
+);
+
+const RawIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M8 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2" />
+    <path d="M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2" />
+  </svg>
+);
+
 /**
  * Un trozo, con su procedencia arriba y su contenido debajo.
  *
@@ -25,17 +40,21 @@ const Chunk = ({ chunk }: { chunk: DocumentChunk }) => {
       <header className="chunk__head">
         <span className="chunk__position">#{chunk.position + 1}</span>
         {chunk.page !== null ? (
-          <span className="chunk__page">{t('chunks.page', { page: chunk.page })}</span>
+          <span className="chunk__page"><PageIcon />{t('chunks.page', { page: chunk.page })}</span>
         ) : null}
         {chunk.heading_path.length ? (
           <span className="chunk__path">{chunk.heading_path.join(BREADCRUMB)}</span>
         ) : null}
         <span className="chunk__meta">{t('chunks.length', { count: chunk.length })}</span>
         <span className="chunk__meta mono">{t('chunks.id', { id: chunk.chunk_id })}</span>
-        <label className="chunk__raw">
-          <input type="checkbox" checked={raw} onChange={(event) => setRaw(event.target.checked)} />
-          <span>{t('chunks.raw')}</span>
-        </label>
+        {/* Conmutador y no casilla: lo que hace es cambiar lo que se ve debajo,
+            no marcar una preferencia que se guarde. */}
+        <button
+          type="button"
+          className={`chunk__raw${raw ? ' chunk__raw--on' : ''}`}
+          aria-pressed={raw}
+          onClick={() => setRaw(!raw)}
+        ><RawIcon />{t('chunks.raw')}</button>
       </header>
 
       <div className="chunk__body">

@@ -41,6 +41,7 @@ test.describe('Semantic index', () => {
 
     // El trabajo pasa por la cola y vuelve solo: la ficha se refresca sin que
     // nadie recargue, y eso es justo lo que se comprueba —sin reload().
+    await page.getByRole('tab', { name: /índice semántico/i }).click();
     await expect(page.getByText(/^indexado$/i).first()).toBeVisible({ timeout: 60000 });
     await expect(page.getByText(/trozos?$/i).first()).toBeVisible();
 
@@ -69,9 +70,8 @@ test.describe('Semantic index', () => {
     await expect(dialog).toHaveCount(0);
 
     await page.getByRole('link', { name: 'structured' }).first().click();
+    await page.getByRole('tab', { name: /índice semántico/i }).click();
     await expect(page.getByText(/^indexado$/i).first()).toBeVisible({ timeout: 60000 });
-
-    await page.getByRole('tab', { name: /trozos/i }).click();
 
     // La tabla del documento se ve como tabla, con sus celdas, y no como el
     // markdown de tuberias con que se guardo.
@@ -95,7 +95,7 @@ test.describe('Semantic index', () => {
     const panel = page.locator('.chunks');
 
     await panel.locator('.chunk').filter({ has: page.getByRole('table') }).first()
-      .getByRole('checkbox').check();
+      .getByRole('button', { name: /ver crudo/i }).click();
 
     // Era la unica tabla del documento, asi que no queda ninguna dibujada.
     await expect(panel.getByRole('table')).toHaveCount(0);
@@ -105,21 +105,23 @@ test.describe('Semantic index', () => {
     await shot(page, 'detail-chunks-raw');
   });
 
-  test('Should move between the index tabs with the keyboard', async ({ page }) => {
+  test('Should move between the document tabs with the keyboard', async ({ page }) => {
 
     await page.getByRole('link', { name: 'structured' }).first().click();
-    await expect(page.getByRole('tab', { name: /trozos/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /índice semántico/i })).toBeVisible();
 
     // El patron ARIA: se entra en la pestana activa y se cambia con flechas, no
     // recorriendo una a una con Tab.
-    await page.getByRole('tab', { name: /^estado$/i }).focus();
+    await page.getByRole('tab', { name: /^general$/i }).focus();
     await page.keyboard.press('ArrowRight');
 
-    await expect(page.getByRole('tab', { name: /trozos/i })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab', { name: /trozos/i })).toBeFocused();
+    const index = page.getByRole('tab', { name: /índice semántico/i });
+
+    await expect(index).toHaveAttribute('aria-selected', 'true');
+    await expect(index).toBeFocused();
 
     await page.keyboard.press('Home');
-    await expect(page.getByRole('tab', { name: /^estado$/i })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: /^general$/i })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('Should leave a document out of the index when the box is not ticked', async ({ page }) => {

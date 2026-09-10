@@ -10,7 +10,7 @@ test.describe('Document detail', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
 
-  test('Should show the integrity seal and the provenance', async ({ page }) => {
+  test('Should show the fingerprint and the provenance', async ({ page }) => {
     const [document] = await sql("SELECT metadata->>'hash' AS hash FROM pergamo.document LIMIT 1;");
 
     // El SHA-256 acredita que el contenido no ha cambiado: tiene que estar a la
@@ -50,7 +50,8 @@ test.describe('Document detail', () => {
   test('Should record a version when the file is replaced', async ({ page }) => {
     await page.locator('input[type=file]').setInputFiles(asset('test2.pdf'));
 
-    await expect(page.getByRole('row').filter({ hasText: '1' }).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('listitem').filter({ hasText: /versión 1/i }).first())
+      .toBeVisible({ timeout: 15000 });
     await shot(page, 'detail-versions');
   });
 

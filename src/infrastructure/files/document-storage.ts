@@ -86,6 +86,10 @@ export const documentStorage:FileStorage = {
     return versions.sort((a, b) => a.version - b.version);
   },
 
+  resolveVersion(filePath, version) {
+    return `${filePath}.${version}`;
+  },
+
   async removeDocument(organization, relative) {
     await FilesUtils.rmdir(
       path.join(Config.path_base, organization),

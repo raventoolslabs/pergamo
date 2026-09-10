@@ -227,6 +227,7 @@ a:hover { text-decoration-color: currentColor; }
 .btn--pill:hover:not(:disabled) { background: transparent; color: var(--ink); border-color: rgba(242, 241, 238, .35); }
 
 .btn--tiny { padding: 5px 11px; font-size: 13px; }
+.btn--small { width: 26px; height: 26px; border-radius: 7px; }
 .btn--wide { width: 100%; }
 
 /* ================================================================ campos == */
@@ -439,6 +440,35 @@ a:hover { text-decoration-color: currentColor; }
 .tab:focus-visible { outline: 2px solid var(--ink); outline-offset: -4px; border-radius: 4px; }
 .tabs__panel:focus-visible { outline: none; }
 
+/* Botones sobre una barra: en la cabecera de la ficha la cinta no cierra
+   ninguna seccion, asi que el subrayado no tendria de que colgar. */
+.tabs--segmented {
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--sheet);
+  margin-bottom: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.tabs--segmented .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  margin-bottom: 0;
+}
+.tabs--segmented .tab--active {
+  background: var(--fill);
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+.tabs--segmented .tab:focus-visible { outline-offset: -2px; }
+
 /* ================================================================= trozos == */
 
 .chunks { display: flex; flex-direction: column; gap: 14px; }
@@ -454,15 +484,52 @@ a:hover { text-decoration-color: currentColor; }
   font-size: 12px;
   color: var(--ink-faint);
 }
-.chunk__position { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
-.chunk__page { font-variant-numeric: tabular-nums; }
+.chunk__position {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 7px;
+  background: var(--fill);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.chunk__page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-mid);
+}
 /* La procedencia es lo que se comprueba de un vistazo, asi que se lleva el
    espacio sobrante y empuja lo demas al otro extremo. */
 .chunk__path { flex: 1; min-width: 0; color: var(--ink-mid); }
 .chunk__meta { white-space: nowrap; }
 
-.chunk__raw { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.chunk__raw input { width: 13px; height: 13px; accent-color: var(--ink); }
+.chunk__raw {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chunk__raw:hover { color: var(--ink); background: var(--hover); }
+.chunk__raw--on, .chunk__raw--on:hover { background: var(--fill); border-color: var(--ink-faint); color: var(--ink); }
 
 /* Tope de altura: un trozo son mil quinientos caracteres y ocho seguidos harian
    una pagina por la que hay que bajar a ciegas. */
@@ -542,57 +609,179 @@ a:hover { text-decoration-color: currentColor; }
 }
 .pagination__per-page select:focus-visible { outline: none; border-color: var(--green); }
 
-/* ================================================================== sello == */
+/* ================================================================== ficha == */
 
-/* El SHA-256 es lo unico que acredita que el contenido no ha cambiado: se
-   compone como un sello y no como una linea gris. */
-.detail { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 40px; align-items: start; }
+/* Cinta y titulo en la misma altura: la navegacion entre las dos caras del
+   documento se decide antes de leer nada, no despues. */
+.doc-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
 
-.seal {
-  padding: 18px 20px 20px;
-  border: 1px solid var(--green);
-  border-radius: 2px;
+.back--pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  padding: 7px 13px 7px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  color: var(--ink-mid);
+  white-space: nowrap;
+}
+.back--pill:hover { color: var(--ink); border-color: var(--rule-strong); background: var(--hover); text-decoration: none; }
+
+.doc-title { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.doc-title h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Baldosa del tipo de fichero: el icono solo no distingue un PDF de un DOCX, y
+   la extension es lo que de verdad se busca de un vistazo. */
+.doc-type {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 60px;
+  height: 60px;
+  flex: none;
+  border: 1px solid var(--rule-strong);
+  border-radius: 14px;
+  background: var(--fill);
+  color: var(--ink-mid);
+}
+.doc-type__extension {
+  font-family: var(--mono);
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.doc-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.doc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Misma pieza que el veredicto del listado, en pildora: aqui compite con el
+   titulo y las acciones, y sin borde se pierde entre las dos. */
+.chip, .verdict--chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 99px;
+  background: var(--hover);
+  white-space: nowrap;
+  flex: none;
+}
+.chip--plain { font-family: var(--mono); font-size: 12px; color: var(--ink-mid); }
+.chip--plain svg { color: var(--ink-faint); }
+.verdict--chip span { color: var(--ink-mid); }
+
+/* El fondo de la pildora sigue al veredicto, que es lo unico que aqui informa. */
+.verdict--chip.verdict--clean, .verdict--chip.verdict--index-indexed {
+  border-color: rgba(127, 219, 164, .3);
   background: var(--green-soft);
 }
-.seal__fingerprint {
-  font-family: var(--mono);
-  font-size: 28px;
+.verdict--chip.verdict--pending, .verdict--chip.verdict--infected,
+.verdict--chip.verdict--malicious, .verdict--chip.verdict--index-pending,
+.verdict--chip.verdict--index-indexing {
+  border-color: rgba(224, 176, 97, .3);
+  background: var(--pending-soft);
+}
+.verdict--chip.verdict--error, .verdict--chip.verdict--index-error {
+  border-color: rgba(240, 140, 114, .3);
+  background: var(--seal-soft);
+}
+
+.doc-panel { display: flex; flex-direction: column; gap: 26px; margin-top: 30px; }
+.doc-panel > section > h2 { margin-bottom: 4px; }
+
+/* Dos columnas mientras quepan: metadatos y versiones se consultan a la vez,
+   una para editar y la otra para comprobar contra que. */
+.doc-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 32px; }
+
+/* ---- tarjetas de datos ---- */
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.card {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--sheet);
+}
+.card--wide { grid-column: 1 / -1; }
+.card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card__term {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
   font-weight: 500;
-  letter-spacing: -.02em;
-  line-height: 1.1;
-  color: var(--ink);
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
 }
-.seal__verdict { margin-top: 8px; font-size: 14px; font-weight: 500; color: var(--green-text); }
-.seal__detail { margin-top: 2px; font-size: 13px; color: var(--ink-mid); }
-.seal__full {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--green);
+.card__icon { display: flex; flex: none; }
+.card__note { margin-top: 2px; font-size: 12.5px; color: var(--ink-faint); }
+.card__value { margin-top: 9px; min-width: 0; font-size: 14.5px; overflow-wrap: anywhere; }
+
+.truncate { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.panel {
+  padding: 20px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--sheet);
+  max-width: none;
+}
+
+/* ---- versiones ---- */
+
+.versions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--sheet);
+  overflow: hidden;
+}
+.version { display: flex; align-items: center; gap: 14px; padding: 13px 16px; border-bottom: 1px solid var(--fill); }
+.version:last-child { border-bottom: 0; }
+.version:hover { background: var(--hover); }
+.version__number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid var(--rule-strong);
+  border-radius: 9px;
   font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--ink-mid);
-  word-break: break-all;
 }
-
-.seal--infected, .seal--error, .seal--malicious { border-color: var(--seal); background: var(--seal-soft); }
-.seal--infected .seal__verdict, .seal--error .seal__verdict,
-.seal--malicious .seal__verdict { color: var(--seal); }
-.seal--infected .seal__full, .seal--error .seal__full,
-.seal--malicious .seal__full { border-top-color: var(--seal); }
-/* En la ficha el sello de 'error' comparte el lacre con la cuarentena —los dos
-   dicen "esto no se entrega"—, pero la palabra que lleva encima ya no es la
-   misma, que es lo que distingue una decision pendiente de una averia. */
-
-/* El sello de lo no analizado conserva la forma pero pierde el color: la huella
-   sigue acreditando el contenido, y lo que falta es el veredicto. */
-.seal--unscanned { border-color: var(--rule-strong); background: var(--hover); }
-.seal--unscanned .seal__verdict { color: var(--ink-mid); }
-.seal--unscanned .seal__full { border-top-color: var(--rule-strong); }
-
-.seal--pending { border-color: var(--pending); background: var(--pending-soft); }
-.seal--pending .seal__verdict { color: var(--pending); }
-.seal--pending .seal__full { border-top-color: var(--pending); }
+.version__text { flex: 1; min-width: 0; }
+.version__title { font-size: 14px; font-weight: 500; }
+.version__note { font-size: 12px; color: var(--ink-faint); }
+.version__date { font-family: var(--mono); font-size: 12.5px; color: var(--ink-mid); white-space: nowrap; }
 
 /* ================================================================ campos == */
 
@@ -610,7 +799,15 @@ a:hover { text-decoration-color: currentColor; }
   font-size: 14px;
   max-width: 68ch;
 }
+.notice { display: flex; gap: 12px; }
 .notice strong { display: block; font-weight: 600; }
+.notice__icon { flex: none; margin-top: 1px; }
+.notice__text { min-width: 0; }
+.notice__body { margin-top: 5px; color: var(--ink-mid); line-height: 1.6; }
+.notice__action { margin-top: 12px; }
+/* La firma es el motivo del bloqueo, no un adorno del aviso: se separa del
+   parrafo y va en mono, que es como se copia a un buscador. */
+.notice__signature { margin-top: 8px; font-size: 13px; color: var(--ink-faint); }
 .notice--error { border-left-color: var(--seal); background: var(--seal-soft); color: var(--seal); }
 .notice--warn { border-left-color: var(--pending); background: var(--pending-soft); color: var(--pending); }
 .notice--success { border-left-color: var(--green); background: var(--green-soft); color: var(--green-text); }
@@ -1175,8 +1372,6 @@ a:hover { text-decoration-color: currentColor; }
 /* ================================================================ estrecho == */
 
 @media (max-width: 900px) {
-  .detail { grid-template-columns: minmax(0, 1fr); gap: 26px; }
-
   /* La tabla se deshace en tarjetas: cinco columnas en un movil dejan el nombre
      del documento en dos letras y una elipsis. */
   .ledger__header { display: none; }
@@ -1202,6 +1397,15 @@ a:hover { text-decoration-color: currentColor; }
   .filters .field:first-child { grid-column: 1 / -1; }
   .pagehead { margin-bottom: 24px; }
   .pagination__count { flex: 1 0 100%; }
+
+  /* La cinta pasa a ocupar su propia linea: junto al enlace de vuelta, dos
+     pestanas con glifo no caben en un movil sin partir las palabras. */
+  .doc-bar { gap: 12px; }
+  .tabs--segmented { flex: 1 0 100%; }
+  .tabs--segmented .tab { flex: 1; justify-content: center; padding: 8px 10px; }
+  .doc-title { gap: 14px; }
+  .doc-type { width: 48px; height: 48px; border-radius: 12px; }
+  .doc-columns { gap: 26px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

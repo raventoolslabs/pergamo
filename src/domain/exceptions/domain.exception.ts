@@ -3,7 +3,7 @@
  * a estado de respuesta es el middleware de la capa api, que es el unico que
  * sabe que esto se sirve por HTTP.
  */
-export type DomainErrorKind = 'validation' | 'unauthorized' | 'not_found' | 'locked';
+export type DomainErrorKind = 'validation' | 'unauthorized' | 'not_found' | 'locked' | 'unavailable';
 
 export class DomainError extends Error {
 
@@ -33,4 +33,12 @@ export class NotFoundError extends DomainError {
 // Existe y esta identificado, pero no se entrega: cuarentena.
 export class LockedError extends DomainError {
   constructor(code:string, message:string) { super('locked', code, message); }
+}
+
+/**
+ * El servicio externo del que dependia la operacion no contesta. No es culpa de
+ * quien llama ni un fallo del servidor: se reintenta.
+ */
+export class ServiceUnavailableError extends DomainError {
+  constructor(code:string, message:string) { super('unavailable', code, message); }
 }

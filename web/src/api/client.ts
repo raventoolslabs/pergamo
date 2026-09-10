@@ -115,6 +115,28 @@ const filenameFrom = (disposition: string | null, fallback: string) => {
   return plain ? plain[1] : fallback;
 };
 
+/**
+ * Por fetch y no por un enlace directo: la ruta exige la cabecera de
+ * autorizacion, que un <a href> no puede enviar.
+ */
+const saveFile = async (path: string, fallbackName: string) => {
+
+  const response = await handle(await fetch(path, { headers: authHeaders() }));
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = filenameFrom(response.headers.get('content-disposition'), fallbackName);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  // Revocar antes de que el navegador arranque la descarga la cancela.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
 export const api = {
   version: () => request<{ version: string }>('/version'),
 
@@ -177,24 +199,13 @@ export const api = {
   remove: (id: string) =>
     request<{ message: string }>(`/document/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  // Por fetch y no por un enlace directo: la ruta exige la cabecera de
-  // autorizacion, que un <a href> no puede enviar.
-  download: async (id: string, fallbackName: string) => {
-    const response = await handle(await fetch(`/document/${encodeURIComponent(id)}/file`, {
-      headers: authHeaders()
-    }));
+  rescan: (id: string) =>
+    request<ScanInfo>(`/document/${encodeURIComponent(id)}/scan`, { method: 'POST' }),
 
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+  download: (id: string, fallbackName: string) =>
+    saveFile(`/document/${encodeURIComponent(id)}/file`, fallbackName),
 
-    link.href = url;
-    link.download = filenameFrom(response.headers.get('content-disposition'), fallbackName);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    // Revocar antes de que el navegador arranque la descarga la cancela.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
+  // Lo que baja es el ZIP que guarda el servidor, no el fichero original.
+  downloadVersion: (id: string, version: number, fallbackName: string) =>
+    saveFile(`/document/${encodeURIComponent(id)}/versions/${version}/file`, fallbackName)
 };

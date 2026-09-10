@@ -10,16 +10,19 @@ import {
 import {
   toChunkResponse, toDocumentResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
 } from '@/api/http/dto/document.dto';
+import { documentVersionParamSchema } from '@/api/http/dto/document-param.dto';
 import { contentDisposition } from '@/api/http/content-disposition';
 
 import { uploadDocument } from '@/app/use-cases/document/commands/upload-document.handler';
 import { modifyDocumentFile } from '@/app/use-cases/document/commands/modify-document-file.handler';
 import { modifyDocumentMetadata } from '@/app/use-cases/document/commands/modify-document-metadata.handler';
 import { removeDocument } from '@/app/use-cases/document/commands/remove-document.handler';
+import { rescanDocument } from '@/app/use-cases/document/commands/rescan-document.handler';
 import { getDocument } from '@/app/use-cases/document/queries/get-document.handler';
 import { getDocumentFile } from '@/app/use-cases/document/queries/get-document-file.handler';
 import { listDocuments } from '@/app/use-cases/document/queries/list-documents.handler';
 import { listDocumentVersions } from '@/app/use-cases/document/queries/list-document-versions.handler';
+import { getDocumentVersionFile } from '@/app/use-cases/document/queries/get-document-version-file.handler';
 import { listDocumentChunks } from '@/app/use-cases/document/queries/list-document-chunks.handler';
 
 const trace = (req:any) => `${req.method} ${req.originalUrl} - ${req.id}`;
@@ -156,6 +159,33 @@ const versionsFile = async (req, res, next) => {
   }
 };
 
+// Lo que sale es el ZIP que guarda el archivador, no el fichero original:
+// descomprimirlo aqui pediria una dependencia nueva para ahorrar un doble clic.
+const getVersionFile = async (req, res, next) => {
+
+  try {
+
+    const params = documentVersionParamSchema.safeParse(req.params);
+
+    if(!params.success) throw new ValidationError('INVALID_PARAM', formatIssues(params.error));
+
+    const id = requireId(req);
+    const { version } = params.data;
+
+    const { document, filePath } = await getDocumentVersionFile(
+      req.user.organization, id, version, deps);
+
+    res.setHeader('Content-Disposition',
+      contentDisposition(`${document.metadata.name}.v${version}.zip`));
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/zip')
+      .sendFile(filePath);
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 const remove = async (req, res, next) => {
 
   try {
@@ -221,6 +251,24 @@ const scanInfo = async (req, res, next) => {
   }
 };
 
+// Gemelo en POST del scanInfo de arriba: vuelve a pasar el escaner por el
+// fichero guardado y devuelve el veredicto nuevo, con la misma forma.
+const rescan = async (req, res, next) => {
+
+  try {
+
+    const document = await rescanDocument(
+      { organization: req.user.organization, id: requireId(req), trace: trace(req) }, deps);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify(toScanInfoResponse(document)));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Gemelo de scanInfo, y por el mismo motivo: el cuerpo de getMetadata es el
 // JSONB tal cual, y anadirle claves cambiaria un contrato que ya se consume.
 const indexInfo = async (req, res, next) => {
@@ -274,10 +322,12 @@ export {
   chunks,
   list,
   scanInfo,
+  rescan,
   getMetadata,
   modifyMetadata,
   getFile,
   modifyFile,
   versionsFile,
+  getVersionFile,
   remove
 }

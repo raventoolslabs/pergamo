@@ -18,9 +18,11 @@ router.put('/:id', Middleware.auth, Controllers.modifyMetadata);
 router.get('/:id/file', Middleware.auth, Controllers.getFile);
 router.put('/:id/file', Middleware.auth, upload.single('document'), Controllers.modifyFile);
 router.get('/:id/scan', Middleware.auth, Controllers.scanInfo);
+router.post('/:id/scan', Middleware.auth, Controllers.rescan);
 router.get('/:id/index', Middleware.auth, Controllers.indexInfo);
 router.get('/:id/chunks', Middleware.auth, Controllers.chunks);
 router.get('/:id/versions', Middleware.auth, Controllers.versionsFile);
+router.get('/:id/versions/:version/file', Middleware.auth, Controllers.getVersionFile);
 router.delete('/:id', Middleware.auth, Controllers.remove);
 
 export default router;
