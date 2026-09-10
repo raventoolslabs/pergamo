@@ -59,7 +59,9 @@ export const UploadDialog = ({ onClose, onUploaded }: {
   const [indexing, setIndexing] = useState(true);
   const [over, setOver] = useState(false);
   const [sending, setSending] = useState(false);
-  const [uploaded, setUploaded] = useState(0);
+  // Enviado y con algo que contar: el dialogo deja de pedir ficheros y pasa a
+  // ser el resumen de lo que ha pasado con los que se enviaron.
+  const [settled, setSettled] = useState(false);
 
   // Comprobacion previa con los mismos limites que aplica el servidor. No
   // sustituye a la suya: solo evita subir el fichero entero para recibir un 400.
@@ -124,7 +126,7 @@ export const UploadDialog = ({ onClose, onUploaded }: {
     }
 
     setSending(false);
-    setUploaded((current) => current + succeeded);
+    setSettled(true);
     // Se refresca aunque alguno haya fallado: los que si entraron deben verse.
     if (succeeded) onUploaded();
     // Sin nada que mirar el dialogo estorba; con un error se queda, porque el
@@ -140,41 +142,49 @@ export const UploadDialog = ({ onClose, onUploaded }: {
       title={t('upload.title')}
       onClose={onClose}
       footer={
-        <>
-          <button type="button" className="btn" onClick={onClose}>
-            {uploaded ? t('common.close') : t('common.cancel')}
+        settled ? (
+          <button type="button" className="btn btn--primary" onClick={onClose}>
+            {t('common.close')}
           </button>
-          <button type="button" className="btn btn--primary" onClick={submit} disabled={sending || !pending}>
-            {sending
-              ? <><span className="spinner" aria-hidden="true" /> {t('upload.submitting')}</>
-              : pending > 1 ? t('upload.submitCount', { count: pending }) : t('upload.submit')}
-          </button>
-        </>
+        ) : (
+          <>
+            <button type="button" className="btn" onClick={onClose}>
+              {t('common.cancel')}
+            </button>
+            <button type="button" className="btn btn--primary" onClick={submit} disabled={sending || !pending}>
+              {sending
+                ? <><span className="spinner" aria-hidden="true" /> {t('upload.submitting')}</>
+                : pending > 1 ? t('upload.submitCount', { count: pending }) : t('upload.submit')}
+            </button>
+          </>
+        )
       }
     >
       <div className="dialog__body">
         {/* Una etiqueta con el input dentro, y no un div que llama a click():
             un input `hidden` no responde a la llamada en todos los navegadores,
             y asi abre el selector el propio navegador. */}
-        <label
-          className={`dropzone${over ? ' over' : ''}`}
-          onDragOver={(event) => { event.preventDefault(); setOver(true); }}
-          onDragLeave={() => setOver(false)}
-          onDrop={drop}
-        >
-          <strong>{t('upload.dropHere')}</strong>
-          <span>{t('upload.orClick')}</span>
+        {settled ? null : (
+          <label
+            className={`dropzone${over ? ' over' : ''}`}
+            onDragOver={(event) => { event.preventDefault(); setOver(true); }}
+            onDragLeave={() => setOver(false)}
+            onDrop={drop}
+          >
+            <strong>{t('upload.dropHere')}</strong>
+            <span>{t('upload.orClick')}</span>
 
-          <input
-            className="sr-only"
-            type="file"
-            multiple
-            accept={accept}
-            onChange={(event) => { add(event.target.files); event.target.value = ''; }}
-          />
-        </label>
+            <input
+              className="sr-only"
+              type="file"
+              multiple
+              accept={accept}
+              onChange={(event) => { add(event.target.files); event.target.value = ''; }}
+            />
+          </label>
+        )}
 
-        {config && (config.valid_mimetype.length || config.max_file_size) ? (
+        {!settled && config && (config.valid_mimetype.length || config.max_file_size) ? (
           <p className="field__hint">
             {config.valid_mimetype.length
               ? t('upload.accepted', { formats: listOut(config.valid_mimetype.map(formatOf)) })
@@ -185,7 +195,7 @@ export const UploadDialog = ({ onClose, onUploaded }: {
 
         {/* Solo si el despliegue indexa: una casilla que siempre devuelve un 400
             es peor que no ofrecer la funcionalidad. */}
-        {config?.indexing_enabled ? (
+        {!settled && config?.indexing_enabled ? (
           <label className="check">
             <input
               type="checkbox"
@@ -225,7 +235,7 @@ export const UploadDialog = ({ onClose, onUploaded }: {
 
         {/* Solo cuando este despliegue no analiza: que analice es lo que se
             espera, y repetirlo en cada subida no dice nada. */}
-        {config?.enable_antivirus === false ? (
+        {!settled && config?.enable_antivirus === false ? (
           <Notice kind="warn">{t('upload.antivirusOff')}</Notice>
         ) : null}
       </div>

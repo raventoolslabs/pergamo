@@ -59,6 +59,37 @@ test.describe('Document holdings', () => {
     await shot(page, 'documents-with-one');
   });
 
+  test('Should turn the dialog into a summary when an upload fails', async ({ page }) => {
+
+    // El fallo se provoca desde el navegador: la API no rechaza un PDF sano, y
+    // lo que se revisa aqui es lo que el dialogo ensena despues.
+    await page.route('**/document*', (route) => route.request().method() === 'POST'
+      ? route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'No ha podido guardarse' })
+      })
+      : route.continue());
+
+    await page.getByRole('button', { name: /subir documento/i }).click();
+
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('input[type=file]').setInputFiles(asset('test.pdf'));
+    await dialog.getByRole('button', { name: /^subir/i }).click();
+
+    // Solo queda la lista con el motivo: pedir mas ficheros cuando ya no se van
+    // a enviar es ofrecer un camino que no lleva a ninguna parte.
+    await expect(dialog.getByText(/no ha podido guardarse/i)).toBeVisible();
+    await expect(dialog.getByText(/arrastra los ficheros/i)).toHaveCount(0);
+    await expect(dialog.getByRole('checkbox')).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: /^subir/i })).toHaveCount(0);
+
+    await shot(page, 'upload-failed');
+
+    await dialog.getByRole('button', { name: /^cerrar$/i }).click();
+    await expect(dialog).toHaveCount(0);
+  });
+
   test('Should filter by name and by tag', async ({ page }) => {
     const search = page.getByLabel(/buscar/i);
 
