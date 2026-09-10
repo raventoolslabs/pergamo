@@ -812,6 +812,7 @@ a:hover { text-decoration-color: currentColor; }
 .notice--warn { border-left-color: var(--pending); background: var(--pending-soft); color: var(--pending); }
 .notice--success { border-left-color: var(--green); background: var(--green-soft); color: var(--green-text); }
 .notice--info { border-left-color: var(--rule-strong); color: var(--ink-mid); }
+.notice--wide { max-width: none; }
 
 .empty { padding: 56px 0; max-width: 46ch; }
 .empty h2 { margin-bottom: 6px; }

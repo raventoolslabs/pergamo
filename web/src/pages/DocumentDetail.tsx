@@ -20,6 +20,9 @@ const SYSTEM_FIELDS = [
   'hash', 'mimetype', 'extension', 'original_name', 'size'
 ];
 
+/** Procedencia del deposito: cuenta como entro el documento, no que es. */
+const HIDDEN_FIELDS = ['origin'];
+
 /**
  * Nombres de los campos editables. Las claves son las de VALID_METADATA_MODIFY,
  * que es configurable, asi que lo que no este aqui se muestra tal cual.
@@ -292,7 +295,8 @@ export const DocumentDetail = () => {
   const state = verdictOf(scan, scanInfo?.scan_engine);
 
   const otherFields = Object.entries(metadata).filter(([key]) =>
-    !SYSTEM_FIELDS.includes(key) && !editable.includes(key) && key !== 'name' && key !== 'tags');
+    !SYSTEM_FIELDS.includes(key) && !HIDDEN_FIELDS.includes(key)
+    && !editable.includes(key) && key !== 'name' && key !== 'tags');
 
   // Sin motor en el despliegue no se ofrece: la API responde 400, y un boton
   // que solo sabe fallar es peor que ninguno.
@@ -316,6 +320,7 @@ export const DocumentDetail = () => {
 
   const verdictNotice = !downloadable ? (
     <Notice
+      wide
       kind="error"
       title={VERDICT[state]?.label}
       icon={<VerdictIcon state={state} />}
@@ -331,6 +336,7 @@ export const DocumentDetail = () => {
     </Notice>
   ) : state === 'unscanned' || state === 'pending' ? (
     <Notice
+      wide
       kind={state === 'pending' ? 'warn' : 'info'}
       title={VERDICT[state]?.label}
       icon={<VerdictIcon state={state} />}
@@ -384,10 +390,6 @@ export const DocumentDetail = () => {
             ) : null}
           </Card>
         ) : null}
-
-        <Card term={t('common.identifier')} icon={<TypeIcon />}>
-          <span className="mono truncate" title={metadata.uuid}>{metadata.uuid}</span>
-        </Card>
 
         {otherFields.map(([key, value]) => (
           <Card term={key} key={key}>{String(value)}</Card>
@@ -483,6 +485,7 @@ export const DocumentDetail = () => {
   const semanticIndex = indexInfo ? (
     <div className="doc-panel">
       <Notice
+        wide
         kind={indexInfo.index_status === 'indexed' ? 'success'
           : indexInfo.index_status === 'error' ? 'error'
           : indexInfo.index_status === 'pending' || indexInfo.index_status === 'indexing' ? 'warn'
@@ -514,7 +517,7 @@ export const DocumentDetail = () => {
           asi que se traduce; el resto es el mensaje de la excepcion y se
           muestra tal cual antes que inventarle una explicacion. */}
       {indexInfo.index_error ? (
-        <Notice kind={indexInfo.index_status === 'error' ? 'error' : 'warn'}>
+        <Notice wide kind={indexInfo.index_status === 'error' ? 'error' : 'warn'}>
           {indexInfo.index_error === 'EMPTY_CONTENT'
             ? t('detail.indexEmptyContent')
             : indexInfo.index_error}

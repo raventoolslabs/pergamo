@@ -412,16 +412,21 @@ export const errorMessage = (error: unknown): string => {
   return error.message;
 };
 
-export const Notice = ({ kind = 'info', title, icon, action, children }: {
+export const Notice = ({ kind = 'info', title, icon, action, wide, children }: {
   kind?: 'info' | 'error' | 'warn' | 'success';
   title?: string;
   /** Glifo del estado, a la izquierda del texto. */
   icon?: ReactNode;
   /** Lo que se puede hacer al respecto, debajo del cuerpo. */
   action?: ReactNode;
+  /** Sin la medida de lectura: para una banda que encabeza lo que hay debajo. */
+  wide?: boolean;
   children: ReactNode;
 }) => (
-  <div className={`notice notice--${kind}`} role={kind === 'error' ? 'alert' : undefined}>
+  <div
+    className={`notice notice--${kind}${wide ? ' notice--wide' : ''}`}
+    role={kind === 'error' ? 'alert' : undefined}
+  >
     {icon ? <span className="notice__icon" aria-hidden="true">{icon}</span> : null}
     <div className="notice__text">
       {/* Bajo un titulo el cuerpo baja al gris del papel: el color lo llevan la
