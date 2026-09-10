@@ -40,10 +40,17 @@ const REFRESH_MS = 4000;
 const REFRESH_LIMIT = 15;
 
 /**
- * Estados que un reanalisis puede resolver. 'malicious' no esta: esa cuarentena
- * es por lo que el fichero lleva dentro, y la API la rechaza.
+ * Estados que un reanalisis puede resolver. Fuera quedan 'malicious' —esa
+ * cuarentena es por lo que el fichero lleva dentro— y 'error', donde no hay
+ * fichero que mirar. La API rechaza los dos.
  */
-const RESCANNABLE: VerdictState[] = ['pending', 'unscanned', 'infected', 'error'];
+const RESCANNABLE: VerdictState[] = ['pending', 'unscanned', 'infected'];
+
+/**
+ * Cuarentenas que se pueden levantar. 'error' no esta: ahi falta el fichero, y
+ * marcarlo entregable seria afirmar que se entrega algo que no existe.
+ */
+const RELEASABLE: VerdictState[] = ['infected', 'malicious'];
 
 const asTags = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -81,6 +88,13 @@ const DownloadIcon = ({ size = 15 }: { size?: number }) => (
 );
 const RescanIcon = () => <Icon size={13}><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></Icon>;
 const BackIcon = () => <Icon size={14}><path d="M19 12H5" /><path d="M11 18l-6-6 6-6" /></Icon>;
+// Candado abierto: lo que se levanta es la retencion, no el veredicto.
+const ReleaseIcon = () => (
+  <Icon size={13}>
+    <rect x="4.5" y="11" width="15" height="9.5" rx="2" />
+    <path d="M8 11V7.5a4 4 0 0 1 7.7-1.5" />
+  </Icon>
+);
 
 export const DocumentDetail = () => {
 
@@ -103,6 +117,7 @@ export const DocumentDetail = () => {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [releasing, setReleasing] = useState(false);
 
   const editable = useMemo(() => config?.valid_metadata_modify ?? [], [config]);
 
@@ -248,6 +263,20 @@ export const DocumentDetail = () => {
     }
   };
 
+  const release = async () => {
+    setBusy('release');
+
+    try {
+      setScanInfo(await api.release(id));
+      setReleasing(false);
+      toast(t('detail.released'));
+    } catch (failure) {
+      toast(errorMessage(failure), 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const copyFingerprint = async () => {
     try {
       await navigator.clipboard.writeText(metadata?.hash ?? '');
@@ -298,9 +327,17 @@ export const DocumentDetail = () => {
     !SYSTEM_FIELDS.includes(key) && !HIDDEN_FIELDS.includes(key)
     && !editable.includes(key) && key !== 'name' && key !== 'tags');
 
+  // Por encima de lo que el analizador lee, el reanalisis no puede terminar:
+  // clamd corta la conexion al pasarse de su limite, y MAX_FILE_SIZE es la
+  // medida que el despliegue publica para eso.
+  const tooLargeToScan = typeof metadata.size === 'number'
+    && typeof config?.max_file_size === 'number'
+    && metadata.size > config.max_file_size;
+
   // Sin motor en el despliegue no se ofrece: la API responde 400, y un boton
   // que solo sabe fallar es peor que ninguno.
-  const canRescan = config?.enable_antivirus === true && RESCANNABLE.includes(state);
+  const canRescan = config?.enable_antivirus === true
+    && RESCANNABLE.includes(state) && !tooLargeToScan;
 
   const rescanButton = canRescan ? (
     <button type="button" className="btn btn--tiny" onClick={rescan} disabled={busy === 'rescan'}>
@@ -310,6 +347,18 @@ export const DocumentDetail = () => {
     </button>
   ) : null;
 
+  // Levantar la cuarentena entrega un fichero que alguien decidio retener, asi
+  // que no ocurre al pulsar: ocurre al confirmarlo.
+  const releaseButton = RELEASABLE.includes(state) ? (
+    <button type="button" className="btn btn--tiny" onClick={() => setReleasing(true)}>
+      <ReleaseIcon /> {t('detail.release')}
+    </button>
+  ) : null;
+
+  const noticeActions = rescanButton || releaseButton
+    ? <>{rescanButton}{releaseButton}</>
+    : null;
+
   // Lo que hay que saber antes de fiarse de un documento, con la palabra del
   // veredicto por titulo y su explicacion por cuerpo.
   const signature = scanInfo?.scan_signature ? (
@@ -318,13 +367,19 @@ export const DocumentDetail = () => {
     </div>
   ) : null;
 
+  // Sin esto, un documento que nunca podra analizarse ensena un aviso que
+  // promete un proximo analisis que no va a llegar.
+  const scanLimit = tooLargeToScan && config
+    ? t('detail.tooLargeToScan', { limit: formatSize(config.max_file_size) })
+    : null;
+
   const verdictNotice = !downloadable ? (
     <Notice
       wide
       kind="error"
       title={VERDICT[state]?.label}
       icon={<VerdictIcon state={state} />}
-      action={rescanButton}
+      action={noticeActions}
     >
       {state === 'infected'
         ? t('detail.infectedNotice')
@@ -340,9 +395,11 @@ export const DocumentDetail = () => {
       kind={state === 'pending' ? 'warn' : 'info'}
       title={VERDICT[state]?.label}
       icon={<VerdictIcon state={state} />}
-      action={rescanButton}
+      action={noticeActions}
     >
-      {state === 'pending' ? t('detail.pendingNotice') : VERDICT.unscanned.detail}
+      {/* Lo que dice 'pending' —que el proximo analisis lo resuelve— no vale
+          sobre un fichero que el escaner nunca va a leer: ahi lo sustituye. */}
+      {scanLimit ?? (state === 'pending' ? t('detail.pendingNotice') : VERDICT.unscanned.detail)}
       {signature}
     </Notice>
   ) : null;
@@ -387,6 +444,13 @@ export const DocumentDetail = () => {
             ) : null}
             {scanInfo.scan_date ? (
               <div className="card__note">{formatDate(scanInfo.scan_date)}</div>
+            ) : null}
+            {/* Un documento liberado ya no lleva aviso, y sin esto se perderia
+                la unica huella de que alguien lo entrego pese al hallazgo. */}
+            {scanInfo.scan_signature ? (
+              <div className="card__note mono" title={scanInfo.scan_signature}>
+                {scanInfo.scan_signature}
+              </div>
             ) : null}
           </Card>
         ) : null}
@@ -610,6 +674,31 @@ export const DocumentDetail = () => {
       <ErrorNotice error={error} />
 
       <TabPanel />
+
+      {releasing ? (
+        <Dialog
+          title={t('detail.releaseTitle')}
+          onClose={() => setReleasing(false)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setReleasing(false)}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="btn btn--primary" onClick={release} disabled={busy === 'release'}>
+                {busy === 'release'
+                  ? <><span className="spinner" aria-hidden="true" /> {t('detail.releasing')}</>
+                  : t('detail.release')}
+              </button>
+            </>
+          }
+        >
+          <div className="dialog__body">
+            <p>{t('detail.releaseBodyBefore')}<strong>{filename}</strong>{t('detail.releaseBodyAfter')}</p>
+            {signature}
+            <Notice kind="warn">{t('detail.releaseWarning')}</Notice>
+          </div>
+        </Dialog>
+      ) : null}
 
       {confirming ? (
         <Dialog

@@ -18,7 +18,7 @@ const get = () => {
 
   if(!queue) {
     redis = connection();
-    queue = new Queue(QUEUE_NAME, { connection: redis, prefix: Config.indexing.queue_prefix });
+    queue = new Queue(QUEUE_NAME, { connection: redis, prefix: Config.queue.prefix });
   }
 
   return queue;

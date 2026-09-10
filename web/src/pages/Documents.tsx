@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../api/client';
-import type { DocumentList, DocumentQuery } from '../api/types';
+import { useConfig } from '../api/config';
+import type { DocumentList, DocumentQuery, SweepState } from '../api/types';
 import { UploadDialog } from '../components/UploadDialog';
 import { useToast } from '../components/toast';
 import {
-  Empty, ErrorNotice, Loading, PAGE_SIZES, Pagination, VERDICT, Verdict,
+  Empty, ErrorNotice, Loading, Notice, PAGE_SIZES, Pagination, VERDICT, Verdict,
   errorMessage, formatDate, formatSize, isDeliverable, verdictOf
 } from '../components/ui';
 import { t } from '../i18n';
@@ -29,6 +30,10 @@ const STATUS_FILTERS = [
   { value: 'infected,malicious', text: t('documents.statusQuarantined') },
   { value: 'error', text: t('documents.statusError') }
 ];
+
+/** Ritmo con que se pregunta por un barrido vivo, y su tope. */
+const SWEEP_POLL_MS = 3000;
+const SWEEP_POLL_LIMIT = 200;
 
 const EMPTY_FILTERS: DocumentQuery = {
   name: '', tag: '', scan_status: '', from: '', to: '', sort: 'creation_date', order: 'desc'
@@ -59,6 +64,13 @@ const asInstant = (local: string) => {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 };
 
+const RescanIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" />
+  </svg>
+);
+
 const UploadIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -81,11 +93,15 @@ export const Documents = () => {
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<DocumentList | null>(null);
-  const [holdings, setHoldings] = useState<{ total: number; available: number } | null>(null);
+  const [holdings, setHoldings] = useState<{ total: number; available: number; pending: number } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [reload, setReload] = useState(0);
+  const [sweep, setSweep] = useState<SweepState | null>(null);
+
+  const config = useConfig();
+  const sweepPolls = useRef(0);
 
   const offset = (page - 1) * pageSize;
 
@@ -120,10 +136,14 @@ export const Documents = () => {
       api.documents({ limit: 1 }),
       // Lo que se entrega. Contar solo 'clean' daria un numero mas bajo que los
       // documentos que la pantalla deja descargar.
-      api.documents({ scan_status: 'clean,pending', limit: 1 })
+      api.documents({ scan_status: 'clean,pending', limit: 1 }),
+      // Y lo que sigue sin veredicto, que es lo que un barrido puede resolver.
+      api.documents({ scan_status: 'pending', limit: 1 })
     ])
-      .then(([all, deliverable]) => {
-        if (alive) setHoldings({ total: all.total, available: deliverable.total });
+      .then(([all, deliverable, pending]) => {
+        if (alive) setHoldings({
+          total: all.total, available: deliverable.total, pending: pending.total
+        });
       })
       .catch(() => { if (alive) setHoldings(null); });
 
@@ -139,6 +159,48 @@ export const Documents = () => {
 
   const refresh = useCallback(() => setReload((value) => value + 1), []);
 
+  // Un barrido en marcha sobrevive a recargar la pagina, asi que se pregunta al
+  // entrar y no solo despues de lanzarlo.
+  useEffect(() => {
+    if (!config?.enable_antivirus) return;
+
+    let alive = true;
+    api.sweep().then((state) => { if (alive) setSweep(state); }).catch(() => {});
+
+    return () => { alive = false; };
+  }, [config]);
+
+  // Mientras el trabajo vive. Con tope, como en la ficha: una pestana abierta no
+  // debe preguntar para siempre si el worker se quedo por el camino.
+  useEffect(() => {
+    const status = sweep?.status;
+
+    if (status !== 'queued' && status !== 'running') return;
+    if (sweepPolls.current >= SWEEP_POLL_LIMIT) return;
+
+    const timer = setTimeout(() => {
+      sweepPolls.current += 1;
+      api.sweep()
+        .then((state) => {
+          setSweep(state);
+          // Al terminar, el listado y los recuentos ya no dicen la verdad.
+          if (state.status !== 'queued' && state.status !== 'running') refresh();
+        })
+        .catch(() => {});
+    }, SWEEP_POLL_MS);
+
+    return () => clearTimeout(timer);
+  }, [sweep, refresh]);
+
+  const startSweep = async () => {
+    try {
+      sweepPolls.current = 0;
+      setSweep(await api.startSweep());
+    } catch (failure) {
+      toast(errorMessage(failure), 'error');
+    }
+  };
+
   const download = async (id: string, filename: string) => {
     try {
       await api.download(id, filename);
@@ -150,6 +212,11 @@ export const Documents = () => {
   const total = data?.total ?? 0;
   const documents = data?.documents ?? [];
   const filtered = !!(filters.name || filters.tag || filters.scan_status || filters.from || filters.to);
+
+  const sweeping = sweep?.status === 'queued' || sweep?.status === 'running';
+  // Solo donde hay algo que barrer y con que barrerlo. Mientras corre se sigue
+  // enseñando, deshabilitado, para que no parezca que se ha ido.
+  const showSweep = config?.enable_antivirus === true && (sweeping || !!holdings?.pending);
   // Sin documentos y sin filtro puesto no hay nada que filtrar: los campos solo
   // entorpecen el camino al primer deposito.
   const showFilters = filtered || documents.length > 0;
@@ -162,6 +229,13 @@ export const Documents = () => {
           <p>{holdings ? summary(holdings.total, holdings.available) : t('documents.counting')}</p>
         </div>
         <div className="pagehead__actions">
+          {showSweep ? (
+            <button type="button" className="btn" onClick={startSweep} disabled={sweeping}>
+              {sweeping
+                ? <><span className="spinner" aria-hidden="true" /> {t('documents.sweeping')}</>
+                : <><RescanIcon /> {t('documents.sweep', { count: holdings?.pending ?? 0 })}</>}
+            </button>
+          ) : null}
           <button type="button" className="btn btn--primary" onClick={() => setUploading(true)}>
             <UploadIcon />
             {t('documents.upload')}
@@ -170,6 +244,30 @@ export const Documents = () => {
       </div>
 
       <ErrorNotice error={error} />
+
+      {sweep && sweep.status !== 'idle' ? (
+        <div className="spaced">
+          <Notice
+            wide
+            kind={sweep.status === 'failed' ? 'error' : sweep.status === 'done' ? 'success' : 'info'}
+            title={t(sweeping ? 'documents.sweepRunning' : sweep.status === 'failed'
+              ? 'documents.sweepFailed' : 'documents.sweepDone')}
+          >
+            {sweep.status === 'failed'
+              ? t('documents.sweepStopped')
+              // Antes del primer documento no hay nada que contar, y «0 de 0»
+              // se lee como que no habia nada que analizar.
+              : !sweep.progress
+                ? t('documents.sweepStarting')
+                : t('documents.sweepCount', {
+                    count: sweep.progress.scanned,
+                    scanned: sweep.progress.scanned,
+                    total: sweep.progress.total,
+                    skipped: sweep.progress.skipped
+                  })}
+          </Notice>
+        </div>
+      ) : null}
 
       {showFilters ? (
       <div className="filters">

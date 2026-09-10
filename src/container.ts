@@ -25,13 +25,15 @@ import { chunker } from '@/infrastructure/indexing/chunker';
 import { openAiCompatibleEmbedder } from '@/infrastructure/indexing/embedders/openai-compatible.embedder';
 import { SearchIndexDescriptor } from '@/domain/entities/search-index';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
+import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
 import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
-import { connection, QUEUE_NAME } from '@/infrastructure/queue/connection';
+import { connection, QUEUE_NAME, RESCAN_QUEUE_NAME } from '@/infrastructure/queue/connection';
 
 export const documentDeps:DocumentDeps = {
   documents: documentRepository,
   chunks: documentChunkRepository,
   queue: indexQueue,
+  rescanQueue,
   storage: documentStorage,
   scanner: antivirus,
   activeContent: activeContentDetector,
@@ -71,7 +73,7 @@ export const searchIndex = ():SearchIndexDescriptor => ({
   version: 1
 });
 
-export { QUEUE_NAME };
+export { QUEUE_NAME, RESCAN_QUEUE_NAME };
 export const queueConnection = connection;
 
 /**

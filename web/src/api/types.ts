@@ -56,6 +56,23 @@ export interface ScanInfo {
   scan_date: string | null;
 }
 
+/** Lo que un barrido lleva contado. */
+export interface SweepProgress {
+  scanned: number;
+  clean: number;
+  quarantined: number;
+  missing: number;
+  /** Mayores de lo que el analizador lee: se dejan como estaban. */
+  skipped: number;
+  total: number;
+}
+
+export interface SweepState {
+  status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
+  progress?: SweepProgress;
+  error?: string;
+}
+
 export interface IndexInfo {
   index_status: IndexStatus;
   index_model: string | null;

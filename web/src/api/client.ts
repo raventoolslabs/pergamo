@@ -1,6 +1,6 @@
 import type {
   ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, IndexInfo,
-  Organization, OrganizationList, ScanInfo, ServerConfig
+  Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
 } from './types';
 
 const TOKEN_KEY = 'pergamo.token';
@@ -9,12 +9,15 @@ const TOKEN_KEY = 'pergamo.token';
 // cuarentena, 429 rate limit, 413 demasiado grande) y no solo el mensaje.
 export class ApiError extends Error {
   status: number;
+  /** Codigo de dominio del backend, cuando lo hay: es por lo que se traduce. */
+  code?: string;
   retryAfter?: number;
 
-  constructor(status: number, message: string, retryAfter?: number) {
+  constructor(status: number, message: string, code?: string, retryAfter?: number) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
     this.retryAfter = retryAfter;
   }
 }
@@ -54,15 +57,18 @@ const parseError = async (response: Response) => {
   const retryAfter = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : undefined;
 
   let message = `Error ${response.status}`;
+  let code: string | undefined;
 
   try {
     const body = await response.json();
     if (body && typeof body.error === 'string') message = body.error;
+    if (body && typeof body.code === 'string') code = body.code;
   } catch {
     // Una respuesta sin JSON (un 502 de un proxy) deja el mensaje generico.
   }
 
-  return new ApiError(response.status, message, Number.isFinite(retryAfter) ? retryAfter : undefined);
+  return new ApiError(
+    response.status, message, code, Number.isFinite(retryAfter) ? retryAfter : undefined);
 };
 
 const handle = async (response: Response) => {
@@ -201,6 +207,14 @@ export const api = {
 
   rescan: (id: string) =>
     request<ScanInfo>(`/document/${encodeURIComponent(id)}/scan`, { method: 'POST' }),
+
+  release: (id: string) =>
+    request<ScanInfo>(`/document/${encodeURIComponent(id)}/release`, { method: 'POST' }),
+
+  // El barrido de los pendientes. Pedirlo dos veces devuelve el mismo trabajo.
+  startSweep: () => request<SweepState>('/document/rescan', { method: 'POST' }),
+
+  sweep: () => request<SweepState>('/document/rescan'),
 
   download: (id: string, fallbackName: string) =>
     saveFile(`/document/${encodeURIComponent(id)}/file`, fallbackName),

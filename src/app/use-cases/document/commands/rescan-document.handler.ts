@@ -1,10 +1,10 @@
 import Config from '@/shared/config';
 import log from '@/shared/logger';
 import { Document } from '@/domain/entities/document';
-import { ScanRecord } from '@/app/ports/repositories/document.repository';
 import { ScannerUnavailableError } from '@/domain/exceptions/scanner-unavailable.exception';
 import { LockedError, ServiceUnavailableError, ValidationError } from '@/domain/exceptions/domain.exception';
 import { DocumentDeps } from '../dependencies';
+import { exceedsScanLimit, scanStoredFile } from '../scan-stored-file';
 import { getDocument } from '../queries/get-document.handler';
 
 export interface RescanDocumentInput {
@@ -39,34 +39,20 @@ export const rescanDocument = async (input:RescanDocumentInput, deps:DocumentDep
     `Document is quarantined: it carries active content (${document.scanSignature}). ` +
     'A rescan does not clear this state: it requires a manual review.');
 
-  const filePath = deps.storage.resolve(organization, document.path);
+  // 'error' es un fichero que no esta en el almacen. Volver a mirar donde ya no
+  // hay nada solo reescribe el mismo estado: lo que falta es revisar el volumen.
+  if(document.scanStatus === 'error') throw new ValidationError(
+    'FILE_MISSING', 'The file is missing from storage: a rescan cannot bring it back');
 
-  const record = async (scan:ScanRecord) => deps.documents.recordScan(organization, id, scan);
-
-  // Que el fichero falte no es un veredicto favorable: se marca 'error' y sale
-  // de la cola del barrido, porque otro escaneo no lo devuelve a su sitio.
-  if(!await deps.storage.exists(filePath)) {
-    log.warn(`${trace} | Document ${id}: file not found at ${filePath}`);
-    return record({
-      scanStatus: 'error',
-      scanSignature: 'FILE_MISSING',
-      scanEngine: null,
-      scanDate: new Date()
-    });
-  }
+  if(exceedsScanLimit(document)) throw new ValidationError(
+    'FILE_TOO_LARGE_TO_SCAN',
+    `File is larger than the ${Config.max_file_size} bytes the scanner reads: it cannot be scanned`);
 
   try {
 
-    const result = await deps.scanner.check(filePath);
+    const { document: scanned } = await scanStoredFile(document, deps, trace);
 
-    if(result.infected) log.warn(`${trace} | Document ${id} QUARANTINED: ${result.signature}`);
-
-    return await record({
-      scanStatus: result.infected ? 'infected' : 'clean',
-      scanSignature: result.infected ? result.signature ?? null : null,
-      scanEngine: result.engine,
-      scanDate: new Date()
-    });
+    return scanned;
 
   } catch(error:any) {
 

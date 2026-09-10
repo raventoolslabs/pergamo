@@ -18,11 +18,14 @@ import { modifyDocumentFile } from '@/app/use-cases/document/commands/modify-doc
 import { modifyDocumentMetadata } from '@/app/use-cases/document/commands/modify-document-metadata.handler';
 import { removeDocument } from '@/app/use-cases/document/commands/remove-document.handler';
 import { rescanDocument } from '@/app/use-cases/document/commands/rescan-document.handler';
+import { releaseDocument } from '@/app/use-cases/document/commands/release-document.handler';
+import { startRescanSweep } from '@/app/use-cases/document/commands/start-rescan-sweep.handler';
 import { getDocument } from '@/app/use-cases/document/queries/get-document.handler';
 import { getDocumentFile } from '@/app/use-cases/document/queries/get-document-file.handler';
 import { listDocuments } from '@/app/use-cases/document/queries/list-documents.handler';
 import { listDocumentVersions } from '@/app/use-cases/document/queries/list-document-versions.handler';
 import { getDocumentVersionFile } from '@/app/use-cases/document/queries/get-document-version-file.handler';
+import { getRescanSweep } from '@/app/use-cases/document/queries/get-rescan-sweep.handler';
 import { listDocumentChunks } from '@/app/use-cases/document/queries/list-document-chunks.handler';
 
 const trace = (req:any) => `${req.method} ${req.originalUrl} - ${req.id}`;
@@ -269,6 +272,56 @@ const rescan = async (req, res, next) => {
   }
 };
 
+// Levantar una retencion sobre un fichero que si esta: una firma que resulto ser
+// un falso positivo, o un contenido activo ya revisado. Conserva la firma.
+const release = async (req, res, next) => {
+
+  try {
+
+    const document = await releaseDocument(
+      { organization: req.user.organization, id: requireId(req), trace: trace(req) }, deps);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify(toScanInfoResponse(document)));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Barrido de todo lo que quedo sin veredicto. No cabe en una peticion, asi que
+// va a la cola y lo que se devuelve es en que anda.
+const startSweep = async (req, res, next) => {
+
+  try {
+
+    const state = await startRescanSweep(req.user.organization, deps);
+
+    res.status(StatusCodes.ACCEPTED)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify(state));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+const sweepState = async (req, res, next) => {
+
+  try {
+
+    const state = await getRescanSweep(req.user.organization, deps);
+
+    res.status(StatusCodes.OK)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify(state));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Gemelo de scanInfo, y por el mismo motivo: el cuerpo de getMetadata es el
 // JSONB tal cual, y anadirle claves cambiaria un contrato que ya se consume.
 const indexInfo = async (req, res, next) => {
@@ -323,6 +376,9 @@ export {
   list,
   scanInfo,
   rescan,
+  release,
+  startSweep,
+  sweepState,
   getMetadata,
   modifyMetadata,
   getFile,

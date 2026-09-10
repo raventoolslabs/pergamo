@@ -24,11 +24,14 @@ const errorHandler = (err, req, res, next) => {
 
       log.warn(`${req.method} ${req.originalUrl} - ${req.id} | Error(${err.code}): ${err.message}`);
 
+      // El codigo viaja junto al mensaje: es lo que permite a un cliente
+      // traducir el fallo en vez de ensenar la frase interna en ingles.
       res.status(statusCode)
       .set('Content-Type', 'application/json')
       .send({
         statusCode,
-        error: err.message
+        error: err.message,
+        code: err.code
       });
 
     } else if(err.name === 'MulterError') {

@@ -181,6 +181,132 @@ describe('Rescan and archived versions', () => {
     }
   });
 
+  it('Should refuse to rescan a document whose file is missing', async () => {
+
+    await setStatus('error', 'FILE_MISSING');
+
+    const response = await api.post(`/document/${documentId}/scan`, null, {
+      headers: { authorization: token }
+    });
+
+    // Mirar donde ya no hay nada solo reescribe el mismo estado: lo que falta es
+    // revisar el volumen de datos.
+    expect(response.status).toBe(StatusCodes.BAD_REQUEST);
+    expect(response.data.code).toBe(Config.enable_antivirus ? 'FILE_MISSING' : 'ANTIVIRUS_DISABLED');
+  });
+
+  it('Should refuse to rescan a file larger than the scanner reads', async () => {
+
+    if(!Config.enable_antivirus) return;
+
+    await setStatus('pending');
+
+    // El tamano se toca en los metadatos y no se sube un fichero de 30 MiB: lo
+    // que se comprueba es la guarda, no el escaner.
+    await sequelize.query(
+      `UPDATE pergamo.document
+      SET metadata = jsonb_set(metadata, '{size}', to_jsonb(:size::bigint))
+      WHERE id = :id;`, {
+      replacements: { id: documentId, size: Config.max_file_size + 1 },
+      type: QueryTypes.UPDATE
+    });
+
+    const response = await api.post(`/document/${documentId}/scan`, null, {
+      headers: { authorization: token }
+    });
+
+    expect(response.status).toBe(StatusCodes.BAD_REQUEST);
+    expect(response.data.code).toBe('FILE_TOO_LARGE_TO_SCAN');
+
+    await sequelize.query(
+      `UPDATE pergamo.document
+      SET metadata = jsonb_set(metadata, '{size}', to_jsonb(:size::bigint))
+      WHERE id = :id;`, {
+      replacements: { id: documentId, size: 13536 },
+      type: QueryTypes.UPDATE
+    });
+  });
+
+  it('Should lift a quarantine and keep the signature that caused it', async () => {
+
+    await setStatus('infected', 'Test.Signature-1');
+
+    const response = await api.post(`/document/${documentId}/release`, null, {
+      headers: { authorization: token }
+    });
+
+    expect(response.status).toBe(StatusCodes.OK);
+    expect(response.data.scan_status).toBe('clean');
+    // La firma se conserva: es lo unico que deja constancia de que alguien
+    // entrego el documento a pesar del hallazgo.
+    expect(response.data.scan_signature).toBe('Test.Signature-1');
+
+    // Y con la retencion levantada, el fichero vuelve a entregarse.
+    const file = await api.get(`/document/${documentId}/file`, {
+      headers: { authorization: token }
+    });
+
+    expect(file.status).toBe(StatusCodes.OK);
+  });
+
+  it('Should lift the quarantine of active content too', async () => {
+
+    await setStatus('malicious', 'ACTIVE_CONTENT:javascript');
+
+    const response = await api.post(`/document/${documentId}/release`, null, {
+      headers: { authorization: token }
+    });
+
+    expect(response.status).toBe(StatusCodes.OK);
+    expect(response.data.scan_status).toBe('clean');
+  });
+
+  it('Should refuse to release what is not a liftable quarantine', async () => {
+
+    // 'error' es un fichero que falta del almacen: marcarlo entregable seria
+    // afirmar que se entrega algo que no existe.
+    await setStatus('error', 'FILE_MISSING');
+
+    let response = await api.post(`/document/${documentId}/release`, null, {
+      headers: { authorization: token }
+    });
+
+    expect(response.status).toBe(StatusCodes.BAD_REQUEST);
+    expect(response.data.code).toBe('NOT_QUARANTINED');
+
+    await setStatus('clean');
+
+    response = await api.post(`/document/${documentId}/release`, null, {
+      headers: { authorization: token }
+    });
+
+    expect(response.status).toBe(StatusCodes.BAD_REQUEST);
+  });
+
+  it('Should not let one organization release another\'s document', async () => {
+
+    await setStatus('infected', 'Test.Signature-1');
+
+    const response = await api.post(`/document/${documentId}/release`, null, {
+      headers: { authorization: tokenOther }
+    });
+
+    expect(response.status).toBe(StatusCodes.NOT_FOUND);
+
+    await setStatus('clean');
+  });
+
+  it('Should carry the domain code alongside the message', async () => {
+
+    // Sin el codigo, un cliente solo puede ensenar la frase interna en ingles.
+    const response = await api.get('/document/does-not-exist', {
+      headers: { authorization: token }
+    });
+
+    expect(response.status).toBe(StatusCodes.NOT_FOUND);
+    expect(typeof response.data.code).toBe('string');
+  });
+
   it('Should not let one organization rescan another\'s document', async () => {
 
     const response = await api.post(`/document/${documentId}/scan`, null, {

@@ -75,12 +75,14 @@ export const configSchema = z.object({
   // Los nombres se contrastan con las reglas reales en app.ts: importar el
   // detector aqui crearia un ciclo.
   malicious_active_content_ignore: z.array(z.string()),
+  queue: z.object({
+    redis_url: z.string().min(1),
+    prefix: z.string().min(1)
+  }),
   indexing: z.object({
     enabled: z.boolean(),
     worker_embedded: z.boolean(),
     concurrency: z.number().int().positive(),
-    redis_url: z.string().min(1),
-    queue_prefix: z.string().min(1),
     stale_after_ms: z.number().int().positive(),
     max_chunks: z.number().int().positive(),
     search_candidates_factor: z.number().int().positive(),

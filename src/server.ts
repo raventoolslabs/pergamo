@@ -5,7 +5,9 @@ import log from '@/shared/logger';
 import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { activeContentRules } from '@/infrastructure/antivirus/active-content';
 import { startWorker, stopWorker } from '@/api/queue/index.worker';
+import { startRescanWorker, stopRescanWorker } from '@/api/queue/rescan.worker';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
+import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
 import { assertIndexReady } from '@/container';
 import FilesUtils from '@/infrastructure/files/storage';
 import express from 'express';
@@ -93,6 +95,10 @@ export const app = async (port:any = Config.port) => {
     log.warn('Indexing DISABLED (INDEXING_ENABLED is not enabled): documents are stored without being indexed');
   }
 
+  // La bandera dice «este proceso ademas consume la cola», y eso vale para las
+  // dos: donde el worker va aparte, el barrido lo atiende ese contenedor.
+  if(Config.enable_antivirus && Config.indexing.worker_embedded) await startRescanWorker();
+
   const app = express();
 
   app.set('trust proxy', Config.trust_proxy);
@@ -167,7 +173,9 @@ export const app = async (port:any = Config.port) => {
     // Sin esto, una suite que cierra su servidor deja abiertos los sockets de
     // Redis y Jest se queda esperando.
     stopWorker().catch((error:any) => log.warn(`Worker shutdown failed: ${error.message}`));
+    stopRescanWorker().catch((error:any) => log.warn(`Rescan worker shutdown failed: ${error.message}`));
     indexQueue.close().catch((error:any) => log.warn(`Queue shutdown failed: ${error.message}`));
+    rescanQueue.close().catch((error:any) => log.warn(`Rescan queue shutdown failed: ${error.message}`));
   });
 
   return server;

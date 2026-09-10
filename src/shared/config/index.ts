@@ -71,6 +71,19 @@ const config = {
     window_ms: process.env.RATE_LIMIT_WINDOW_MS ? Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS) : 900000,
     max: process.env.RATE_LIMIT_MAX ? Number.parseInt(process.env.RATE_LIMIT_MAX) : 10
   },
+  // Fuera de `indexing`: la cola tambien mueve el barrido del antivirus, que no
+  // tiene nada que ver con indexar.
+  queue: {
+    redis_url: optionalValue(process.env.REDIS_URL) || 'redis://127.0.0.1:6379',
+    // Redis puede estar compartido: el prefijo mantiene las claves de Pergamo
+    // separadas de las de cualquier otra cosa que viva ahi.
+    //
+    // Se sigue leyendo el nombre viejo: cambiarlo a secas en un despliegue en
+    // marcha moveria el prefijo y dejaria huerfanos los trabajos ya encolados.
+    prefix: optionalValue(process.env.QUEUE_PREFIX)
+      || optionalValue(process.env.INDEXING_QUEUE_PREFIX) || 'pergamo'
+  },
+
   // Indexacion semantica. Desactivada por defecto: sin ella Pergamo se comporta
   // exactamente como antes de que existiera.
   indexing: {
@@ -79,10 +92,6 @@ const config = {
     // imposible «worker embebido con la indexacion desactivada».
     worker_embedded: parseBoolean(process.env.INDEXING_WORKER_EMBEDDED, true, 'INDEXING_WORKER_EMBEDDED'),
     concurrency: process.env.INDEXING_CONCURRENCY ? Number.parseInt(process.env.INDEXING_CONCURRENCY) : 1,
-    redis_url: optionalValue(process.env.REDIS_URL) || 'redis://127.0.0.1:6379',
-    // Redis puede estar compartido: el prefijo mantiene las claves de Pergamo
-    // separadas de las de cualquier otra cosa que viva ahi.
-    queue_prefix: optionalValue(process.env.INDEXING_QUEUE_PREFIX) || 'pergamo',
     // Un trabajo que se queda en 'indexing' mas de esto es un worker que murio
     // a media faena, y lo recupera el barrido.
     stale_after_ms: process.env.INDEXING_STALE_AFTER_MS ? Number.parseInt(process.env.INDEXING_STALE_AFTER_MS) : 3600000,

@@ -88,9 +88,9 @@ describe('Indexing queue', () => {
 
     token = response.data.token;
 
-    Config.indexing.queue_prefix = PREFIX;
+    Config.queue.prefix = PREFIX;
 
-    redis = new Redis(Config.indexing.redis_url, { maxRetriesPerRequest: null });
+    redis = new Redis(Config.queue.redis_url, { maxRetriesPerRequest: null });
     queue = new Queue(QUEUE_NAME, { connection: redis, prefix: PREFIX });
 
     await queue.obliterate({ force: true });

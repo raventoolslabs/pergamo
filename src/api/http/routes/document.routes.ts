@@ -13,12 +13,17 @@ router.post('/', Middleware.auth, upload.single('document'), Controllers.upload)
 // El listado va antes que '/:id': de lo contrario Express resolveria GET
 // /document contra la ruta parametrizada.
 router.get('/', Middleware.auth, Controllers.list);
+// Antes que '/:id' por lo mismo que el listado: si no, Express resolveria
+// 'rescan' contra la ruta parametrizada y buscaria un documento con ese id.
+router.post('/rescan', Middleware.auth, Controllers.startSweep);
+router.get('/rescan', Middleware.auth, Controllers.sweepState);
 router.get('/:id', Middleware.auth, Controllers.getMetadata);
 router.put('/:id', Middleware.auth, Controllers.modifyMetadata);
 router.get('/:id/file', Middleware.auth, Controllers.getFile);
 router.put('/:id/file', Middleware.auth, upload.single('document'), Controllers.modifyFile);
 router.get('/:id/scan', Middleware.auth, Controllers.scanInfo);
 router.post('/:id/scan', Middleware.auth, Controllers.rescan);
+router.post('/:id/release', Middleware.auth, Controllers.release);
 router.get('/:id/index', Middleware.auth, Controllers.indexInfo);
 router.get('/:id/chunks', Middleware.auth, Controllers.chunks);
 router.get('/:id/versions', Middleware.auth, Controllers.versionsFile);

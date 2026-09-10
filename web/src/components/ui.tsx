@@ -6,6 +6,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import type { IndexStatus, ScanStatus } from '../api/types';
 import { t } from '../i18n';
+import type { TranslationKey } from '../i18n';
 
 /* =============================================================== verdicts == */
 
@@ -388,6 +389,21 @@ export const Pagination = ({ total, page, pageSize, shown, busy, onPage, onPageS
 /* =============================================================== messages == */
 
 /**
+ * Fallos del dominio que esta interfaz sabe contar. El mensaje del backend esta
+ * en ingles y describe el sistema; aqui se dice lo que le toca hacer a quien
+ * mira. Lo que no este en la lista cae al mensaje del servidor, que es mejor
+ * que un hueco.
+ */
+const ERROR_MESSAGE: Record<string, TranslationKey> = {
+  SCANNER_UNAVAILABLE: 'error.scannerUnavailable',
+  ANTIVIRUS_DISABLED: 'error.antivirusDisabled',
+  FILE_TOO_LARGE_TO_SCAN: 'error.fileTooLargeToScan',
+  FILE_MISSING: 'error.fileMissing',
+  SCAN_NOT_CLEAN: 'error.scanNotClean',
+  VERSION_NOT_FOUND: 'error.versionNotFound'
+};
+
+/**
  * Los codigos que la API usa de forma deliberada —423 cuarentena, 413 tamano,
  * 429 limite de intentos— merecen explicacion propia: «error 423» no le dice
  * nada a quien esta delante.
@@ -398,6 +414,9 @@ export const errorMessage = (error: unknown): string => {
       ? error.message
       : t('common.serverUnreachable');
   }
+
+  const known = error.code ? ERROR_MESSAGE[error.code] : undefined;
+  if (known) return t(known);
 
   if (error.status === 429) {
     const minutes = error.retryAfter ? Math.ceil(error.retryAfter / 60) : null;

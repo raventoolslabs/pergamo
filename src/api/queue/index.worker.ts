@@ -50,7 +50,7 @@ export const startWorker = async () => {
 
   }, {
     connection: redis,
-    prefix: Config.indexing.queue_prefix,
+    prefix: Config.queue.prefix,
     concurrency: Config.indexing.concurrency,
     // El defecto son 30 segundos, y un PDF de trescientas paginas lo supera:
     // BullMQ daria el trabajo por perdido y lo entregaria a otro worker
