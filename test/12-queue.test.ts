@@ -1,0 +1,468 @@
+import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
+import FormData from 'form-data';
+import { Queue } from 'bullmq';
+import Redis from 'ioredis';
+import { StatusCodes } from 'http-status-codes';
+
+import { app } from '@/server';
+import Config from '@/shared/config';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import { indexQueue } from '@/infrastructure/queue/index.queue';
+import { JOB_NAME, QUEUE_NAME } from '@/infrastructure/queue/connection';
+
+/**
+ * Necesita un Redis alcanzable, igual que el resto de la bateria necesita una
+ * PostgreSQL: el prefijo mantiene estas claves separadas de las de cualquier
+ * otra cosa que viva en la misma instancia.
+ */
+const PREFIX = 'pergamo-test';
+
+const asset = (name:string) => path.join(__dirname, 'assets', name);
+
+describe('Indexing queue', () => {
+
+  let api;
+  let server;
+  let token:string;
+  let queue:Queue;
+  let redis:Redis;
+
+  const upload = (query = '', file = 'multipage.pdf', mimetype = 'application/pdf') => {
+
+    const form = new FormData();
+    form.append('document', fs.createReadStream(asset(file)), { contentType: mimetype });
+
+    return api.post(`/document${query}`, form, {
+      headers: { 'authorization': token, ...form.getHeaders() }
+    });
+  };
+
+  const replace = (id:string, query = '', file = 'multipage.pdf', mimetype = 'application/pdf') => {
+
+    const form = new FormData();
+    form.append('document', fs.createReadStream(asset(file)), { contentType: mimetype });
+
+    return api.put(`/document/${id}/file${query}`, form, {
+      headers: { 'authorization': token, ...form.getHeaders() }
+    });
+  };
+
+  const indexStatusOf = async (id:string) => {
+    const rows:any = await sequelize.query(
+      'SELECT index_status FROM pergamo.document WHERE id = :id;', {
+      replacements: { id }, type: QueryTypes.SELECT });
+    return rows[0]?.index_status;
+  };
+
+  const remove = (id:string) => api.delete(`/document/${id}`, { headers: { authorization: token } });
+
+  /**
+   * El encolado ocurre despues del commit y NO se espera: Redis caido no puede
+   * tumbar un deposito ya confirmado. Aqui hay que darle ese margen.
+   */
+  const waitForJob = async (id:string) => {
+    for(let attempt = 0; attempt < 40; attempt++) {
+      const job = await queue.getJob(id);
+      if(job) return job;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return undefined;
+  };
+
+  beforeAll(async () => {
+
+    // Arranca con la indexacion desactivada, que es el defecto, para que el
+    // worker embebido no llegue a existir: aqui no hay maquina de inferencia.
+    server = await app(0);
+
+    api = axios.create({
+      baseURL: `http://localhost:${server.address().port}`,
+      validateStatus: () => true
+    });
+
+    const response = await api.post('/organization/login', {
+      name: 'pergamo',
+      password: Config.password_master
+    });
+
+    token = response.data.token;
+
+    Config.queue.prefix = PREFIX;
+
+    redis = new Redis(Config.queue.redis_url, { maxRetriesPerRequest: null });
+    queue = new Queue(QUEUE_NAME, { connection: redis, prefix: PREFIX });
+
+    await queue.obliterate({ force: true });
+  });
+
+  afterAll(async () => {
+    await queue.obliterate({ force: true }).catch(() => {});
+    await queue.close();
+    await redis.quit();
+    await indexQueue.close();
+    server.close();
+    await sequelize.close();
+  });
+
+  /* ------------------------------------------ con la indexacion apagada -- */
+
+  it('Should refuse to index when the deployment does not', async () => {
+
+    Config.indexing.enabled = false;
+
+    const response = await upload('?index=true');
+
+    // 400 y no silencio: el cliente no debe creer que tiene vectores.
+    expect(response.status).toBe(400);
+    expect(response.data.error).toContain('does not index');
+  });
+
+  it('Should still accept an upload that does not ask for indexing', async () => {
+
+    Config.indexing.enabled = false;
+
+    const response = await upload();
+
+    expect(response.status).toBe(200);
+    expect(await indexStatusOf(response.data.uuid)).toBe('none');
+
+    await remove(response.data.uuid);
+  });
+
+  it('Should reject an unknown query parameter instead of ignoring it', async () => {
+
+    // El motivo de .strict(): '?indexx=true' pediria indexar y no lo obtendria.
+    const response = await upload('?indexx=true');
+
+    expect(response.status).toBe(400);
+  });
+
+  /* ----------------------------------------- con la indexacion encendida -- */
+
+  it('Should queue a document that asks for it', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+
+    expect(response.status).toBe(200);
+    expect(await indexStatusOf(response.data.uuid)).toBe('pending');
+
+    const job = await waitForJob(response.data.uuid);
+
+    expect(job).toBeDefined();
+    expect(job.name).toBe(JOB_NAME);
+    // Nada mas que los dos identificadores: un trabajo puede pasar horas en la
+    // cola y todo lo demas se relee de la base.
+    expect(job.data).toEqual({ document: response.data.uuid, organization: 'pergamo' });
+
+    await remove(response.data.uuid);
+  });
+
+  /**
+   * La otra mitad de la regla. Indexar convierte el fichero, es decir lo abre
+   * con un parser, y eso es exactamente lo que un documento en cuarentena no
+   * puede provocar: se guarda, pero nadie lo toca.
+   */
+  it('Should not queue a quarantined deposit even when indexing was asked for', async () => {
+
+    Config.indexing.enabled = true;
+
+    // Contenido activo: la subida entra y queda en cuarentena por si sola, sin
+    // necesidad de un ClamAV con firmas reales.
+    //
+    // payload3 y no payload1: payload1 es el unico del corpus que ClamAV
+    // reconoce, asi que con el antivirus encendido la subida se rechaza con un
+    // 400 y este caso —entrar y quedar retenido— no llega a darse.
+    const response = await upload('?index=true', 'payloads/payload3.pdf');
+
+    expect(response.status).toBe(200);
+
+    const stored:any = await sequelize.query(
+      'SELECT scan_status FROM pergamo.document WHERE id = :id;', {
+      replacements: { id: response.data.uuid }, type: QueryTypes.SELECT });
+
+    expect(stored[0].scan_status).toBe('malicious');
+    expect(await indexStatusOf(response.data.uuid)).toBe('none');
+    expect(await queue.getJob(response.data.uuid)).toBeUndefined();
+
+    await remove(response.data.uuid);
+  });
+
+  it('Should not queue a document that did not ask for it', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload();
+
+    expect(await indexStatusOf(response.data.uuid)).toBe('none');
+    expect(await queue.getJob(response.data.uuid)).toBeUndefined();
+
+    await remove(response.data.uuid);
+  });
+
+  it('Should keep one job per document', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    await waitForJob(id);
+    await indexQueue.enqueue(id, 'pergamo');
+    await indexQueue.enqueue(id, 'pergamo');
+
+    const waiting = await queue.getJobs(['waiting', 'delayed', 'active']);
+
+    expect(waiting.filter((job) => job.id === id)).toHaveLength(1);
+
+    await remove(id);
+  });
+
+  it('Should send a replaced file back to the queue and drop its chunks', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    // Como si el worker ya hubiera terminado.
+    await sequelize.query(
+      `UPDATE pergamo.document SET index_status = 'indexed', index_chunks = 1 WHERE id = :id;`, {
+      replacements: { id }, type: QueryTypes.UPDATE });
+    await queue.obliterate({ force: true });
+
+    const form = new FormData();
+    form.append('document', fs.createReadStream(asset('multipage.pdf')), { contentType: 'application/pdf' });
+
+    const replaced = await api.put(`/document/${id}/file`, form, {
+      headers: { authorization: token, ...form.getHeaders() }
+    });
+
+    expect(replaced.status).toBe(200);
+    // Reemplazar el fichero no puede desindexar por omision, y tampoco dejar
+    // buscables los vectores de un contenido que ya no esta.
+    expect(await indexStatusOf(id)).toBe('pending');
+    expect(await waitForJob(id)).toBeDefined();
+
+    await remove(id);
+  });
+
+  it('Should let a replacement ask for an index the document never had', async () => {
+
+    Config.indexing.enabled = true;
+
+    // Sin '?index' en la subida: entra en 'none', que hasta ahora era la unica
+    // decision que no tenia vuelta atras salvo reindexando el corpus entero.
+    const response = await upload();
+    const id = response.data.uuid;
+
+    expect(await indexStatusOf(id)).toBe('none');
+
+    await queue.obliterate({ force: true });
+
+    const replaced = await replace(id, '?index=true');
+
+    expect(replaced.status).toBe(200);
+    expect(await indexStatusOf(id)).toBe('pending');
+    expect(await waitForJob(id)).toBeDefined();
+
+    await remove(id);
+  });
+
+  it('Should retire the index, and its chunks, when the replacement says no', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    // Como si el worker ya hubiera terminado.
+    await sequelize.query(
+      `UPDATE pergamo.document SET index_status = 'indexed', index_chunks = 1 WHERE id = :id;`, {
+      replacements: { id }, type: QueryTypes.UPDATE });
+    await queue.obliterate({ force: true });
+
+    const replaced = await replace(id, '?index=false');
+
+    expect(replaced.status).toBe(200);
+    // Los vectores se van igual: describian un fichero que ya no esta.
+    expect(await indexStatusOf(id)).toBe('none');
+    expect(await queue.getJob(id)).toBeUndefined();
+
+    await remove(id);
+  });
+
+  it('Should refuse a replacement that asks for an index the deployment has not', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload();
+    const id = response.data.uuid;
+
+    Config.indexing.enabled = false;
+
+    const replaced = await replace(id, '?index=true');
+
+    // El mismo 400 que la subida, y por lo mismo: sin el, el documento quedaria
+    // en 'pending' contra una cola que nadie consume.
+    expect(replaced.status).toBe(400);
+    expect(replaced.data.error).toContain('does not index');
+
+    Config.indexing.enabled = true;
+
+    await remove(id);
+  });
+
+  it('Should reject an unknown query parameter on the replacement too', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload();
+    const id = response.data.uuid;
+
+    const replaced = await replace(id, '?indexx=true');
+
+    expect(replaced.status).toBe(400);
+
+    await remove(id);
+  });
+
+  it('Should serve the index state on its own endpoint', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    await waitForJob(id);
+
+    const info = await api.get(`/document/${id}/index`, { headers: { authorization: token } });
+
+    expect(info.status).toBe(200);
+    expect(info.data).toMatchObject({ index_status: 'pending' });
+    expect(info.data).toHaveProperty('index_model');
+    expect(info.data).toHaveProperty('index_error');
+
+    await remove(id);
+  });
+
+  /* ------------------------------------------ indexacion bajo demanda -- */
+
+  it('Should index on demand a document deposited without an index', async () => {
+
+    Config.indexing.enabled = true;
+
+    // Sin '?index': hasta ahora salir de 'none' pedia reemplazar el fichero.
+    const response = await upload();
+    const id = response.data.uuid;
+
+    await queue.obliterate({ force: true });
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    expect(asked.status).toBe(StatusCodes.ACCEPTED);
+    expect(asked.data).toMatchObject({ index_status: 'pending' });
+    expect(await indexStatusOf(id)).toBe('pending');
+    expect(await waitForJob(id)).toBeDefined();
+
+    await remove(id);
+  });
+
+  it('Should send a document that failed to index back to the queue', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    // Como si el worker lo hubiera dado por fallido.
+    await sequelize.query(
+      `UPDATE pergamo.document SET index_status = 'error', index_error = 'EMPTY_CONTENT' WHERE id = :id;`, {
+      replacements: { id }, type: QueryTypes.UPDATE });
+    await queue.obliterate({ force: true });
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    expect(asked.status).toBe(StatusCodes.ACCEPTED);
+    // El motivo anterior se va con el estado: describe una pasada que ya no es
+    // la ultima.
+    expect(asked.data).toMatchObject({ index_status: 'pending', index_error: null });
+    expect(await waitForJob(id)).toBeDefined();
+
+    await remove(id);
+  });
+
+  it('Should refuse an on-demand index while the document is being indexed', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('?index=true');
+    const id = response.data.uuid;
+
+    await sequelize.query(
+      `UPDATE pergamo.document SET index_status = 'indexing' WHERE id = :id;`, {
+      replacements: { id }, type: QueryTypes.UPDATE });
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    // Una segunda pasada sobre lo que un worker ya tiene dentro duplica el
+    // trabajo y no adelanta nada.
+    expect(asked.status).toBe(400);
+    expect(asked.data.code).toBe('INDEXING_IN_PROGRESS');
+    expect(await indexStatusOf(id)).toBe('indexing');
+
+    await remove(id);
+  });
+
+  it('Should refuse an on-demand index that the deployment cannot run', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload();
+    const id = response.data.uuid;
+
+    Config.indexing.enabled = false;
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    expect(asked.status).toBe(400);
+    expect(asked.data.error).toContain('does not index');
+    expect(await indexStatusOf(id)).toBe('none');
+
+    Config.indexing.enabled = true;
+
+    await remove(id);
+  });
+
+  it('Should refuse to index a quarantined document on demand', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await upload('', 'payloads/payload3.pdf');
+    const id = response.data.uuid;
+
+    await queue.obliterate({ force: true });
+
+    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+
+    // Convertir es abrir el fichero con un parser, y eso es justo lo que la
+    // cuarentena impide.
+    expect(asked.status).toBe(StatusCodes.LOCKED);
+    expect(await indexStatusOf(id)).toBe('none');
+    expect(await queue.getJob(id)).toBeUndefined();
+
+    await remove(id);
+  });
+
+  it('Should announce whether the deployment indexes', async () => {
+
+    Config.indexing.enabled = true;
+
+    const response = await api.get('/config', { headers: { authorization: token } });
+
+    expect(response.data.indexing_enabled).toBe(true);
+  });
+});

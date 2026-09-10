@@ -1,66 +1,65 @@
 import type { ReactNode } from 'react';
 
+import { t } from '../i18n';
+
 /**
- * Las reglas que aplica el servidor con owasp-password-strength-test: minimo 10
- * caracteres, maximo 128, y hay que pasar las cuatro pruebas opcionales
- * (minuscula, mayuscula, digito y simbolo). Una frase de 20 caracteres o mas
- * queda exenta de esas cuatro.
+ * Las reglas que aplica el servidor con owasp-password-strength-test: entre 10
+ * y 128 caracteres y las cuatro pruebas opcionales (minuscula, mayuscula,
+ * digito y simbolo), de las que queda exenta una frase de 20 o mas.
  *
- * Se replican aqui para que el problema se vea antes de enviar, no como un 400
+ * Se replican aqui para ver el problema antes de enviar, no como un 400
  * despues. El servidor sigue siendo quien decide.
  *
- * El maximo va como `visible:false`: se aplica con `maxLength` en el propio
- * input, asi que nunca hay nada que mostrar por el — un requisito que no se
- * puede incumplir escribiendo no aporta nada en una lista pensada para guiar.
+ * El maximo va como `visible: false`: lo aplica el `maxLength` del input, asi
+ * que es un requisito que no se puede incumplir escribiendo.
  */
-export const comprobaciones = (contrasena: string) => {
-  const esFrase = contrasena.length >= 20;
+export const passwordRules = (password: string) => {
+  const isPassphrase = password.length >= 20;
 
   return [
-    { texto: '10 caracteres o más', ok: contrasena.length >= 10, visible: true },
-    { texto: '128 como mucho', ok: contrasena.length > 0 && contrasena.length <= 128, visible: false },
-    { texto: 'una minúscula', ok: esFrase || /[a-z]/.test(contrasena), visible: true },
-    { texto: 'una mayúscula', ok: esFrase || /[A-Z]/.test(contrasena), visible: true },
-    { texto: 'un número', ok: esFrase || /\d/.test(contrasena), visible: true },
-    { texto: 'un símbolo', ok: esFrase || /[^A-Za-z0-9]/.test(contrasena), visible: true }
+    { text: t('password.ruleLength'), ok: password.length >= 10, visible: true },
+    { text: t('password.ruleMaxLength'), ok: password.length > 0 && password.length <= 128, visible: false },
+    { text: t('password.ruleLowercase'), ok: isPassphrase || /[a-z]/.test(password), visible: true },
+    { text: t('password.ruleUppercase'), ok: isPassphrase || /[A-Z]/.test(password), visible: true },
+    { text: t('password.ruleDigit'), ok: isPassphrase || /\d/.test(password), visible: true },
+    { text: t('password.ruleSymbol'), ok: isPassphrase || /[^A-Za-z0-9]/.test(password), visible: true }
   ];
 };
 
-export const contrasenaValida = (contrasena: string) =>
-  comprobaciones(contrasena).every((comprobacion) => comprobacion.ok);
+export const isPasswordValid = (password: string) =>
+  passwordRules(password).every((rule) => rule.ok);
 
 /**
- * Nivel de fortaleza para el medidor: la clave decide el color por CSS (mismo
- * patron que ESTADO/Veredicto en ui.tsx) y la cuenta se hace solo sobre las
- * reglas visibles — el maximo de 128 no dice nada sobre lo fuerte que es una
- * contraseña de 12 caracteres.
+ * Nivel para el medidor: la clave decide el color por CSS, y la cuenta se hace
+ * solo sobre las reglas visibles —el maximo de 128 no dice nada sobre lo fuerte
+ * que es una contrasena de 12 caracteres—.
  */
-const NIVELES = [
-  { clave: 'muy-debil', etiqueta: 'Muy débil' },
-  { clave: 'debil', etiqueta: 'Débil' },
-  { clave: 'aceptable', etiqueta: 'Aceptable' },
-  { clave: 'buena', etiqueta: 'Buena' },
-  { clave: 'excelente', etiqueta: 'Excelente' }
+const STRENGTH_LEVELS = [
+  { key: 'very-weak', label: t('password.strengthVeryWeak') },
+  { key: 'weak', label: t('password.strengthWeak') },
+  { key: 'fair', label: t('password.strengthFair') },
+  { key: 'good', label: t('password.strengthGood') },
+  { key: 'excellent', label: t('password.strengthExcellent') }
 ] as const;
 
-export const nivelDeFuerza = (contrasena: string) => {
-  if (!contrasena) return null;
+export const strengthLevel = (password: string) => {
+  if (!password) return null;
 
-  const visibles = comprobaciones(contrasena).filter((regla) => regla.visible);
-  const cumplidas = visibles.filter((regla) => regla.ok).length;
+  const visible = passwordRules(password).filter((rule) => rule.visible);
+  const met = visible.filter((rule) => rule.ok).length;
 
-  return NIVELES[Math.max(0, Math.min(cumplidas, visibles.length) - 1)];
+  return STRENGTH_LEVELS[Math.max(0, Math.min(met, visible.length) - 1)];
 };
 
-export const Comprobacion = ({ contrasena }: { contrasena: string }): ReactNode => (
+export const PasswordChecklist = ({ password }: { password: string }): ReactNode => (
   <>
-    <ul className="comprobacion">
-      {comprobaciones(contrasena).map((comprobacion) => (
-        <li key={comprobacion.texto} className={comprobacion.ok ? 'cumple' : undefined}>{comprobacion.texto}</li>
+    <ul className="checklist">
+      {passwordRules(password).map((rule) => (
+        <li key={rule.text} className={rule.ok ? 'met' : undefined}>{rule.text}</li>
       ))}
     </ul>
-    {contrasena.length >= 20
-      ? <p className="campo__pista">Una frase de 20 caracteres o más se acepta aunque no mezcle tipos.</p>
+    {password.length >= 20
+      ? <p className="field__hint">{t('password.passphraseHint')}</p>
       : null}
   </>
 );

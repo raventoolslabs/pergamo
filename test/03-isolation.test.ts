@@ -4,9 +4,9 @@ import fs from 'fs';
 import FormData from 'form-data';
 import { Readable } from 'stream';
 
-import { app } from '../src/app';
-import sequelize, { QueryTypes } from '../src/utils/db';
-import Config from '../src/config';
+import { app } from '@/server';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import Config from '@/shared/config';
 import { StatusCodes } from 'http-status-codes';
 
 /**
@@ -160,14 +160,9 @@ describe('Isolation and input validation', () => {
 
   it('Should reject a file over the configured size limit', async () => {
 
-    // Antes esta prueba iba envuelta en `if(Config.max_file_size <= 5242880)`,
-    // que con el valor por defecto (50 MB) NUNCA se cumplia: el limite de
-    // tamano no estaba cubierto y, al ser un `if` y no un it.skip, Jest ni
-    // siquiera lo reportaba como omitido.
-    //
-    // El cuerpo se genera por streaming en lugar de materializar el fichero
-    // completo en memoria, de modo que la prueba corre con cualquier
-    // MAX_FILE_SIZE sin cargar decenas de MB en el proceso de test.
+    // El cuerpo se genera por streaming en vez de materializar el fichero
+    // entero: asi la prueba corre con cualquier MAX_FILE_SIZE sin cargar
+    // decenas de MB en el proceso.
     const total = Config.max_file_size + 1024;
     const chunk = Buffer.alloc(64 * 1024, 0x41);
 
@@ -175,7 +170,7 @@ describe('Isolation and input validation', () => {
     const source = new Readable({
       read() {
         if(sent === 0) { this.push(Buffer.from('%PDF-')); sent = 5; return; }
-        if(sent >= total) return this.push(null);
+        if(sent >= total) { this.push(null); return; }
         const size = Math.min(chunk.length, total - sent);
         sent += size;
         this.push(size === chunk.length ? chunk : chunk.subarray(0, size));
@@ -190,9 +185,8 @@ describe('Isolation and input validation', () => {
     });
 
     // multer aborta en cuanto se supera el limite, asi que el servidor puede
-    // responder mientras el cliente sigue enviando: la conexion se corta y
-    // axios reporta un error de socket en vez de la respuesta. Ambos desenlaces
-    // confirman el rechazo; lo que no puede ocurrir es un 200.
+    // responder mientras el cliente sigue enviando y axios ve un error de
+    // socket. Los dos desenlaces confirman el rechazo; el 200 no.
     let status:number;
 
     try {

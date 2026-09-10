@@ -31,6 +31,9 @@ DB_USER="pergamo"
 DB_PASSWORD="pergamotest"
 DB_NAME="pergamo_test"
 
+REDIS_CONTAINER="pergamo-e2e-redis"
+REDIS_PORT="${E2E_REDIS_PORT:-56379}"
+
 APP_PORT="${E2E_APP_PORT:-3999}"
 APP_URL="http://127.0.0.1:${APP_PORT}"
 
@@ -48,13 +51,13 @@ cleanup() {
 
   if [ -n "${E2E_KEEP:-}" ]; then
     say "E2E_KEEP: la pila sigue en pie en ${APP_URL} (base de datos en el puerto ${DB_PORT})"
-    printf '    para desmontarla: docker rm -f %s; kill %s; rm -rf %s\n' "$DB_CONTAINER" "$SERVER_PID" "$DATA_DIR"
+    printf '    para desmontarla: docker rm -f %s %s; kill %s; rm -rf %s\n' "$DB_CONTAINER" "$REDIS_CONTAINER" "$SERVER_PID" "$DATA_DIR"
     return $status
   fi
 
   say 'Desmontando la pila de prueba'
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
-  docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true
+  docker rm -f "$DB_CONTAINER" "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   rm -rf "$DATA_DIR"
 
   return $status
@@ -75,6 +78,8 @@ fi
 
 # --- base de datos desechable -----------------------------------------------
 
+# Con pgvector y no la imagen oficial: la migracion 005 lo exige, y aqui el rol
+# de la aplicacion ES el superusuario del contenedor, asi que la crea sola.
 say "Levantando la base de datos de prueba (${DB_CONTAINER})"
 docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$DB_CONTAINER" \
@@ -82,7 +87,7 @@ docker run -d --name "$DB_CONTAINER" \
   -e POSTGRES_PASSWORD="$DB_PASSWORD" \
   -e POSTGRES_DB="$DB_NAME" \
   -p "127.0.0.1:${DB_PORT}:5432" \
-  postgres:16-alpine >/dev/null
+  pgvector/pgvector:0.8.6-pg18-trixie >/dev/null
 
 for _ in $(seq 1 60); do
   docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 && break
@@ -90,6 +95,41 @@ for _ in $(seq 1 60); do
 done
 docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 \
   || die 'La base de datos de prueba no ha llegado a estar lista.'
+
+# Solo con E2E_INDEXING: el recorrido corto no necesita cola, y levantar un
+# Redis que nadie usa alarga cada ejecucion sin comprobar nada.
+#
+# La maquina de inferencia NO se simula: si se pide indexar de verdad, hay que
+# decir contra que. Un proveedor de mentira probaria el cableado, y de eso ya se
+# ocupan test/10-indexing y test/12-queue.
+if [ -n "${E2E_INDEXING:-}" ]; then
+
+  [ -n "${EMBEDDING_BASE_URL:-}" ] || die \
+    'E2E_INDEXING necesita EMBEDDING_BASE_URL: es la maquina de inferencia contra la que indexar. Ej.: EMBEDDING_BASE_URL=http://maquina-ia:11434/v1 E2E_INDEXING=1 npm run test:e2e'
+
+  say "Levantando Redis de prueba (${REDIS_CONTAINER})"
+  docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  docker run -d --name "$REDIS_CONTAINER" \
+    -p "127.0.0.1:${REDIS_PORT}:6379" \
+    redis:7-alpine redis-server --save '' --appendonly no >/dev/null
+
+  for _ in $(seq 1 30); do
+    docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1 && break
+    sleep 1
+  done
+  docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1 \
+    || die 'El Redis de prueba no ha llegado a estar listo.'
+
+  export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}"
+  # La pila de prueba es un solo proceso, asi que el worker va dentro. Se exporta
+  # y no se deja al defecto porque el `.env` de quien lanza esto puede llevarlo a
+  # 'false' —lo normal si tiene un worker suelto—, y entonces los documentos se
+  # quedarian en 'pending' sin que nada lo explique.
+  export INDEXING_WORKER_EMBEDDED=true
+  export EMBEDDING_BASE_URL
+  export EMBEDDING_MODEL="${EMBEDDING_MODEL:-bge-m3}"
+  export EMBEDDING_DIMENSION="${EMBEDDING_DIMENSION:-1024}"
+fi
 
 # --- entorno de la aplicacion -----------------------------------------------
 #
@@ -110,13 +150,17 @@ export DB_NAME="$DB_NAME"
 export DB_SSL=false
 export DEBUG=false
 export ENABLE_ANTIVIRUS=false
+# La suite corta no depende de la maquina de inferencia. E2E_INDEXING=1 la
+# activa para el recorrido que si la necesita.
+export INDEXING_ENABLED="${E2E_INDEXING:+true}"
+export INDEXING_ENABLED="${INDEXING_ENABLED:-false}"
 export REMOVE_FILE_DISK=true
 export JWT_EXPIRES_IN=8h
 export TRUST_PROXY=0
 export RATE_LIMIT_WINDOW_MS=900000
 export RATE_LIMIT_MAX=500
 export VALID_METADATA_MODIFY="name; description; tags"
-export VALID_MIMETYPE="application/pdf;application/vnd.oasis.opendocument.text"
+export VALID_MIMETYPE="application/pdf;application/rtf;application/epub+zip;application/vnd.oasis.opendocument.text;application/vnd.oasis.opendocument.spreadsheet;application/vnd.oasis.opendocument.presentation;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.presentationml.presentation"
 export MAX_VERSION_FILES=3
 export MAX_FILE_SIZE=52428800
 export USER_MASTER="$MASTER_USER"
@@ -166,6 +210,7 @@ docker run --rm --network host \
   -e PERGAMO_URL="$APP_URL" \
   -e PERGAMO_DB_PORT="$DB_PORT" \
   -e PERGAMO_MASTER="$MASTER_USER" \
+  -e PERGAMO_INDEXING="${E2E_INDEXING:-}" \
   -e PERGAMO_PASSWORD="$MASTER_PASSWORD" \
   -e CI=1 \
   -v "${ROOT}/e2e:/e2e" \

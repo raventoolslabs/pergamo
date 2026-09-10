@@ -2,15 +2,15 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 
-import FilesUtils from './utils/files';
-import Config from './config';
-import sequelize, { QueryTypes } from './utils/db';
-import { runMigrations } from './utils/migrations';
-import log from './utils/log';
+import FilesUtils from '@/infrastructure/files/storage';
+import Config from '@/shared/config';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import { runMigrations } from '@/infrastructure/db/migration-runner';
+import log from '@/shared/logger';
 
 const createSchema = async () => {
 
-  const script = fs.readFileSync(path.join(__dirname, 'config', 'init.sql')).toString();
+  const script = fs.readFileSync(path.join(__dirname, 'infrastructure', 'db', 'sql', 'init.sql')).toString();
   const transaction = await sequelize.transaction();
 
   try {

@@ -17,7 +17,7 @@ const path = require('path');
 
 const RAIZ = __dirname;
 const ENV_FILE = path.join(RAIZ, '.env');
-const EJEMPLO = '.env.dev.example';
+const EJEMPLO = '.env.example';
 
 const rojo = (texto) => `\x1b[31m${texto}\x1b[0m`;
 const verde = (texto) => `\x1b[32m${texto}\x1b[0m`;
@@ -55,6 +55,24 @@ for (const linea of fs.readFileSync(ENV_FILE, 'utf8').split('\n')) {
 }
 
 const PUERTO_API = Number.parseInt(entorno.PORT || '3001', 10);
+
+/**
+ * Los mismos defectos que shared/config: sin destino declarado el antivirus va
+ * al socket del paquete, y el worker va embebido salvo que se diga lo contrario.
+ *
+ * El entorno gana al fichero porque dotenv hace justo eso —no pisa lo que ya
+ * esta en process.env—, y asi `ENABLE_ANTIVIRUS=true npm run dev` prueba una
+ * configuracion sin editar el .env.
+ */
+const ajuste = (clave) => process.env[clave] ?? entorno[clave];
+
+const ANTIVIRUS = ajuste('ENABLE_ANTIVIRUS') === 'true';
+const CLAMAV_HOST = ajuste('CLAMAV_HOST') || '';
+const CLAMAV_PORT = Number.parseInt(ajuste('CLAMAV_PORT') || '3310', 10);
+const CLAMAV_SOCKET = ajuste('CLAMAV_SOCKET') || (CLAMAV_HOST ? '' : '/run/clamav/clamd.ctl');
+
+const INDEXA = ajuste('INDEXING_ENABLED') === 'true';
+const WORKER_EMBEBIDO = ajuste('INDEXING_WORKER_EMBEDDED') !== 'false';
 
 // El 3000 es la puerta de entrada: la misma que publica el contenedor, para
 // que el proxy inverso apunte siempre ahi y no haya que tocarlo al cambiar de
@@ -99,6 +117,56 @@ const arrancar = async () => {
     );
   }
 
+  // Lo que la configuracion promete tiene que estar antes de arrancar. Sin esto
+  // el fallo aparece mas tarde y disfrazado: sin clamd, cada subida queda
+  // 'pending' sin decir por que; sin Redis, se deposita y no se encola nada.
+
+  if (ANTIVIRUS && CLAMAV_SOCKET && !fs.existsSync(CLAMAV_SOCKET)) {
+    morir(
+      `No existe el socket ${CLAMAV_SOCKET}, y ENABLE_ANTIVIRUS=true.`,
+      '  systemctl status clamav-daemon\n\n' +
+      '  El paquete de Debian lo pone en /run/clamav/clamd.ctl; comprueba la\n' +
+      '  ruta en LocalSocket de /etc/clamav/clamd.conf.'
+    );
+  }
+
+  if (ANTIVIRUS && !CLAMAV_SOCKET && !(await puedeConectar(CLAMAV_HOST, CLAMAV_PORT))) {
+    morir(
+      `No responde clamd en ${CLAMAV_HOST}:${CLAMAV_PORT}, y ENABLE_ANTIVIRUS=true.`,
+      '  Un clamav-daemon instalado en el sistema NO escucha en TCP: el paquete\n' +
+      '  de Debian declara solo LocalSocket. Si lo tienes, apunta ahi:\n\n' +
+      '    CLAMAV_SOCKET=/run/clamav/clamd.ctl\n\n' +
+      '  ENABLE_ANTIVIRUS=false   para seguir sin antivirus (los depositos\n' +
+      '                           quedan «Analisis pendiente», que se entrega).\n\n' +
+      '  La pila de docker/ NO publica el 3310 al host a proposito: clamd no\n' +
+      '  autentica. Para alcanzarlo por red hay que publicarlo en\n' +
+      '  docker/docker-compose.yml.'
+    );
+  }
+
+  if (INDEXA) {
+
+    let redis;
+
+    try {
+      redis = new URL(ajuste('REDIS_URL') || 'redis://127.0.0.1:6379');
+    } catch {
+      morir(`REDIS_URL no es una URL valida: ${ajuste('REDIS_URL')}`);
+    }
+
+    const puerto = Number.parseInt(redis.port || '6379', 10);
+
+    if (!(await puedeConectar(redis.hostname, puerto))) {
+      morir(
+        `No responde Redis en ${redis.hostname}:${puerto}, y INDEXING_ENABLED=true.`,
+        '  docker start redis\n\n' +
+        '  Sin cola, un documento se deposita bien pero nunca llega a indexarse:\n' +
+        '  se queda en «En cola» hasta que un barrido lo recoja.\n' +
+        '  INDEXING_ENABLED=false   para trabajar sin indice.'
+      );
+    }
+  }
+
   // La API y la interfaz no pueden pedir el mismo puerto. Pasa en cuanto un
   // .env se copia de un despliegue, donde PORT es 3000 porque ahi la aplicacion
   // sirve las dos cosas a la vez; aqui son dos procesos.
@@ -133,7 +201,7 @@ const arrancar = async () => {
 
   console.log(gris('→ Preparando esquema y claves…'));
 
-  const init = spawnSync('npx', ['ts-node', 'src/init.ts'], {
+  const init = spawnSync('npx', ['ts-node', '-r', 'tsconfig-paths/register', 'src/init.ts'], {
     cwd: RAIZ,
     stdio: 'inherit',
     env: process.env
@@ -158,7 +226,7 @@ const arrancar = async () => {
    * terminal llega solo a este lanzador, que es quien decide como se cierra
    * todo y en que orden.
    */
-  const lanzar = (nombre, comando, argumentos, extra = {}, directorio = RAIZ) => {
+  const lanzar = (nombre, comando, argumentos, extra = {}, directorio = RAIZ, critico = true) => {
     const hijo = spawn(comando, argumentos, {
       cwd: directorio,
       stdio: 'inherit',
@@ -168,6 +236,15 @@ const arrancar = async () => {
 
     hijo.on('exit', (codigo, senal) => {
       if (cerrando) return;
+
+      // El worker es auxiliar: si se cae —la maquina de inferencia no responde,
+      // el esquema del indice no cuadra— la API y la interfaz siguen sirviendo.
+      // Tumbarlas por eso convertiria un fallo del indice en uno del archivo.
+      if (!critico) {
+        console.error(`\n${rojo('✗')} ${nombre} ha terminado (${senal || `codigo ${codigo}`}). El resto sigue.`);
+        return;
+      }
+
       // Si uno cae, el otro no tiene sentido: se cierra todo. De lo contrario
       // queda un ts-node huerfano ocupando el puerto y el siguiente arranque
       // falla sin motivo aparente.
@@ -209,7 +286,7 @@ const arrancar = async () => {
   process.on('SIGINT', () => apagar(0));
   process.on('SIGTERM', () => apagar(0));
 
-  lanzar('La API', path.join(RAIZ, 'node_modules', '.bin', 'ts-node'), ['src/index.ts']);
+  lanzar('La API', path.join(RAIZ, 'node_modules', '.bin', 'ts-node'), ['-r', 'tsconfig-paths/register', 'src/index.ts']);
 
   // PERGAMO_API es lo que hace que el proxy de Vite hable con ESTA API y no con
   // otra. PERGAMO_WEB_HOST es lo que permite que la interfaz se sirva por el
@@ -223,13 +300,29 @@ const arrancar = async () => {
     path.join(RAIZ, 'web')
   );
 
+  // Con el worker embebido lo arranca la propia API (server.ts). Sin el, no lo
+  // arrancaba nadie: la cola crecia y los documentos se quedaban en 'pending'
+  // sin ningun aviso, que es como se pierde una tarde.
+  if (INDEXA && !WORKER_EMBEBIDO) {
+    lanzar(
+      'El worker de indexacion',
+      path.join(RAIZ, 'node_modules', '.bin', 'ts-node'),
+      ['-r', 'tsconfig-paths/register', 'src/worker.ts'],
+      {}, RAIZ, false
+    );
+  }
+
+  const indexacion = !INDEXA ? 'desactivada'
+    : `activada  ${WORKER_EMBEBIDO ? '(worker en la API)' : '(worker aparte)'}`;
+
   console.log(`
 ${fuerte('Pergamo en desarrollo')}
 
   Interfaz   ${verde(`http://${HOST}:${PUERTO_WEB}`)}${WEB_HOST ? gris(`  ·  https://${WEB_HOST}`) : ''}
   API        ${gris(`http://${HOST}:${PUERTO_API}`)}
   Base       ${gris(`${entorno.DB_NAME} en ${dbHost}:${dbPort}`)}
-  Antivirus  ${gris(entorno.ENABLE_ANTIVIRUS === 'true' ? 'activado' : 'desactivado')}
+  Antivirus  ${gris(ANTIVIRUS ? `activado  (${CLAMAV_SOCKET || `${CLAMAV_HOST}:${CLAMAV_PORT}`})` : 'desactivado')}
+  Indexacion ${gris(indexacion)}
 
   Entra como ${fuerte(entorno.USER_MASTER || 'master')} para administrar organizaciones,
   o como ${fuerte('pergamo')} para trabajar con documentos. Ctrl+C para parar.

@@ -15,23 +15,22 @@ export const App = () => {
 
   if (!session) return <Login />;
 
-  // El token master no lleva organizacion: ninguna ruta de documentos
-  // funcionaria con el, asi que el arbol de rutas es distinto segun quien entre
-  // en lugar de ofrecer pantallas que solo pueden dar error.
+  // El token master no lleva organizacion: las rutas de documentos no
+  // funcionarian con el, asi que el arbol cambia segun quien entre.
   return (
     <ConfigProvider>
       <Routes>
         <Route element={<Layout />}>
           {session.master ? (
             <>
-              <Route path="/organizaciones" element={<Organizations />} />
-              <Route path="*" element={<Navigate to="/organizaciones" replace />} />
+              <Route path="/organizations" element={<Organizations />} />
+              <Route path="*" element={<Navigate to="/organizations" replace />} />
             </>
           ) : (
             <>
               <Route index element={<Documents />} />
-              <Route path="/documento/:id" element={<DocumentDetail />} />
-              <Route path="/cuenta" element={<Account />} />
+              <Route path="/documents/:id" element={<DocumentDetail />} />
+              <Route path="/account" element={<Account />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
           )}

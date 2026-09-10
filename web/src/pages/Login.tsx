@@ -2,13 +2,12 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { useSession } from '../auth/session';
-import { AvisoDeError } from '../components/ui';
+import { ErrorNotice } from '../components/ui';
+import { t } from '../i18n';
 
-/**
- * El ojo de la contraseña. La barra diagonal aparece cuando la contraseña esta
- * a la vista: el icono dice lo que pasa ahora, no lo que haria el boton.
- */
-const Ojo = ({ tachado }: { tachado: boolean }) => (
+// La barra diagonal aparece cuando la contrasena esta a la vista: el icono dice
+// lo que pasa ahora, no lo que haria el boton.
+const EyeIcon = ({ crossed }: { crossed: boolean }) => (
   <svg
     width="19"
     height="19"
@@ -22,7 +21,7 @@ const Ojo = ({ tachado }: { tachado: boolean }) => (
   >
     <path d="M1.8 12S5.4 5.4 12 5.4 22.2 12 22.2 12 18.6 18.6 12 18.6 1.8 12 1.8 12Z" />
     <circle cx="12" cy="12" r="3.1" />
-    {tachado ? <path d="M3.5 20.5 20.5 3.5" /> : null}
+    {crossed ? <path d="M3.5 20.5 20.5 3.5" /> : null}
   </svg>
 );
 
@@ -30,114 +29,110 @@ export const Login = () => {
 
   const { login } = useSession();
 
-  const [nombre, setNombre] = useState('');
-  const [contrasena, setContrasena] = useState('');
-  const [verContrasena, setVerContrasena] = useState(false);
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [entrando, setEntrando] = useState(false);
+  const [entering, setEntering] = useState(false);
 
-  const enviar = async (evento: FormEvent) => {
-    evento.preventDefault();
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
     setError(null);
-    setEntrando(true);
+    setEntering(true);
 
     try {
-      await login(nombre.trim(), contrasena);
-    } catch (fallo) {
-      setError(fallo);
+      await login(name.trim(), password);
+    } catch (failure) {
+      setError(failure);
     } finally {
-      setEntrando(false);
+      setEntering(false);
     }
   };
 
-  const rotulo = verContrasena ? 'Ocultar contraseña' : 'Ver contraseña';
+  const eyeLabel = showPassword ? t('a11y.hidePassword') : t('a11y.viewPassword');
 
   return (
-    <div className="acceso">
+    <div className="login">
 
-      {/*
-       * El panel no es decoracion: es lo unico que explica que es esto a quien
-       * llega a la direccion sin saberlo. Por debajo de 900px desaparece —el
-       * formulario manda— y el logotipo sube a la columna.
-       */}
-      <aside className="acceso__marca">
-        <div className="acceso__velo" aria-hidden="true" />
-        <div className="acceso__trama" aria-hidden="true" />
-        <div className="acceso__filigrana" aria-hidden="true" />
+      {/* El panel es lo unico que explica que es esto a quien llega sin
+          saberlo. Por debajo de 900px desaparece y el logotipo sube. */}
+      <aside className="login__brand">
+        <div className="login__veil" aria-hidden="true" />
+        <div className="login__weave" aria-hidden="true" />
+        <div className="login__watermark" aria-hidden="true" />
 
-        <div className="acceso__chapa">
+        <div className="login__badge">
           <img src="/img/logo.png" alt="Pergamo" />
         </div>
 
-        <div className="acceso__discurso">
-          <h1>Toda tu documentación, en un solo lugar.</h1>
-          <p>
-            Base de datos documental que centraliza, versiona y expone tus archivos para que
-            cualquier aplicación de tu organización acceda a ellos de forma segura.
-          </p>
-          <div className="acceso__pauta" aria-hidden="true">
+        <div className="login__pitch">
+          <h1>{t('login.headline')}</h1>
+          <p>{t('login.pitch')}</p>
+          <div className="login__rules" aria-hidden="true">
             <span />
             <span />
             <span />
           </div>
         </div>
 
-        <p className="acceso__pie">© 2026 Pergamo</p>
+        <p className="login__footer">{t('login.copyright')}</p>
       </aside>
 
-      <main className="acceso__panel">
-        <div className="acceso__hoja">
+      <main className="login__panel">
+        <div className="login__sheet">
 
-          {/* El mismo logotipo repetido no le dice nada a un lector de pantalla:
-              en la columna es decorativo y va sin texto alternativo. */}
-          <img src="/img/logo.png" alt="" className="acceso__logo-movil" />
+          {/* En la columna el logotipo es decorativo: repetirlo no le dice nada
+              a un lector de pantalla. */}
+          <img src="/img/logo.png" alt="" className="login__logo-mobile" />
 
-          <div className="acceso__encabezado">
-            <h2>Inicia sesión</h2>
-            <p>Accede con tu cuenta corporativa para continuar.</p>
+          <div className="login__heading">
+            <h2>{t('login.title')}</h2>
+            <p>{t('login.subtitle')}</p>
           </div>
 
-          <AvisoDeError error={error} />
+          <ErrorNotice error={error} />
 
-          <form onSubmit={enviar} className="acceso__entrada">
-            <div className="campo">
-              <label htmlFor="acceso-nombre">Organización o usuario</label>
+          <form onSubmit={submit} className="login__form">
+            <div className="field">
+              <label htmlFor="login-name">{t('login.nameLabel')}</label>
               <input
-                id="acceso-nombre"
+                id="login-name"
                 type="text"
                 autoComplete="username"
                 autoFocus
                 required
-                value={nombre}
-                onChange={(evento) => setNombre(evento.target.value)}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
               />
             </div>
 
-            <div className="campo">
-              <label htmlFor="acceso-contrasena">Contraseña</label>
-              <span className="acceso__secreto">
+            <div className="field">
+              <label htmlFor="login-password">{t('login.passwordLabel')}</label>
+              <span className="login__secret">
                 <input
-                  id="acceso-contrasena"
-                  type={verContrasena ? 'text' : 'password'}
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   required
-                  value={contrasena}
-                  onChange={(evento) => setContrasena(evento.target.value)}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
                 />
                 <button
                   type="button"
-                  onClick={() => setVerContrasena((visible) => !visible)}
-                  aria-label={rotulo}
-                  aria-pressed={verContrasena}
-                  title={rotulo}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={eyeLabel}
+                  aria-pressed={showPassword}
+                  title={eyeLabel}
                 >
-                  <Ojo tachado={verContrasena} />
+                  <EyeIcon crossed={showPassword} />
                 </button>
               </span>
             </div>
 
-            <button type="submit" className="acceso__entrar" disabled={entrando || !nombre || !contrasena}>
-              {entrando ? <><span className="girando" aria-hidden="true" /> Entrando…</> : 'Entrar'}
+            <button type="submit" className="login__submit" disabled={entering || !name || !password}>
+              {entering
+                ? <><span className="spinner" aria-hidden="true" /> {t('login.submitting')}</>
+                : t('login.submit')}
             </button>
           </form>
         </div>
