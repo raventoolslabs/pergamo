@@ -94,6 +94,12 @@ const RULES:Rule[] = [
     // Sin NAME_END: no es un nombre PDF sino el esquema de una URI.
     pattern: /javascript:/i,
     why: 'URI with a javascript: scheme'
+  },
+  {
+    name: 'FontMatrix',
+    pattern: new RegExp(`\\/FontMatrix${NAME_END}`),
+    refine: (text) => fontMatrixCarriesMore(text),
+    why: 'font matrix with something other than numbers, which runs in the viewer'
   }
 ];
 
@@ -132,6 +138,36 @@ const openActionExecutes = (text:string) => {
     }
 
     return true;
+  }
+
+  return false;
+}
+
+const FONT_MATRIX = new RegExp(`\\/FontMatrix${NAME_END}\\s*`, 'g');
+
+// Seis numeros, con signo, decimales y exponente. Nada mas.
+const ONLY_NUMBERS = /^[\s\d.+\-eE]*$/;
+
+/**
+ * `/FontMatrix` la lleva cualquier tipografia Type1 o Type3, asi que condena el
+ * valor y no la clave: son seis numeros, y lo que no lo sea llega al codigo que
+ * el visor genera con ellos. Es la via de CVE-2024-4367, con la que payload8
+ * del corpus ejecuta JavaScript en pdf.js sin `/JavaScript` ni `/OpenAction`.
+ *
+ * Ante una referencia indirecta se marca, como en OpenAction: seguirla exige un
+ * parser, y mover el array a otro objeto seria esquivar esto con una linea.
+ */
+const fontMatrixCarriesMore = (text:string) => {
+
+  for(const match of text.matchAll(FONT_MATRIX)) {
+
+    const value = text.slice(match.index + match[0].length, match.index + match[0].length + 512);
+
+    if(!value.startsWith('[')) return true;
+
+    const close = value.indexOf(']');
+
+    if(close === -1 || !ONLY_NUMBERS.test(value.slice(1, close))) return true;
   }
 
   return false;

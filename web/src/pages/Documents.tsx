@@ -335,7 +335,13 @@ export const Documents = () => {
       {uploading ? (
         <UploadDialog
           onClose={() => setUploading(false)}
-          onUploaded={() => { setPage(1); refresh(); toast(t('documents.uploaded')); }}
+          onUploaded={({ uploaded }) => {
+            setPage(1);
+            refresh();
+            // Lo retenido tambien cambia la lista, pero no se anuncia como
+            // subido: su veredicto lo cuenta el dialogo, que sigue abierto.
+            if(uploaded) toast(t('documents.uploaded'));
+          }}
         />
       ) : null}
     </>

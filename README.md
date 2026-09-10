@@ -452,7 +452,7 @@ ClamAV está basado en firmas, así que su rendimiento sobre muestras nuevas o d
 
 Lo que ningún motor resuelve por sí solo es que **se analizaba una sola vez, en la subida**. Un fichero limpio hoy puede tener firma dentro de tres días. De ahí el estado de análisis por documento y el reescaneo del corpus.
 
-**Medido, no supuesto.** `test/assets/payloads/` es el corpus de [PayloadsAllThePDFs](https://github.com/luigigubello/PayloadsAllThePDFs): once PDF estructuralmente válidos con JavaScript, anotaciones, URI `data:` y formularios dentro. De los once, ClamAV 1.4.3 (firmas 28116, septiembre de 2026) reconoce **uno**: `payload1.pdf`. Ninguna casilla de `clamd.conf` cambia eso: un `/OpenAction` con `app.alert()` no es código malicioso conocido, es un PDF haciendo lo que el formato permite. Esa medida es la que motivó la segunda capa —**contenido activo**, más abajo—, que retiene nueve de los diez restantes; el que se escapa de las dos, `payload8.pdf`, también está en las pruebas. `test/06-payloads.test.ts` fija los tres hechos por escrito en lugar de dejarlos en una expectativa cómoda.
+**Medido, no supuesto.** `test/assets/payloads/` es el corpus de [PayloadsAllThePDFs](https://github.com/luigigubello/PayloadsAllThePDFs): once PDF estructuralmente válidos con JavaScript, anotaciones, URI `data:` y formularios dentro. De los once, ClamAV 1.4.3 (firmas 28116, septiembre de 2026) reconoce **uno**: `payload1.pdf`. Ninguna casilla de `clamd.conf` cambia eso: un `/OpenAction` con `app.alert()` no es código malicioso conocido, es un PDF haciendo lo que el formato permite. Esa medida es la que motivó la segunda capa —**contenido activo**, más abajo—, que retiene los once, `payload8.pdf` incluido: ese no lleva `/JavaScript` ni `/OpenAction`, sino código dentro de un array `/FontMatrix`, y lo marca la regla que mira el valor de esa clave. `test/06-payloads.test.ts` fija los tres hechos por escrito en lugar de dejarlos en una expectativa cómoda.
 
 Lo que sí depende de Pergamo es no convertirse en el visor: el contenido activo es inocuo mientras nadie lo renderice. Pergamo nunca abre los documentos que almacena: lee 128 bytes de cabecera, calcula un SHA-256 por streaming y mueve el fichero. No hay parser de PDF ni motor de JavaScript en el proceso. El riesgo que se gestiona no es la ejecución local, sino que Pergamo es un **punto de distribución**: lo que entra se sirve después con el aval implícito de la organización.
 
@@ -506,12 +506,13 @@ ClamAV responde a «¿es esto malware conocido?». Un fondo documental tiene ade
 | `SubmitForm` | envío o importación de datos de formulario |
 | `XFA` | formulario XFA, con su propia lógica |
 | `JavaScriptURI` | URI con esquema `javascript:` |
+| `FontMatrix` | matriz de tipografía con algo que no son números (CVE-2024-4367) |
 
 **Política**: a diferencia de una firma antivírica, el contenido activo **no rechaza la subida**. El documento se deposita y queda en `malicious`: se guarda, no se entrega, y de ahí solo sale por `npm run scan:release -- <id>`. En un archivo, el depósito no se pierde; lo que se retiene es la entrega. `npm run rescan` excluye esas filas de forma explícita —un barrido las encontraría limpias y liberaría en lote justo lo que se decidió retener— y avisa al terminar de cuántas hay.
 
 **Lo que no cubre**, escrito aquí para que su ausencia no se lea como una garantía:
 
-* No hay parser de PDF en el proceso, y es deliberado: un parser en la ruta de subida es superficie de ataque. `payload8.pdf` del corpus inyecta su código en un array `/FontMatrix`, sin `/JavaScript` ni `/OpenAction`, y no lo detecta ni ClamAV ni este filtro.
+* No hay parser de PDF en el proceso, y es deliberado: un parser en la ruta de subida es superficie de ataque. Las reglas leen bytes, así que cada vía nueva —`payload8.pdf` metía su código en un array `/FontMatrix`— se cubre con una regla más, cuando se conoce, y no antes.
 * Un fichero preparado para esquivarlo lo esquiva. Es un **filtro de contenido activo, no un veredicto de seguridad**.
 * Solo mira PDF. Un ODT con macros pasa sin marca.
 * Lo que exceda los límites de descompresión (8 MB por flujo, 64 MB en total) no se examina.
@@ -556,7 +557,7 @@ X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
 
 Ha de subirse **exacto**: la firma de ClamAV para EICAR es un hash del fichero completo, así que cualquier byte añadido la anula. Para probar la detección dentro de un fichero grande hay que embeberlo como una entrada de un archivo comprimido, que es lo que hace la prueba del límite de tamaño.
 
-EICAR responde a «¿llega el fichero al motor?», que es una pregunta distinta de «¿sirve el motor para esto?». Para la segunda está el corpus de `test/assets/payloads/` (ver su `README.md`), con el detalle de qué reconoce ClamAV en cada fichero y por qué diez de los once no le corresponden. Aviso al clonar: `payload1.pdf` tiene firma, y un antivirus con vigilancia en tiempo real puede llevárselo del directorio de trabajo.
+EICAR responde a «¿llega el fichero al motor?», que es una pregunta distinta de «¿sirve el motor para esto?». Para la segunda está el corpus de `test/assets/payloads/` (ver su `README.md`), con el detalle de qué reconoce ClamAV en cada fichero y por qué diez de los once no le corresponden, que es lo que retiene la segunda capa. Aviso al clonar: `payload1.pdf` tiene firma, y un antivirus con vigilancia en tiempo real puede llevárselo del directorio de trabajo.
 
 ## Indexación semántica
 

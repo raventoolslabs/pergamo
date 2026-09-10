@@ -52,8 +52,17 @@ test.describe('Quarantine', () => {
     const dialog = page.getByRole('dialog');
     await dialog.locator('input[type=file]').setInputFiles(asset('payloads/payload3.pdf'));
     await dialog.getByRole('button', { name: /^subir/i }).click();
-    // El dialogo se cierra solo en cuanto todo ha entrado: no queda nada que
-    // mirar ni que cerrar.
+
+    // Entra en el archivo, pero retenido: el dialogo no lo despacha como
+    // «Subido» ni se cierra, porque el veredicto es lo unico que hay que ver.
+    await expect(dialog.getByText(/en cuarentena/i)).toBeVisible();
+    await expect(dialog.getByText(/^subido$/i)).toHaveCount(0);
+    // Ni el aviso de la pantalla lo da por subido: lo retenido no se celebra.
+    await expect(page.getByText(/documento subido/i)).toHaveCount(0);
+
+    await shot(page, 'upload-quarantined');
+
+    await dialog.getByRole('button', { name: /^cerrar$/i }).click();
     await expect(dialog).toHaveCount(0);
 
     await page.getByRole('link', { name: 'payload3' }).click();

@@ -3,15 +3,18 @@ import type { DragEvent } from 'react';
 
 import { api } from '../api/client';
 import { useConfig } from '../api/config';
+import type { ScanInfo } from '../api/types';
 import { t } from '../i18n';
-import { Dialog, Notice, errorMessage, formatSize } from './ui';
+import { Dialog, Notice, Verdict, errorMessage, formatSize, isDeliverable } from './ui';
 
-type ItemState = 'pending' | 'uploading' | 'done' | 'error';
+type ItemState = 'pending' | 'uploading' | 'done' | 'held' | 'error';
 
 interface QueueItem {
   file: File;
   state: ItemState;
   note?: string;
+  /** Solo en 'held': el veredicto con que entro, para nombrarlo igual que la ficha. */
+  scan?: ScanInfo;
 }
 
 /**
@@ -50,7 +53,9 @@ const listOut = (values: string[]) => {
  */
 export const UploadDialog = ({ onClose, onUploaded }: {
   onClose: () => void;
-  onUploaded: () => void;
+  /** `held` son los que entraron retenidos: la lista cambia, pero no hay nada
+      que celebrar. */
+  onUploaded: (result: { uploaded: number; held: number }) => void;
 }) => {
 
   const config = useConfig();
@@ -103,6 +108,9 @@ export const UploadDialog = ({ onClose, onUploaded }: {
     // Los rechazados antes de enviarse ya cuentan: si hay alguno, el dialogo se
     // queda abierto para que se vea cual.
     let failed = items.filter((item) => item.state === 'error').length;
+    // Retenidos: entraron en el archivo, pero llamarlos «Subido» y cerrar el
+    // dialogo esconderia lo unico que hay que mirar.
+    let held = 0;
 
     // La casilla viene marcada, pero pedir indexacion donde no la hay es un 400.
     const wantIndex = indexing && config?.indexing_enabled === true;
@@ -114,10 +122,22 @@ export const UploadDialog = ({ onClose, onUploaded }: {
         position === index ? { ...item, state: 'uploading' } : item));
 
       try {
-        await api.upload(items[index].file, wantIndex);
-        succeeded += 1;
+
+        const created = await api.upload(items[index].file, wantIndex);
+
+        // Un deposito puede entrar retenido —contenido activo— y eso no es
+        // «Subido»: el veredicto se pregunta antes de darlo por bueno, porque la
+        // respuesta de la subida solo trae los metadatos.
+        const scan = await api.scan(created.uuid).catch(() => null);
+        const state:ItemState = scan && !isDeliverable(scan.scan_status) ? 'held' : 'done';
+
+        if(state === 'held') held += 1; else succeeded += 1;
+
         setItems((current) => current.map((item, position) =>
-          position === index ? { ...item, state: 'done', note: t('upload.done') } : item));
+          position === index
+            ? { ...item, state, scan: scan ?? undefined, note: state === 'done' ? t('upload.done') : undefined }
+            : item));
+
       } catch (failure) {
         failed += 1;
         setItems((current) => current.map((item, position) =>
@@ -128,10 +148,10 @@ export const UploadDialog = ({ onClose, onUploaded }: {
     setSending(false);
     setSettled(true);
     // Se refresca aunque alguno haya fallado: los que si entraron deben verse.
-    if (succeeded) onUploaded();
-    // Sin nada que mirar el dialogo estorba; con un error se queda, porque el
-    // motivo solo se cuenta aqui.
-    if (succeeded && !failed) onClose();
+    if (succeeded || held) onUploaded({ uploaded: succeeded, held });
+    // Sin nada que mirar el dialogo estorba; con un error o una cuarentena se
+    // queda, porque eso solo se cuenta aqui.
+    if (succeeded && !failed && !held) onClose();
   };
 
   const pending = items.filter((item) => item.state === 'pending').length;
@@ -218,7 +238,9 @@ export const UploadDialog = ({ onClose, onUploaded }: {
                 <span className="queue__status">
                   {item.state === 'uploading'
                     ? <span className="spinner" aria-hidden="true" />
-                    : item.note || formatSize(item.file.size)}
+                    : item.state === 'held' && item.scan
+                      ? <Verdict status={item.scan.scan_status} engine={item.scan.scan_engine} />
+                      : item.note || formatSize(item.file.size)}
                 </span>
                 {item.state === 'pending' && !sending ? (
                   <button

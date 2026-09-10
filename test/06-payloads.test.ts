@@ -47,12 +47,11 @@ const CORPUS = [
 const SIGNED = 'payload1.pdf';
 
 /**
- * El que no detecta nadie: sin /JavaScript ni /OpenAction, inyecta el codigo en
- * un array /FontMatrix contra el parser del visor. Es la medida de lo que
- * cubren las dos capas: se filtra contenido activo, no se certifica que un
- * documento sea inofensivo.
+ * El que ninguna firma reconoce: sin /JavaScript ni /OpenAction, inyecta el
+ * codigo en un array /FontMatrix contra el parser del visor (CVE-2024-4367).
+ * Lo retiene la regla FontMatrix, que mira el valor y no la clave.
  */
-const UNDETECTED = 'payload8.pdf';
+const FONT_MATRIX = 'payload8.pdf';
 
 // it.skip y no un `if`: asi Jest informa de lo que no se ha ejercitado en vez
 // de dar una cobertura aparente.
@@ -145,10 +144,10 @@ describe('Active-content PDF corpus', () => {
     }
   });
 
-  it('Should flag ten of the eleven payloads as active content', async () => {
+  it('Should flag every payload of the corpus as active content', async () => {
 
-    // La medida de la capa, sin pasar por la API. El que falta es UNDETECTED, y
-    // esta prueba avisa si deja de ser cierto en cualquiera de los dos sentidos.
+    // La medida de la capa, sin pasar por la API: si un fichero deja de
+    // marcarse, esta prueba lo dice por su nombre.
     const flagged:string[] = [];
 
     for(const file of CORPUS) {
@@ -158,8 +157,29 @@ describe('Active-content PDF corpus', () => {
       if(result.active) flagged.push(file);
     }
 
-    expect(flagged).toHaveLength(CORPUS.length - 1);
-    expect(flagged).not.toContain(UNDETECTED);
+    expect(flagged).toEqual(CORPUS);
+  });
+
+  /**
+   * El unico que entra por el valor de una clave corriente: la lleva cualquier
+   * tipografia Type1 o Type3, y lo que condena es que dentro del array haya algo
+   * que no es un numero. El visor lo concatena en el codigo que genera.
+   */
+  it('Should flag a font matrix that carries something other than numbers', async () => {
+
+    const result = await detectActiveContent(path.join(PAYLOADS, FONT_MATRIX), 'application/pdf');
+
+    expect(result).toEqual({ active: true, markers: ['FontMatrix'] });
+  });
+
+  it('Should not flag a font matrix of six numbers', async () => {
+
+    // La otra mitad: una Type3 corriente declara su matriz y no por eso queda
+    // retenida.
+    const result = await detectActiveContent(
+      path.join(__dirname, 'assets', 'font-matrix-numbers.pdf'), 'application/pdf');
+
+    expect(result).toEqual({ active: false, markers: [] });
   });
 
   it('Should not flag the ordinary documents of the test corpus', async () => {
@@ -280,25 +300,24 @@ describe('Active-content PDF corpus', () => {
     expect((await status(id)).scan_signature).toContain('ACTIVE_CONTENT');
   });
 
-  it('Should deposit the payload that neither layer detects', async () => {
+  it('Should quarantine the payload that no signature recognises', async () => {
 
-    // Este entra, queda descargable y las dos capas lo dan por bueno: es lo que
-    // cuesta no tener un parser de PDF en el proceso, y la razon por la que la
-    // interfaz nunca renderiza un documento del archivo.
-    const uploaded = await upload(UNDETECTED);
+    // Ninguna firma lo reconoce y no lleva /JavaScript: lo retiene el valor de
+    // su /FontMatrix, y se retiene igual que el resto —se deposita y no se
+    // entrega—, porque la politica la fija la capa, no el marcador.
+    const uploaded = await upload(FONT_MATRIX);
 
     expect(uploaded.status).toBe(StatusCodes.OK);
 
-    // No se afirma 'clean': con el antivirus apagado nadie lo miro y el
-    // deposito queda 'pending'. Lo que esta prueba sostiene es que no se
-    // retiene, que es lo que se puede comprobar sin escaner.
-    expect((await status(uploaded.data.uuid)).scan_status)
-      .toBe(Config.enable_antivirus ? 'clean' : 'pending');
+    const row = await status(uploaded.data.uuid);
+
+    expect(row.scan_status).toBe('malicious');
+    expect(row.scan_signature).toContain('FontMatrix');
 
     const download = await api.get(`/document/${uploaded.data.uuid}/file`,
       { headers: { authorization: token } });
 
-    expect(download.status).toBe(StatusCodes.OK);
+    expect(download.status).toBe(StatusCodes.LOCKED);
   });
 
   itAntivirus('Should reject the payload ClamAV recognises before it is stored', async () => {
