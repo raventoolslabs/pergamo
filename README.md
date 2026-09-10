@@ -94,13 +94,18 @@ uninstall` las retira. Los hooks son `PreToolUse`: antes de un `Bash`/`Grep` cor
 search` y antes de un `Read`/`Glob`, `graphify hook-guard read`. No bloquean la herramienta —recuerdan
 consultar el grafo primero— y callan si todavía no hay grafo construido.
 
-**El grafo no está construido en este repositorio**: `graphify-out/` solo contiene la caché de
-`stat-index.json`, no `graph.json`. La primera pasada hay que darla a mano, y tarda:
+El grafo vive en `graphify-out/`, que **no está versionado**: son dos megas de material derivado que
+cambian con cada commit, y reconstruirlo cuesta un minuto. Cada quien lo construye una vez:
 
 ```bash
-graphify .                         # construye graphify-out/graph.json, GRAPH_REPORT.md y graph.html
-graphify . --wiki                  # además, wiki/index.md navegable por el agente
+graphify . --code-only             # graph.json, GRAPH_REPORT.md y graph.html
+graphify cluster-only .            # agrupa en comunidades y escribe el informe
 ```
+
+`--code-only` deja fuera los `.md` y los PDF de prueba: son la parte que necesitaría un modelo, y el
+grafo que interesa —quién llama a quién dentro de `src/`— sale entero del AST. Dos límites conocidos
+de la pasada actual: sin clave las comunidades se quedan con nombres de relleno (`Community N`), y las
+seis migraciones `.sql` no aportan nodos salvo que se instale `graphifyy[sql]`.
 
 No hace falta ninguna clave de API para código: la extracción es AST, local y determinista. Solo la
 parte semántica —documentos, PDF, imágenes— usa un modelo, y ahí mira `GEMINI_API_KEY` o
@@ -116,10 +121,14 @@ graphify explain "ScanQueue"                    # explicación de un nodo y sus 
 graphify update .                               # reextrae lo que ha cambiado (AST, sin coste)
 ```
 
-`graphify-out/` es material derivado y se reconstruye entero con `graphify update .`, así que no hay
-que resolver conflictos en él: si un `merge` lo enreda, se descarta y se vuelve a generar. Para no
-depender de acordarse del `update`, `graphify hook install` añade un hook `post-commit` de git que
-rehace el grafo con cada commit; ahora mismo no está instalado.
+Para no depender de acordarse del `update`, `graphify hook install` añade un hook `post-commit` de git
+que rehace el grafo con cada commit; ahora mismo no está instalado.
+
+Un aviso que cuesta caro descubrir tarde: **la herramienta se reescribe su propia configuración**. Al
+ejecutarla deja `.claude/settings.json` con la ruta absoluta del binario (`/home/<usuario>/.local/bin/
+graphify hook-guard search`) y un `.claude/settings.json.graphify-bak` al lado. Esa ruta es de una
+máquina concreta y el fichero está versionado, así que se revisa el diff antes de confirmar y se deja
+el comando pelado, `graphify hook-guard search`, que es el que funciona en cualquier instalación.
 
 ## Configuración
 
