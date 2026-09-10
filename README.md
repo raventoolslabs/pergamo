@@ -24,6 +24,7 @@ La API sigue una arquitectura por capas, con la regla de dependencias descrita e
 * `public` — logo y favicons, que Vite incorpora al build de la interfaz.
 * `docker` — despliegue: `docker-compose.yml`, `.env.example` del contenedor y la configuración del demonio ClamAV (`clamd.conf` y lista local de firmas ignoradas).
 * `test` — pruebas de integración.
+* `.claude` — configuración del agente: skills del proyecto, hooks y reglas. Ver «Skills de Claude Code».
 
 ## Convenciones de código
 
@@ -36,6 +37,98 @@ incluido, se escriben en español.
 La regla completa, junto al flujo de git que envuelve cualquier tarea de código (toda rama nace de un
 `development` recién bajado, se trabaja en ella y se termina con push y PR contra `development`), está
 en la skill `write-code` (`.claude/skills/write-code/SKILL.md`).
+
+## Skills de Claude Code
+
+Las skills son instrucciones que el agente carga bajo demanda: una carpeta por skill dentro de
+`.claude/skills/`, con un `SKILL.md` cuyo *frontmatter* (`name` y `description`) es lo único que se
+lee siempre. El cuerpo entra en contexto solo cuando la tarea encaja con esa descripción, así que
+tener varias instaladas cuesta poco.
+
+| Skill | Para qué sirve | Obligatoria |
+|---|---|---|
+| `write-code` | Convenciones de escritura —código en inglés, texto de interfaz en el catálogo i18n, comentarios en español— y el flujo de git que envuelve la tarea: rama desde `development` recién bajado, push y PR. | Sí: antes de crear o editar cualquier fichero, y al terminar la tarea. |
+| `ddd-architecture` | Las cinco capas, la tabla de dependencias y dónde vive cada cosa, con las convenciones de nombres y de esquema SQL. | Sí: antes de crear un fichero nuevo bajo `src/` o de mover código entre capas. |
+| `graphify` | Construir y consultar el grafo de conocimiento del repositorio. | No: se activa con `/graphify` o ante preguntas sobre el código. |
+| `context-compression` | Resumir sesiones largas sin perder decisiones, ficheros tocados, riesgos y siguientes pasos. | No. |
+| `frontend-design` | Criterio visual al crear interfaz nueva o rehacer la existente. | No. |
+
+Las dos obligatorias se imponen desde `CLAUDE.md`, que es lo que el agente lee al arrancar; una skill
+instalada pero no citada allí solo se activa si la petición encaja con su descripción.
+
+`shadcn` estuvo instalada y se ha retirado: la interfaz no usa Tailwind ni Radix —el CSS es propio—,
+así que la skill no aplicaba a este repositorio.
+
+### Dónde se configura
+
+| Fichero | Qué hace | Se comparte |
+|---|---|---|
+| `CLAUDE.md` | Reglas obligatorias del proyecto y la sección `## graphify`. | Sí, versionado. |
+| `.claude/CLAUDE.md` | Registra el disparador `/graphify`. | Sí, versionado. |
+| `.claude/settings.json` | Hooks `PreToolUse` de graphify (ver abajo). | Sí, versionado. |
+| `.claude/settings.local.json` | Permisos y ajustes de cada máquina. | No: ignorado en la configuración global de git. |
+| `.claude/skills/<nombre>/SKILL.md` | La skill en sí. | Sí, versionado. |
+
+Las skills propias —`write-code` y `ddd-architecture`— se escriben a mano y van en español, como el
+resto del markdown del proyecto. Las de terceros se instalan con su propia herramienta y no se editan:
+al actualizarlas se pierde el cambio.
+
+### graphify
+
+graphify convierte el repositorio en un grafo de nodos y relaciones que se puede consultar con una
+pregunta en lenguaje natural. La ventaja frente a `grep` es el tamaño de la respuesta: devuelve un
+subgrafo acotado en vez de decenas de ficheros, y de ahí que las reglas de `CLAUDE.md` lo pongan por
+delante de la búsqueda a pelo.
+
+Es una herramienta externa, no una dependencia de npm; se instala en la máquina, no en el proyecto:
+
+```bash
+uv tool install graphifyy          # o: pipx install graphifyy / pip install graphifyy
+graphify --version                 # probado con 0.9.57
+graphify install                   # copia la skill a .claude/skills/graphify/
+graphify claude install            # escribe la sección de CLAUDE.md y el hook de settings.json
+```
+
+Ese último comando es el que dejó las dos piezas de configuración del repositorio, y `graphify claude
+uninstall` las retira. Los hooks son `PreToolUse`: antes de un `Bash`/`Grep` corre `graphify hook-guard
+search` y antes de un `Read`/`Glob`, `graphify hook-guard read`. No bloquean la herramienta —recuerdan
+consultar el grafo primero— y callan si todavía no hay grafo construido.
+
+El grafo vive en `graphify-out/`, que **no está versionado**: son dos megas de material derivado que
+cambian con cada commit, y reconstruirlo cuesta un minuto. Cada quien lo construye una vez:
+
+```bash
+graphify . --code-only             # graph.json, GRAPH_REPORT.md y graph.html
+graphify cluster-only .            # agrupa en comunidades y escribe el informe
+```
+
+`--code-only` deja fuera los `.md` y los PDF de prueba: son la parte que necesitaría un modelo, y el
+grafo que interesa —quién llama a quién dentro de `src/`— sale entero del AST. Dos límites conocidos
+de la pasada actual: sin clave las comunidades se quedan con nombres de relleno (`Community N`), y las
+seis migraciones `.sql` no aportan nodos salvo que se instale `graphifyy[sql]`.
+
+No hace falta ninguna clave de API para código: la extracción es AST, local y determinista. Solo la
+parte semántica —documentos, PDF, imágenes— usa un modelo, y ahí mira `GEMINI_API_KEY` o
+`GOOGLE_API_KEY`; sin ninguna de las dos, el propio agente hace ese trabajo. `ANTHROPIC_API_KEY` y
+`OPENAI_API_KEY` no se leen nunca.
+
+Con el grafo hecho, el uso diario son cuatro comandos:
+
+```bash
+graphify query "cómo se valida un token"        # subgrafo que responde a la pregunta
+graphify path "DocumentController" "ClamAV"     # camino más corto entre dos conceptos
+graphify explain "ScanQueue"                    # explicación de un nodo y sus vecinos
+graphify update .                               # reextrae lo que ha cambiado (AST, sin coste)
+```
+
+Para no depender de acordarse del `update`, `graphify hook install` añade un hook `post-commit` de git
+que rehace el grafo con cada commit; ahora mismo no está instalado.
+
+Un aviso que cuesta caro descubrir tarde: **la herramienta se reescribe su propia configuración**. Al
+ejecutarla deja `.claude/settings.json` con la ruta absoluta del binario (`/home/<usuario>/.local/bin/
+graphify hook-guard search`) y un `.claude/settings.json.graphify-bak` al lado. Esa ruta es de una
+máquina concreta y el fichero está versionado, así que se revisa el diff antes de confirmar y se deja
+el comando pelado, `graphify hook-guard search`, que es el que funciona en cualquier instalación.
 
 ## Configuración
 
