@@ -503,10 +503,12 @@ ClamAV responde a «¿es esto malware conocido?». Un fondo documental tiene ade
 | `EmbeddedFile` | ficheros embebidos dentro del documento |
 | `RichMedia` | contenido multimedia ejecutable |
 | `RemoteGoTo` | `/GoToR`, `/GoToE`: salto a otro fichero |
-| `SubmitForm` | envío o importación de datos de formulario |
+| `SubmitForm` | envío, importación o reinicio de datos de formulario |
 | `XFA` | formulario XFA, con su propia lógica |
 | `JavaScriptURI` | URI con esquema `javascript:` |
-| `FontMatrix` | matriz de tipografía con algo que no son números (CVE-2024-4367) |
+| `DataURI` | URI que lleva un documento HTML dentro |
+| `MediaAction` | acción `/S` de tipo `Movie`, `Sound`, `Rendition`, `SetOCGState` o `GoTo3DView` |
+| `FontMatrix`, `BBox`, `Matrix`, `Coords`, `Rect` | array que debería ser de números y lleva otra cosa (CVE-2024-4367 y familia) |
 
 **Política**: a diferencia de una firma antivírica, el contenido activo **no rechaza la subida**. El documento se deposita y queda en `malicious`: se guarda, no se entrega, y de ahí solo sale por `npm run scan:release -- <id>`. En un archivo, el depósito no se pierde; lo que se retiene es la entrega. `npm run rescan` excluye esas filas de forma explícita —un barrido las encontraría limpias y liberaría en lote justo lo que se decidió retener— y avisa al terminar de cuántas hay.
 
@@ -516,6 +518,13 @@ ClamAV responde a «¿es esto malware conocido?». Un fondo documental tiene ade
 * Un fichero preparado para esquivarlo lo esquiva. Es un **filtro de contenido activo, no un veredicto de seguridad**.
 * Solo mira PDF. Un ODT con macros pasa sin marca.
 * Lo que exceda los límites de descompresión (8 MB por flujo, 64 MB en total) no se examina.
+* No hay una regla para `/Names` a secas. Sus dos ramas peligrosas —`/JavaScript` y `/EmbeddedFiles`— ya tienen la suya, y la clave aparece 1.025 veces en un manual corriente: marcarla por estar retendría el fondo entero por tener destinos con nombre.
+
+**Dónde se busca**, que es lo que separa un filtro de un retenedor de manuales:
+
+* **Fuera de las cadenas literales.** Un nombre PDF es un token: `(https://es.wikipedia.org/wiki/JavaScript)` es un enlace, no JavaScript embebido. Sin esta distinción, el manual de Debian de este mismo equipo quedaba retenido. Las dos reglas de URI —`JavaScriptURI`, `DataURI`— son la excepción y sí leen dentro, porque un esquema vive ahí.
+* **Solo en lo que parece texto.** Los diccionarios, el `xref`, los flujos de objetos y el propio JavaScript lo son; una imagen o una tipografía, no, y entre sus bytes cae `/JS` por azar.
+* **Siguiendo una referencia indirecta** cuando su objeto se puede localizar por bytes. `/OpenAction 98 0 R` es lo que escribe LaTeX para decir por qué página abrirse, y condenarla por no poder seguirla retenía cualquier PDF hecho con LaTeX. Si el objeto vive dentro de un flujo comprimido no se puede seguir y no se marca: los subtipos que de verdad ejecutan tienen cada uno su regla por presencia. Los arrays numéricos son la excepción —ahí una referencia indirecta sí se marca—, porque sobre PDF corrientes esas cinco claves aparecieron 5.073 veces sin una sola indirecta, y mover el array a otro objeto sería esquivar la regla con una línea.
 
 **Falsos positivos, que aquí son caros**: un PDF firmado lleva ficheros embebidos por norma —PAdES-LTV embebe respuestas OCSP y CRLs; Factur-X embebe el XML de la factura—, así que un archivo de documentos firmados los retendría todos al depositarlos. `MALICIOUS_ACTIVE_CONTENT_IGNORE` desactiva reglas concretas por nombre, separadas por `;`:
 

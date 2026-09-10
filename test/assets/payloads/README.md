@@ -16,7 +16,7 @@ Medido con `clamscan` 1.4.3, base de firmas 28116 (7 de septiembre de 2026), con
 
 | Fichero | ClamAV | Contenido activo |
 | --- | --- | --- |
-| `payload1.pdf` | `Html.Exploit.CVE_2016_3198-1` | JavaScript, OpenAction |
+| `payload1.pdf` | `Html.Exploit.CVE_2016_3198-1` | JavaScript, OpenAction, DataURI |
 | `foxit-reader-poc`, `payload2`–`payload7`, `payload9`, `starter_pack` | limpio | JavaScript y OpenAction / AdditionalAction |
 | `payload8.pdf` | limpio | FontMatrix |
 
@@ -30,6 +30,8 @@ Las dos capas tienen politicas distintas a proposito:
 - **Contenido activo** (los otros diez): el documento **entra en el archivo y queda en cuarentena** (`scan_status = 'malicious'`). Se guarda, no se entrega —`423`— y no lo libera un reescaneo: `npm run rescan` excluye esas filas a proposito, porque un barrido las encontraria limpias y liberaria en lote lo que se decidio retener. La unica salida es `npm run scan:release -- <id>`, es decir, una persona que ha mirado el documento.
 
 `payload8.pdf` es el que conviene mirar dos veces: no lleva `/JavaScript` ni `/OpenAction`, inyecta el codigo dentro de un array `/FontMatrix` contra el parser del propio visor (pdf.js, CVE-2024-4367). Lo retiene la regla `FontMatrix`, que no condena la clave —la lleva cualquier tipografia Type1 o Type3— sino su valor: seis numeros y nada mas. `test/assets/font-matrix-numbers.pdf` es la otra mitad de esa prueba, una Type3 corriente que no se retiene.
+
+La misma regla cubre las otras cuatro claves de la familia —`BBox`, `Matrix`, `Coords`, `Rect`—, que es por donde pasa el mismo ataque en otra parte del documento; `test/assets/rect-with-a-string.pdf` fija esa mitad.
 
 Que hiciera falta una regla nueva para verlo es la medida honesta de lo que cubre esta capa: reglas sobre bytes, sin parser —que el proyecto evita a proposito, porque seria superficie de ataque en la ruta de subida—, asi que **descarta contenido activo conocido, no certifica que un documento sea inofensivo**. La via siguiente tampoco se vera hasta que alguien la escriba aqui.
 

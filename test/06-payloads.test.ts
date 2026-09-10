@@ -218,7 +218,60 @@ describe('Active-content PDF corpus', () => {
     const result = await detectActiveContent(
       path.join(__dirname, 'assets', 'open-action-dictionary.pdf'), 'application/pdf');
 
-    expect(result).toEqual({ active: true, markers: ['OpenAction'] });
+    // Dos marcadores y no uno: '/S /Movie' es ademas el subtipo que MediaAction
+    // reconoce alli donde este colgado, y no solo bajo /OpenAction.
+    expect(result).toEqual({ active: true, markers: ['OpenAction', 'MediaAction'] });
+  });
+
+  /**
+   * LaTeX escribe `/OpenAction 98 0 R` para decir por que pagina abrirse. Se
+   * sigue la referencia, y lo que hay al otro lado es un destino: marcarla por
+   * no poder seguirla retenia manuales enteros.
+   */
+  it('Should not flag an indirect OpenAction that resolves to a destination', async () => {
+
+    const result = await detectActiveContent(
+      path.join(__dirname, 'assets', 'open-action-indirect.pdf'), 'application/pdf');
+
+    expect(result).toEqual({ active: false, markers: [] });
+  });
+
+  /**
+   * Un nombre PDF es un token y no puede vivir dentro de una cadena. Sin esto,
+   * un enlace a la pagina «JavaScript» de la Wikipedia —que lleva cualquier
+   * manual— daba positivo por `/JavaScript`.
+   */
+  it('Should not flag a name that only appears inside a string', async () => {
+
+    const result = await detectActiveContent(
+      path.join(__dirname, 'assets', 'link-to-a-javascript-page.pdf'), 'application/pdf');
+
+    expect(result).toEqual({ active: false, markers: [] });
+  });
+
+  /**
+   * Entre los bytes de una imagen cae `/JS` por azar. Un flujo que no parece
+   * texto no se examina: ahi no hay estructura que leer, y marcarlo retenia
+   * documentos por el contenido de una fotografia.
+   */
+  it('Should not flag a marker that falls inside a binary stream', async () => {
+
+    const result = await detectActiveContent(
+      path.join(__dirname, 'assets', 'binary-stream-noise.pdf'), 'application/pdf');
+
+    expect(result).toEqual({ active: false, markers: [] });
+  });
+
+  /**
+   * La misma via de payload8 en otra clave: `/Rect` va en cada anotacion, y por
+   * eso la regla condena el valor y no la clave.
+   */
+  it('Should flag any numeric array that carries something else', async () => {
+
+    const result = await detectActiveContent(
+      path.join(__dirname, 'assets', 'rect-with-a-string.pdf'), 'application/pdf');
+
+    expect(result).toEqual({ active: true, markers: ['Rect'] });
   });
 
   it('Should quarantine an active-content deposit instead of rejecting it', async () => {
