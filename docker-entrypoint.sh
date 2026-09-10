@@ -25,6 +25,13 @@ if ! su-exec node test -w "$DATA_DIR"; then
   exit 1
 fi
 
+# El worker no aplica migraciones: las aplica la API, que es quien manda en el
+# esquema. Arrancarlo antes de que lo haga daria un error claro en vez de dos
+# procesos compitiendo por migrar.
+if [ "${PERGAMO_ROLE:-api}" = "worker" ]; then
+  exec su-exec node node dist/worker.js
+fi
+
 su-exec node node dist/init.js
 
 exec su-exec node node dist/index.js

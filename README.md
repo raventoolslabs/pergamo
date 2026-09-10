@@ -8,20 +8,127 @@ Es un **servicio único** (monolito modular ejecutado en un solo proceso Node), 
 
 ## Estructura del proyecto
 
-* `src/routes` — definición de rutas y encadenado de middleware.
-* `src/controllers` — lógica de negocio de documentos y organizaciones.
-* `src/models` — interfaces TypeScript de las entidades.
-* `src/middleware` — autenticación JWT, manejo de errores y logging por petición.
-* `src/utils` — base de datos, JWT, hashing, ficheros, tipo de fichero, antivirus, migraciones y logger.
-* `src/config` — configuración por variables de entorno e `init.sql` (esquema, triggers y funciones).
-* `src/migrations` — migraciones SQL versionadas (ver más abajo).
+La API sigue una arquitectura por capas, con la regla de dependencias descrita en la skill `ddd-architecture` y comprobada por `test/00-architecture.test.ts`.
+
+* `src/api` — transporte HTTP: controladores, rutas, middleware y DTO de entrada y salida. Aquí, y solo aquí, una excepción de dominio se traduce a código HTTP.
+* `src/app` — casos de uso (`use-cases`, separados en commands y queries) y los puertos (`ports`) que declaran lo que necesitan del exterior.
+* `src/domain` — entidades, value objects y excepciones. No conoce ni la base de datos ni HTTP.
+* `src/infrastructure` — implementaciones de esos puertos: repositorios, cliente y migraciones de base de datos, almacenamiento de ficheros, ClamAV, JWT e indexación.
+* `src/shared` — configuración por variables de entorno, logger, hashing y utilidades transversales.
+* `src/container.ts` — punto de composición: enchufa las implementaciones a los puertos, y es el único camino por el que la capa `api` alcanza una.
 * `src/scripts` — tareas de operación: reescaneo del corpus y liberación de falsos positivos.
 * `web` — interfaz web (React + Vite), proyecto npm propio; su build cae en `dist/web`.
+* `web/src/i18n` — catálogo de la interfaz: clave en inglés, texto en español. Ningún literal de cara al usuario vive suelto en el JSX.
 * `dev.js` — arranque de desarrollo: API e interfaz en un solo comando.
 * `e2e` — recorrido en navegador de la interfaz, en contenedor. Proyecto npm propio, fuera de `web/` para que Playwright no entre en el build de la imagen.
 * `public` — logo y favicons, que Vite incorpora al build de la interfaz.
-* `clamav` — configuración del demonio ClamAV (`clamd.conf`) y lista local de firmas ignoradas.
+* `docker` — despliegue: `docker-compose.yml`, `.env.example` del contenedor y la configuración del demonio ClamAV (`clamd.conf` y lista local de firmas ignoradas).
 * `test` — pruebas de integración.
+* `.claude` — configuración del agente: skills del proyecto, hooks y reglas. Ver «Skills de Claude Code».
+
+## Convenciones de código
+
+El código va **en inglés** —identificadores, tipos, nombres de fichero, clases CSS, rutas de la URL,
+mensajes de commit— y los comentarios **en español**, breves y explicando el *porqué*: si un
+comentario se limita a traducir a prosa la línea de debajo, sobra. El texto que ve el usuario vive en
+`web/src/i18n`, con la clave en inglés y la traducción en español. Los `.md` del proyecto, este
+incluido, se escriben en español.
+
+La regla completa, junto al flujo de git que envuelve cualquier tarea de código (toda rama nace de un
+`development` recién bajado, se trabaja en ella y se termina con push y PR contra `development`), está
+en la skill `write-code` (`.claude/skills/write-code/SKILL.md`).
+
+## Skills de Claude Code
+
+Las skills son instrucciones que el agente carga bajo demanda: una carpeta por skill dentro de
+`.claude/skills/`, con un `SKILL.md` cuyo *frontmatter* (`name` y `description`) es lo único que se
+lee siempre. El cuerpo entra en contexto solo cuando la tarea encaja con esa descripción, así que
+tener varias instaladas cuesta poco.
+
+| Skill | Para qué sirve | Obligatoria |
+|---|---|---|
+| `write-code` | Convenciones de escritura —código en inglés, texto de interfaz en el catálogo i18n, comentarios en español— y el flujo de git que envuelve la tarea: rama desde `development` recién bajado, push y PR. | Sí: antes de crear o editar cualquier fichero, y al terminar la tarea. |
+| `ddd-architecture` | Las cinco capas, la tabla de dependencias y dónde vive cada cosa, con las convenciones de nombres y de esquema SQL. | Sí: antes de crear un fichero nuevo bajo `src/` o de mover código entre capas. |
+| `graphify` | Construir y consultar el grafo de conocimiento del repositorio. | No: se activa con `/graphify` o ante preguntas sobre el código. |
+| `context-compression` | Resumir sesiones largas sin perder decisiones, ficheros tocados, riesgos y siguientes pasos. | No. |
+| `frontend-design` | Criterio visual al crear interfaz nueva o rehacer la existente. | No. |
+
+Las dos obligatorias se imponen desde `CLAUDE.md`, que es lo que el agente lee al arrancar; una skill
+instalada pero no citada allí solo se activa si la petición encaja con su descripción.
+
+`shadcn` estuvo instalada y se ha retirado: la interfaz no usa Tailwind ni Radix —el CSS es propio—,
+así que la skill no aplicaba a este repositorio.
+
+### Dónde se configura
+
+| Fichero | Qué hace | Se comparte |
+|---|---|---|
+| `CLAUDE.md` | Reglas obligatorias del proyecto y la sección `## graphify`. | Sí, versionado. |
+| `.claude/CLAUDE.md` | Registra el disparador `/graphify`. | Sí, versionado. |
+| `.claude/settings.json` | Hooks `PreToolUse` de graphify (ver abajo). | Sí, versionado. |
+| `.claude/settings.local.json` | Permisos y ajustes de cada máquina. | No: ignorado en la configuración global de git. |
+| `.claude/skills/<nombre>/SKILL.md` | La skill en sí. | Sí, versionado. |
+
+Las skills propias —`write-code` y `ddd-architecture`— se escriben a mano y van en español, como el
+resto del markdown del proyecto. Las de terceros se instalan con su propia herramienta y no se editan:
+al actualizarlas se pierde el cambio.
+
+### graphify
+
+graphify convierte el repositorio en un grafo de nodos y relaciones que se puede consultar con una
+pregunta en lenguaje natural. La ventaja frente a `grep` es el tamaño de la respuesta: devuelve un
+subgrafo acotado en vez de decenas de ficheros, y de ahí que las reglas de `CLAUDE.md` lo pongan por
+delante de la búsqueda a pelo.
+
+Es una herramienta externa, no una dependencia de npm; se instala en la máquina, no en el proyecto:
+
+```bash
+uv tool install graphifyy          # o: pipx install graphifyy / pip install graphifyy
+graphify --version                 # probado con 0.9.57
+graphify install                   # copia la skill a .claude/skills/graphify/
+graphify claude install            # escribe la sección de CLAUDE.md y el hook de settings.json
+```
+
+Ese último comando es el que dejó las dos piezas de configuración del repositorio, y `graphify claude
+uninstall` las retira. Los hooks son `PreToolUse`: antes de un `Bash`/`Grep` corre `graphify hook-guard
+search` y antes de un `Read`/`Glob`, `graphify hook-guard read`. No bloquean la herramienta —recuerdan
+consultar el grafo primero— y callan si todavía no hay grafo construido.
+
+El grafo vive en `graphify-out/`, que **no está versionado**: son dos megas de material derivado que
+cambian con cada commit, y reconstruirlo cuesta un minuto. Cada quien lo construye una vez:
+
+```bash
+graphify . --code-only             # graph.json, GRAPH_REPORT.md y graph.html
+graphify cluster-only .            # agrupa en comunidades y escribe el informe
+```
+
+`--code-only` deja fuera los `.md` y los PDF de prueba: son la parte que necesitaría un modelo, y el
+grafo que interesa —quién llama a quién dentro de `src/`— sale entero del AST. Dos límites conocidos
+de la pasada actual: sin clave las comunidades se quedan con nombres de relleno (`Community N`), y las
+seis migraciones `.sql` no aportan nodos salvo que se instale `graphifyy[sql]`.
+
+No hace falta ninguna clave de API para código: la extracción es AST, local y determinista. Solo la
+parte semántica —documentos, PDF, imágenes— usa un modelo, y ahí mira `GEMINI_API_KEY` o
+`GOOGLE_API_KEY`; sin ninguna de las dos, el propio agente hace ese trabajo. `ANTHROPIC_API_KEY` y
+`OPENAI_API_KEY` no se leen nunca.
+
+Con el grafo hecho, el uso diario son cuatro comandos:
+
+```bash
+graphify query "cómo se valida un token"        # subgrafo que responde a la pregunta
+graphify path "DocumentController" "ClamAV"     # camino más corto entre dos conceptos
+graphify explain "ScanQueue"                    # explicación de un nodo y sus vecinos
+graphify update .                               # reextrae lo que ha cambiado (AST, sin coste)
+```
+
+Para no depender de acordarse del `update`, `graphify hook install` añade un hook `post-commit` de git
+que rehace el grafo con cada commit; ahora mismo no está instalado.
+
+Un aviso que cuesta caro descubrir tarde: **la herramienta se reescribe su propia configuración**. Al
+ejecutarla deja `.claude/settings.json` con la ruta absoluta del binario (`/home/<usuario>/.local/bin/
+graphify hook-guard search`) y un `.claude/settings.json.graphify-bak` al lado. Esa ruta es de una
+máquina concreta y el fichero está versionado, así que se revisa el diff antes de confirmar y se deja
+el comando pelado, `graphify hook-guard search`, que es el que funciona en cualquier instalación.
 
 ## Configuración
 
@@ -34,7 +141,7 @@ Variables que conviene revisar antes de desplegar:
 | `JWT_EXPIRES_IN` | Caducidad de los tokens (por defecto `8h`). |
 | `TRUST_PROXY` | Saltos de proxy inverso en los que confiar. **Si hay un proxy delante y vale 0, el rate limiting agrupará a todos los clientes bajo una sola IP.** |
 | `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` | Intentos permitidos por IP en los endpoints de credenciales. |
-| `MAX_FILE_SIZE` | Tamaño máximo por fichero subido, en bytes. **Si lo cambias, ajusta también `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` en `clamav/clamd.conf`**: por debajo de este valor, ClamAV deja de analizar por completo los ficheros más grandes. |
+| `MAX_FILE_SIZE` | Tamaño máximo por fichero subido, en bytes. **Si lo cambias, ajusta también `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` en `docker/clamav/clamd.conf`**: por debajo de este valor, ClamAV deja de analizar por completo los ficheros más grandes. |
 | `DEBUG` | Nivel de log `debug`; registra metadatos completos de fichero y documento. |
 | `ENABLE_ANTIVIRUS` | Análisis con ClamAV. Si no se define, el antivirus queda **desactivado** y el arranque lo advierte por log. Acepta `true/1/yes/on` y `false/0/no/off` sin distinguir mayúsculas; **un valor no reconocido detiene el arranque** en lugar de desactivar el escaneo en silencio. |
 | `CLAMAV_HOST` / `CLAMAV_PORT` | Destino del demonio clamd. Con `ENABLE_ANTIVIRUS` activo hay que definir esto o `CLAMAV_SOCKET`: sin uno de los dos, el arranque falla. |
@@ -66,7 +173,14 @@ Para desarrollo, `npm run dev` ejecuta la API sin compilar mediante ts-node.
 
 ### Despliegue con Docker
 
-`docker compose up --build` levanta dos servicios: **clamav** y **pergamo**. Antes el `docker-compose.yml` declaraba un único servicio, con ClamAV dentro del contenedor de la API.
+Todo lo que necesita el despliegue vive en `docker/`: el compose, la configuración de ClamAV y el `.env.example` del contenedor —que no es el mismo que el de la raíz, pensado para desarrollo—. El `Dockerfile` se queda en la raíz, porque el contexto de construcción es el repositorio entero.
+
+```
+cp docker/.env.example docker/.env
+docker compose -f docker/docker-compose.yml up --build
+```
+
+Eso levanta dos servicios: **clamav** y **pergamo**. Antes el compose declaraba un único servicio, con ClamAV dentro del contenedor de la API.
 
 | Servicio | Papel |
 |---|---|
@@ -87,7 +201,7 @@ ClamAV vive ahora en su propio contenedor por tres motivos: aísla su ~1–1,5 G
 
 La imagen de la aplicación ejecuta el proceso como usuario `node`: **no corre como root**.
 
-Los límites de `clamav/clamd.conf` (`MaxFileSize`, `MaxScanSize`, `StreamMaxLength`) deben ser siempre mayores o iguales que `MAX_FILE_SIZE`. Están en dos ficheros distintos, así que la prueba `Should scan a file up to MAX_FILE_SIZE` existe precisamente para detectar que se han desalineado. `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, que es el comportamiento contrario al de ClamAV por defecto.
+Los límites de `docker/clamav/clamd.conf` (`MaxFileSize`, `MaxScanSize`, `StreamMaxLength`) deben ser siempre mayores o iguales que `MAX_FILE_SIZE`. Están en dos ficheros distintos, así que la prueba `Should scan a file up to MAX_FILE_SIZE` existe precisamente para detectar que se han desalineado. `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, que es el comportamiento contrario al de ClamAV por defecto.
 
 ## Interfaz web
 
@@ -101,7 +215,7 @@ Qué permite hacer, según con quién se entre:
 
 | Sesión | Puede |
 |---|---|
-| Organización | Listar, buscar y filtrar documentos; subirlos (varios a la vez, con arrastrar y soltar); ver la ficha completa; editar los metadatos que permita `VALID_METADATA_MODIFY`; descargar; reemplazar el fichero; consultar las versiones; eliminar; y cambiar su propia contraseña. |
+| Organización | Listar, buscar y filtrar documentos; subirlos (varios a la vez, con arrastrar y soltar) pidiendo o no que se indexen; ver la ficha completa, con el estado del índice y sus trozos —formateados o en crudo—; editar los metadatos que permita `VALID_METADATA_MODIFY`; descargar; reemplazar el fichero; consultar las versiones; eliminar; y cambiar su propia contraseña. |
 | Master | Crear organizaciones, listarlas y cambiar la contraseña de cualquiera de ellas. |
 
 El token master **no pertenece a ninguna organización**, así que con él no se puede operar sobre
@@ -174,11 +288,11 @@ para resolverlo, en vez de dejar caer una traza de `sequelize`.
 **Preparación, una sola vez:**
 
 ```
-cp .env.dev.example .env
+cp .env.example .env
 ```
 
 Después hay que rellenar `DB_PASSWORD` y crear la base de desarrollo. El propio
-`.env.dev.example` lleva el SQL: un rol `pergamo_dev`, su base, y las extensiones `uuid-ossp`,
+`.env.example` lleva el SQL: un rol `pergamo_dev`, su base, y las extensiones `uuid-ossp`,
 `pgcrypto` y `unaccent` creadas **por el superusuario** —no son «trusted», así que el rol de la
 aplicación no puede instalarlas—. Es la misma convención que siguen las demás bases del host.
 
@@ -188,7 +302,16 @@ Otros comandos, por si se quieren las piezas por separado:
 npm run dev:api    # solo la API
 npm run dev:web    # solo la interfaz
 npm run dev:init   # solo esquema, claves y migraciones
+npm run dev:seed   # cuatro documentos de ejemplo, uno por estado de análisis
 ```
+
+`dev:seed` deposita cinco documentos, uno por estado de análisis —analizado, análisis pendiente,
+cuarentena por firma, cuarentena por contenido activo y sin fichero en disco—, para poder mirar las
+pantallas que producen. El script sube los ficheros **por la propia API** y solo fuerza por SQL lo
+que no se puede provocar desde fuera sin un ClamAV con firmas reales; el de contenido activo no se
+fuerza en absoluto, lo pone el propio depósito. Se niega a correr si `DB_NAME` no acaba en `_dev`,
+`_test` o `_local` (`--force` lo salta, `--clean` retira lo sembrado y `--org=<nombre>` elige otra
+organización).
 
 `PERGAMO_DEV_HOST=0.0.0.0 npm run dev` escucha en todas las interfaces, para abrir la interfaz
 desde otro equipo. No basta con eso: el firewall del host tiene política `DROP` y hay que permitir
@@ -219,6 +342,15 @@ Los estados que no se pueden provocar desde fuera se fuerzan en la base de datos
 ClamAV con firmas reales no hay forma de conseguir un documento en cuarentena, y la cuarentena es
 justo la pantalla que más importa revisar.
 
+El recorrido corto **no indexa**: `E2E_INDEXING=1` levanta además un Redis desechable y activa la
+indexación, y entonces exige `EMBEDDING_BASE_URL`. La máquina de inferencia no se simula: si se
+pide indexar de verdad, hay que decir contra qué, y del cableado con dobles ya se ocupan
+`test/10-indexing` y `test/12-queue`.
+
+```
+E2E_INDEXING=1 EMBEDDING_BASE_URL=http://maquina-ia:11434/v1 npm run test:e2e
+```
+
 El recorrido **no** está en el workflow de GitHub Actions, que hoy solo construye y publica la
 imagen: añadirlo exigiría un servicio de base de datos en CI.
 
@@ -237,23 +369,28 @@ mano. Estos cuatro endpoints cubren ese hueco y son de solo lectura:
 
 | Endpoint | Quién | Qué devuelve |
 |---|---|---|
-| `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status` (uno o varios separados por comas: `scan_status=infected,error`), `from` y `to` (franja inclusiva de fecha de depósito, instantes ISO), y orden por `creation_date` o `modification_date`. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
+| `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis —incluido `scan_engine`, que es lo que distingue un documento analizado de uno depositado sin análisis—. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status` (uno o varios separados por comas: `scan_status=infected,malicious`), `from` y `to` (franja inclusiva de fecha de depósito, instantes ISO), y orden (`sort` con `order=asc|desc`) por `creation_date`, `modification_date`, `name` —sin distinguir acentos— o `scan_status`, que ordena por gravedad del veredicto y no alfabéticamente. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
 | `GET /document/:id/scan` | Organización | `scan_status`, `scan_signature`, `scan_engine` y `scan_date` del documento. Va aparte de `GET /document/:id` porque el cuerpo de ese endpoint es el JSONB de metadatos tal cual, y añadirle claves rompería a quien ya lo consume. |
 | `GET /organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
-| `GET /config` | Autenticado | Límites del despliegue: `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir en lugar de duplicar la configuración. |
+| `POST /search` | Autenticado | Búsqueda híbrida sobre los documentos de la organización del token. Devuelve el texto de cada fragmento y su procedencia, nunca el vector. |
+| `GET /document/:id/index` | Autenticado | Estado de la indexación semántica del documento. |
+| `GET /document/:id/chunks` | Organización | Los trozos del documento, paginados y en su orden: `{ total, limit, offset, chunks }`, con `content`, `position`, `page`, `section`, `heading_path`, `content_type` y `length`. Es lo que permite mirar dentro del índice —qué texto se extrajo y por dónde se cortó— sin entrar por SQL. `limit` va de 1 a 50 (8 por defecto), porque un trozo ronda los 1500 caracteres. **El vector no sale.** |
+| `GET /config` | Autenticado | Límites del despliegue: `enable_antivirus`, `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir —y no prometer un análisis que este despliegue no hace— en lugar de duplicar la configuración. |
 
 El aislamiento por organización se aplica igual que en el resto: el `WHERE organization` de
 `GET /document` es incondicional, y `path` —la ruta en disco— no sale nunca al cliente.
 
 ## Migraciones de base de datos
 
-`src/config/init.sql` solo se aplica en la **primera** instalación. Cualquier cambio de esquema posterior va en `src/migrations` como fichero `.sql` numerado, y lo aplica automáticamente `npm run init` en cada arranque.
+`src/infrastructure/db/sql/init.sql` solo se aplica en la **primera** instalación. Cualquier cambio de esquema posterior va en `src/infrastructure/db/migrations` como fichero `.sql` numerado, y lo aplica automáticamente `npm run init` en cada arranque.
 
 * Cada migración se ejecuta dentro de su propia transacción junto con su registro en `pergamo.schema_migrations`: o se aplica entera, o no deja rastro.
 * Las migraciones ya aplicadas se omiten, de modo que arrancar varias veces es seguro.
 * En una base de datos anterior a este mecanismo, la migración `001_init` se marca como aplicada automáticamente (baseline) sin reejecutar `init.sql`.
 
-Para añadir una migración, crea `src/migrations/00N_descripcion.sql`. El orden de aplicación es alfabético.
+Para añadir una migración, crea `src/infrastructure/db/migrations/00N_descripcion.sql`. El orden de aplicación es alfabético.
+
+Antes de cada script, el runner inyecta como GUC local de la transacción los parámetros de despliegue que una migración pueda necesitar —hoy solo `pergamo.embedding_dimensions`—. Van así porque el fichero se envía entero y sin `replacements`: enlazarlos rompería los casts `::` y los bloques `$$`.
 
 ## Notas de migración desde la versión 1.0.2
 
@@ -270,7 +407,7 @@ Las dependencias de ejecución se han movido de `devDependencies` a `dependencie
 La aplicación corre como el usuario `node` (uid 1000). El volumen de datos viene del host y conserva su propiedad, así que **antes de arrancar** hay que cederlo a ese usuario:
 
 ```
-chown -R 1000:1000 ./data
+chown -R 1000:1000 docker/data
 ```
 
 Si no se hace, el contenedor se detiene en el arranque con un mensaje indicando este mismo comando, en lugar de fallar más tarde con un error de permisos opaco.
@@ -306,7 +443,7 @@ En una tabla `document` grande, añadir la restricción toma un bloqueo exclusiv
 
 ### 6. ClamAV pasa a ser un servicio propio (acción obligatoria)
 
-La imagen de la aplicación **ya no incluye ClamAV**, y el `docker-entrypoint.sh` ya no arranca clamd ni freshclam. El escáner es ahora el servicio `clamav` de `docker-compose.yml`.
+La imagen de la aplicación **ya no incluye ClamAV**, y el `docker-entrypoint.sh` ya no arranca clamd ni freshclam. El escáner es ahora el servicio `clamav` de `docker/docker-compose.yml`.
 
 Antes de actualizar:
 
@@ -333,10 +470,34 @@ Añade `scan_status`, `scan_signature`, `scan_engine` y `scan_date` a `pergamo.d
 | Valores de metadatos validados | Cadenas de más de 1024 caracteres, arrays de más de 64 elementos o estructuras anidadas devuelven `400`. |
 | `REMOVE_FILE_DISK` | Antes se ignoraba y los ficheros se borraban siempre. Ahora `false` los conserva de verdad: **revisa el valor en tu `.env` antes de desplegar**. |
 | Descarga de documentos no verificados | `GET /document/:id/file` devuelve `423` si el documento no está `clean`. `GET /document/:id` sigue devolviendo `200`. |
-| Mimetype sin firma de contenido | Antes se aceptaba con un `log.warn`. Ahora devuelve `400`: **ampliar `VALID_MIMETYPE` exige añadir la firma en `src/utils/filetype.ts`**. |
+| Mimetype sin firma de contenido | Antes se aceptaba con un `log.warn`. Ahora devuelve `400`: **ampliar `VALID_MIMETYPE` exige añadir la firma en `src/infrastructure/files/filetype.ts`**. |
 | `PUT /document/:id/file` sobre un id ajeno | Antes se analizaba el fichero *antes* de comprobar la propiedad, así que un tenant podía forzar análisis de 50 MB contra ids ajenos. Ahora el `404` llega primero. |
 | `Content-Disposition` | El nombre viaja entrecomillado y con escape, más `filename*` en UTF-8 (RFC 5987). Un cliente que parseara la cabecera sin comillas debe adaptarse. |
 | `X-Content-Type-Options: nosniff` | Presente en todas las respuestas. |
+
+### Formatos admitidos
+
+`VALID_MIMETYPE` decide qué se puede subir, pero no es la última palabra:
+`verifyMimetype` es **fail-closed**, así que un mimetype sin firma en
+`src/infrastructure/files/filetype.ts` se rechaza con un `400` aunque esté en la
+allowlist. Ampliar el catálogo es siempre las dos cosas.
+
+| Formato | Cómo se verifica |
+|---|---|
+| PDF | `%PDF-` al principio. |
+| RTF | `{\rtf1` al principio. |
+| ODT, ODS, ODP | ZIP cuya primera entrada es `mimetype` sin comprimir, con el valor exacto del formato. |
+| EPUB | La misma convención que ODF, con `application/epub+zip`. |
+| DOCX, XLSX, PPTX | ZIP cuya primera entrada es `[Content_Types].xml`. La cabecera solo distingue la **familia**, así que esa entrada se descomprime y se lee el content type real: sin ese paso, un XLSX declarado como DOCX pasaría. |
+
+**HTML, Markdown, CSV y texto plano quedan fuera a propósito.** No tienen magic
+bytes, así que no hay nada que contrastar con el mimetype declarado y un diseño
+fail-closed no puede verificarlos. Añadirlos a `VALID_MIMETYPE` sin resolver eso
+los haría fallar con un `400` que no explica nada.
+
+DOC, XLS, PPT (los binarios anteriores a OOXML), las imágenes y el ZIP genérico
+tampoco están: la interfaz los anunciaba y ni se podían subir ni se van a poder
+indexar.
 
 ### 9. Pendiente
 
@@ -351,17 +512,28 @@ npm test
 
 Las pruebas son de **integración**: levantan la aplicación real y necesitan
 
-* una instancia de PostgreSQL accesible, ya inicializada con `npm run init`;
+* una instancia de PostgreSQL accesible, con pgvector instalado y ya inicializada con `npm run init`;
+* un Redis alcanzable en `REDIS_URL`, que usa la suite de la cola con el prefijo `pergamo-test` para no tocar nada más de esa instancia;
 * un demonio ClamAV alcanzable en `CLAMAV_HOST`/`CLAMAV_PORT` si `ENABLE_ANTIVIRUS` está activo;
 * `RATE_LIMIT_MAX` suficientemente alto para no toparse con el límite de intentos;
 * `USER_MASTER` distinto del nombre de la organización `pergamo`, y `PASSWORD_MASTER` **entrecomillado** en el `.env` si contiene `#` (dotenv trataría el resto de la línea como comentario).
 
-Cada suite abre su propio puerto libre, así que pueden ejecutarse en paralelo.
+Cada suite abre su propio puerto libre, pero **corren en serie** (`maxWorkers: 1` en
+`jest.config.js`): todas hablan con la misma base de datos y con la misma organización `pergamo`, a
+la que `01-organization.test.ts` le cambia la contraseña a mitad de recorrido. En paralelo,
+cualquier otra suite que entrase en esa ventana recibía un `401` que no tenía nada que ver con lo
+que estaba probando. La batería entera baja de cinco segundos, así que el paralelismo no compraba
+nada.
+
+`npm test` pasa `--experimental-vm-modules` porque `officeParser` carga sus analizadores con
+`import` dinámico, que el registro de módulos de Jest no resuelve sin esa opción. Por eso el
+comando es `npm test` y no `npx jest` a secas.
 
 * `test/02-document.test.ts` — ciclo de vida del documento, detección de virus, preservación byte a byte de un PDF firmado y análisis hasta `MAX_FILE_SIZE`.
 * `test/03-isolation.test.ts` — aislamiento entre organizaciones, rechazo de tokens manipulados y validaciones de fichero y metadatos.
 * `test/04-quarantine.test.ts` — bloqueo de descarga con `423`, acceso a metadatos en cuarentena y cabeceras de respuesta.
 * `test/05-listing.test.ts` — listados de documentos y organizaciones: filtros, paginación, rechazo de parámetros inválidos, aislamiento entre organizaciones y que el hash de contraseña no se expone.
+* `test/06-payloads.test.ts` — corpus de PDF con contenido activo (`test/assets/payloads/`): dónde está el límite de cada capa, que la cuarentena por contenido activo retiene sin rechazar el depósito y solo se levanta a mano, y que lo que se almacena se entrega siempre como adjunto y byte a byte.
 
 Las pruebas que necesitan un veredicto real del escáner usan `it.skip` cuando el antivirus está desactivado, de modo que Jest **las reporta como omitidas**. Antes iban envueltas en un `if`, que desaparecía del informe y daba la impresión de una cobertura inexistente.
 
@@ -373,7 +545,9 @@ ClamAV está basado en firmas, así que su rendimiento sobre muestras nuevas o d
 
 Lo que ningún motor resuelve por sí solo es que **se analizaba una sola vez, en la subida**. Un fichero limpio hoy puede tener firma dentro de tres días. De ahí el estado de análisis por documento y el reescaneo del corpus.
 
-Pergamo nunca abre los documentos que almacena: lee 128 bytes de cabecera, calcula un SHA-256 por streaming y mueve el fichero. No hay parser de PDF ni motor de JavaScript en el proceso. El riesgo que se gestiona no es la ejecución local, sino que Pergamo es un **punto de distribución**: lo que entra se sirve después con el aval implícito de la organización.
+**Medido, no supuesto.** `test/assets/payloads/` es el corpus de [PayloadsAllThePDFs](https://github.com/luigigubello/PayloadsAllThePDFs): once PDF estructuralmente válidos con JavaScript, anotaciones, URI `data:` y formularios dentro. De los once, ClamAV 1.4.3 (firmas 28116, septiembre de 2026) reconoce **uno**: `payload1.pdf`. Ninguna casilla de `clamd.conf` cambia eso: un `/OpenAction` con `app.alert()` no es código malicioso conocido, es un PDF haciendo lo que el formato permite. Esa medida es la que motivó la segunda capa —**contenido activo**, más abajo—, que retiene los once, `payload8.pdf` incluido: ese no lleva `/JavaScript` ni `/OpenAction`, sino código dentro de un array `/FontMatrix`, y lo marca la regla que mira el valor de esa clave. `test/06-payloads.test.ts` fija los tres hechos por escrito en lugar de dejarlos en una expectativa cómoda.
+
+Lo que sí depende de Pergamo es no convertirse en el visor: el contenido activo es inocuo mientras nadie lo renderice. Pergamo nunca abre los documentos que almacena: lee 128 bytes de cabecera, calcula un SHA-256 por streaming y mueve el fichero. No hay parser de PDF ni motor de JavaScript en el proceso. El riesgo que se gestiona no es la ejecución local, sino que Pergamo es un **punto de distribución**: lo que entra se sirve después con el aval implícito de la organización.
 
 ### Estado de análisis por documento
 
@@ -381,16 +555,77 @@ Cada documento lleva `scan_status`, `scan_signature`, `scan_engine` y `scan_date
 
 | Estado | Significado | Descarga |
 |---|---|---|
-| `clean` | Analizado y aprobado (o antivirus desactivado por configuración). | Permitida |
-| `pending` | No hay veredicto todavía: el antivirus estaba habilitado pero no disponible en la subida, o un reescaneo no llegó a completarse sobre ese fichero. Se reintenta solo en el siguiente barrido. | **423** |
+| `clean` | Analizado y aprobado. `scan_engine` dice con qué motor y qué base de firmas. | Permitida |
+| `pending` | **No hay veredicto**: el antivirus no estaba disponible en la subida, no llegó a completarse un reescaneo, o este despliegue no tiene antivirus. Se resuelve solo en el siguiente barrido. | Permitida |
 | `infected` | Una firma lo señaló, en la subida o en un reescaneo posterior. | **423** |
 | `error` | El fichero no está en disco (`scan_signature` = `FILE_MISSING`). Es el **único** caso que lo produce: no es un análisis pendiente, es un documento roto, y un reescaneo no lo arregla. | **423** |
+| `malicious` | El documento lleva contenido activo: JavaScript, acciones al abrir, ficheros embebidos. Lo decide Pergamo, no el escáner, y **no lo levanta un reescaneo** —solo una liberación manual—. | **423** |
+
+**`clean` es un veredicto, y solo se escribe cuando alguien lo emitió.** Con `ENABLE_ANTIVIRUS` desactivado nadie mira el fichero, así que la subida se guarda `pending` con `scan_engine` nulo, no `clean`. La razón es que `scan_status` lo consume gente que no es esta interfaz: quien lee `clean` entiende «analizado y limpio», y afirmar eso de un fichero que nadie abrió es justo lo que un archivo no puede permitirse. No cuesta nada, porque `pending` **se entrega** igual que `clean`, y el reescaneo lo recoge en cuanto haya escáner —selecciona por `scan_engine` nulo—.
+
+`pending` cubre entonces dos situaciones que comparten estado y no explicación: **no hay antivirus** en este despliegue, o **lo hay y no respondió**. Las separa `enable_antivirus`, que `GET /config` publica, y la interfaz usa exactamente eso: sin antivirus lo llama «Sin analizar» —se entrega, pero nadie ha verificado su contenido—; con antivirus, «Análisis pendiente», que el próximo barrido resuelve. Cualquier otro consumidor debería mirar `scan_engine` por el mismo motivo: es la columna que separa lo aprobado por un motor de lo que nadie miró.
+
+Los depósitos anteriores a este cambio siguen en `clean` con `scan_engine` nulo, y la interfaz los sigue mostrando como «Sin analizar». No se reescriben en una migración: `npm run rescan` les da veredicto de verdad en cuanto haya escáner, que es mejor que cambiarles la etiqueta.
 
 El bloqueo se aplica en `GET /document/:id/file` y **no** en `GET /document/:id`: los metadatos de un documento en cuarentena siguen siendo consultables, porque es como el cliente descubre por qué está bloqueado.
 
-**Política ante escáner no disponible**: la subida se acepta y el documento queda `pending`. Prioriza la disponibilidad de la subida sin llegar a servir nunca contenido que se pretendía verificar y no se verificó.
+**Qué retiene y qué no.** El `423` lo disparan `infected`, `malicious` y `error`, y solo esos tres: son los que exigen que alguien intervenga —revisar una firma, revisar contenido activo, buscar un fichero que falta— y ninguno se arregla esperando. `pending` **se entrega**.
 
-`pending` y `error` bloquean los dos la descarga, pero no significan lo mismo y por eso no se han fundido: `pending` se resuelve solo —queda en la cola de reescaneo con `scan_engine` nulo—, mientras que `error` sale de esa cola y exige que alguien mire por qué falta el fichero.
+Es una decisión con su coste, y conviene verlo escrito: un documento `pending` es contenido que se pretendía verificar y no se verificó, y aun así sale del archivo. A cambio, una caída de clamd deja de convertir el archivo en un almacén que no entrega nada, y el coste de esa caída no recae sobre depósitos que en su inmensa mayoría no tienen nada y cuyos autores no hicieron nada mal. El estado no se esconde: la interfaz lo llama «Análisis pendiente» y lo explica en la ficha, y el siguiente barrido lo resuelve sin que nadie tenga que intervenir.
+
+**Política ante escáner no disponible —o ausente—**: la subida se acepta, se entrega y queda `pending`, en la cola del próximo reescaneo.
+
+Lo mismo vale para la indexación: entra en la cola todo lo que **no** está retenido, y no solo lo `clean`. Exigir `clean` dejaba sin índice a cualquier despliegue sin antivirus, y también a lo depositado con clamd caído. Lo retenido sí se queda fuera, y por un motivo concreto: indexar convierte el fichero, es decir lo abre con un parser, que es exactamente lo que un documento en cuarentena no debe provocar.
+
+`pending` y `error` no significan lo mismo y por eso no se han fundido nunca: `pending` se resuelve solo —queda en la cola de reescaneo con `scan_engine` nulo—, mientras que `error` sale de esa cola y exige que alguien mire por qué falta el fichero. De ahí que uno se entregue y el otro no.
+
+Por el mismo motivo la interfaz **no llama cuarentena a `error`**. «En cuarentena» agrupa `infected` y `malicious`, que son documentos íntegros y retenidos a la espera de una decisión sobre su contenido; `error` es un fichero que falta del almacén, se muestra y se filtra como **Error**, y a quien le toca mirarlo es a quien administra el despliegue, no a quien revisa documentos.
+
+### Contenido activo
+
+ClamAV responde a «¿es esto malware conocido?». Un fondo documental tiene además otra pregunta —«¿qué le hace este fichero al programa con el que se abra?»— y esa no tiene firma: un `/OpenAction` que ejecuta JavaScript es el formato haciendo lo que el formato permite. La medida está arriba: de los once PDF de `test/assets/payloads/`, ClamAV reconoce uno.
+
+`src/utils/activecontent.ts` es la capa que cubre esa pregunta. Busca marcadores estructurales sobre los bytes del fichero **y sobre los flujos Flate descomprimidos**, que es donde acaba escondiéndose casi todo:
+
+| Regla | Qué marca |
+|---|---|
+| `JavaScript` | `/JavaScript`, `/JS` |
+| `OpenAction` | acción disparada al abrir el documento |
+| `AdditionalAction` | `/AA` en páginas, campos o anotaciones |
+| `Launch` | lanzamiento de una aplicación externa |
+| `EmbeddedFile` | ficheros embebidos dentro del documento |
+| `RichMedia` | contenido multimedia ejecutable |
+| `RemoteGoTo` | `/GoToR`, `/GoToE`: salto a otro fichero |
+| `SubmitForm` | envío, importación o reinicio de datos de formulario |
+| `XFA` | formulario XFA, con su propia lógica |
+| `JavaScriptURI` | URI con esquema `javascript:` |
+| `DataURI` | URI que lleva un documento HTML dentro |
+| `MediaAction` | acción `/S` de tipo `Movie`, `Sound`, `Rendition`, `SetOCGState` o `GoTo3DView` |
+| `FontMatrix`, `BBox`, `Matrix`, `Coords`, `Rect` | array que debería ser de números y lleva otra cosa (CVE-2024-4367 y familia) |
+
+**Política**: a diferencia de una firma antivírica, el contenido activo **no rechaza la subida**. El documento se deposita y queda en `malicious`: se guarda, no se entrega, y de ahí solo sale por `npm run scan:release -- <id>`. En un archivo, el depósito no se pierde; lo que se retiene es la entrega. `npm run rescan` excluye esas filas de forma explícita —un barrido las encontraría limpias y liberaría en lote justo lo que se decidió retener— y avisa al terminar de cuántas hay.
+
+**Lo que no cubre**, escrito aquí para que su ausencia no se lea como una garantía:
+
+* No hay parser de PDF en el proceso, y es deliberado: un parser en la ruta de subida es superficie de ataque. Las reglas leen bytes, así que cada vía nueva —`payload8.pdf` metía su código en un array `/FontMatrix`— se cubre con una regla más, cuando se conoce, y no antes.
+* Un fichero preparado para esquivarlo lo esquiva. Es un **filtro de contenido activo, no un veredicto de seguridad**.
+* Solo mira PDF. Un ODT con macros pasa sin marca.
+* Lo que exceda los límites de descompresión (8 MB por flujo, 64 MB en total) no se examina.
+* No hay una regla para `/Names` a secas. Sus dos ramas peligrosas —`/JavaScript` y `/EmbeddedFiles`— ya tienen la suya, y la clave aparece 1.025 veces en un manual corriente: marcarla por estar retendría el fondo entero por tener destinos con nombre.
+
+**Dónde se busca**, que es lo que separa un filtro de un retenedor de manuales:
+
+* **Fuera de las cadenas literales.** Un nombre PDF es un token: `(https://es.wikipedia.org/wiki/JavaScript)` es un enlace, no JavaScript embebido. Sin esta distinción, el manual de Debian de este mismo equipo quedaba retenido. Las dos reglas de URI —`JavaScriptURI`, `DataURI`— son la excepción y sí leen dentro, porque un esquema vive ahí.
+* **Solo en lo que parece texto.** Los diccionarios, el `xref`, los flujos de objetos y el propio JavaScript lo son; una imagen o una tipografía, no, y entre sus bytes cae `/JS` por azar.
+* **Siguiendo una referencia indirecta** cuando su objeto se puede localizar por bytes. `/OpenAction 98 0 R` es lo que escribe LaTeX para decir por qué página abrirse, y condenarla por no poder seguirla retenía cualquier PDF hecho con LaTeX. Si el objeto vive dentro de un flujo comprimido no se puede seguir y no se marca: los subtipos que de verdad ejecutan tienen cada uno su regla por presencia. Los arrays numéricos son la excepción —ahí una referencia indirecta sí se marca—, porque sobre PDF corrientes esas cinco claves aparecieron 5.073 veces sin una sola indirecta, y mover el array a otro objeto sería esquivar la regla con una línea.
+
+**Falsos positivos, que aquí son caros**: un PDF firmado lleva ficheros embebidos por norma —PAdES-LTV embebe respuestas OCSP y CRLs; Factur-X embebe el XML de la factura—, así que un archivo de documentos firmados los retendría todos al depositarlos. `MALICIOUS_ACTIVE_CONTENT_IGNORE` desactiva reglas concretas por nombre, separadas por `;`:
+
+```
+MALICIOUS_ACTIVE_CONTENT_IGNORE="EmbeddedFile"
+```
+
+Es el equivalente de `docker/clamav/local.ign2` para esta capa, y se usa igual: se anota siempre por qué se ignora y quién lo decidió. Un nombre que no corresponda a ninguna regla **detiene el arranque**, en lugar de dejar un despliegue cuarentenando lo que su operador daba por exceptuado.
 
 ### Reescaneo del corpus
 
@@ -410,7 +645,7 @@ npm run scan:release -- <id-documento>
 
 Pasa el documento a `clean` **conservando `scan_signature`**, de modo que el falso positivo queda trazado. El fichero no se modifica en ningún momento: los falsos positivos se **liberan** mediante revisión, no se "arreglan" alterando el documento.
 
-Si una misma firma reincide sobre documentos legítimos, se añade a `clamav/local.ign2` y se reinicia el servicio `clamav`.
+Si una misma firma reincide sobre documentos legítimos, se añade a `docker/clamav/local.ign2` y se reinicia el servicio `clamav`.
 
 > **Por qué no hay saneado automático de PDF (CDR).** Se evaluó y se descartó. Reescribir un PDF para eliminar JavaScript, `/OpenAction`, `/Launch` o ficheros embebidos **rompe cualquier firma electrónica**, porque una firma PAdES/PKCS#7 cubre un `ByteRange` de bytes concretos. Además, los PDF firmados contienen legítimamente lo que un CDR elimina: PAdES-LTV embebe respuestas OCSP y CRLs *como ficheros embebidos*. Y el fallo sería silencioso: un rechazo por falso positivo devuelve 400 y el cliente reclama; una sanitización devuelve 200 y un fichero aparentemente correcto, cuyo daño se descubre meses después. Por último, rompería `metadata.hash`, que es la identidad de registro del documento.
 >
@@ -423,6 +658,203 @@ X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
 ```
 
 Ha de subirse **exacto**: la firma de ClamAV para EICAR es un hash del fichero completo, así que cualquier byte añadido la anula. Para probar la detección dentro de un fichero grande hay que embeberlo como una entrada de un archivo comprimido, que es lo que hace la prueba del límite de tamaño.
+
+EICAR responde a «¿llega el fichero al motor?», que es una pregunta distinta de «¿sirve el motor para esto?». Para la segunda está el corpus de `test/assets/payloads/` (ver su `README.md`), con el detalle de qué reconoce ClamAV en cada fichero y por qué diez de los once no le corresponden, que es lo que retiene la segunda capa. Aviso al clonar: `payload1.pdf` tiene firma, y un antivirus con vigilancia en tiempo real puede llevárselo del directorio de trabajo.
+
+## Indexación semántica
+
+Desactivada por defecto. Con `INDEXING_ENABLED=false` Pergamo se comporta exactamente
+como antes de que existiera: no se convierte nada, no se piden vectores y no se abre
+ninguna conexión con la máquina de inferencia.
+
+### Qué hace
+
+Convierte el documento a bloques con su procedencia, los trocea, pide un vector por
+trozo y los guarda en `pergamo.document_chunk_v1`.
+
+Los trozos viven en la misma base que los documentos, y no en un almacén vectorial
+aparte, porque son **dato derivado**: el `ON DELETE CASCADE` los borra solos, la clave
+foránea de organización garantiza el aislamiento entre inquilinos sin depender de que
+nadie recuerde un `WHERE`, y escribir el índice cabe en la misma transacción que el
+documento.
+
+### El recorrido
+
+| Paso | Qué pasa |
+|---|---|
+| Conversión | `officeParser`, recorriendo el AST. No se le pide el markdown ya montado: la página de un PDF, la diapositiva de un PPTX y el nombre de hoja de un XLSX viven en nodos contenedores y desaparecen al aplanar el documento. |
+| Troceado | Propio y versionado (`v1`). Corte por encabezado, luego por párrafo, luego duro con solapamiento. Las tablas se parten por filas **repitiendo la cabecera**, y ningún trozo cruza una frontera de página: `page` es una cita, y una cita incorrecta es peor que un trozo más corto. |
+| Migas de pan | Cada trozo se prefija con la ruta de encabezados que lo contiene, y ese texto prefijado es el que se guarda **y** el que se embebe: no hay dos versiones de lo indexado. |
+| Vectores | Un cliente `openai-compatible` cubre Ollama, vLLM y OpenAI. Se piden por lotes, que es lo que más afecta al tiempo de una reindexación. |
+| Escritura | Borrado e inserción en una transacción, cerrada con un `UPDATE ... WHERE metadata->>'hash' = :hash`. Si no afecta a ninguna fila se deshace todo: el fichero se reemplazó mientras se convertía. |
+
+### Estados
+
+`index_status` vive en columnas propias de `pergamo.document`, nunca dentro de
+`metadata`, por la misma razón que `scan_status`: `metadata` la modifica el cliente a
+través de una allowlist configurable.
+
+| Estado | Significa |
+|---|---|
+| `none` | No se pidió indexar, o el documento está retenido. |
+| `pending` | Encolado, o devuelto a la cola porque el proveedor no respondió. |
+| `indexing` | Un worker lo tiene entre manos. |
+| `indexed` | Tiene vectores, y `index_model` dice con qué modelo. |
+| `error` | `FILE_MISSING` o `EMPTY_CONTENT` —lo que produce un PDF escaneado sin capa de texto—. No se reintenta. |
+| `unsupported` | Mimetype sin conversor. No se reintenta. |
+
+Un documento nunca pasa a `indexed` sin vectores: si la máquina de inferencia no
+responde, vuelve a `pending` y lo recupera el siguiente barrido.
+
+### La trampa del operator class
+
+El índice se crea con `vector_cosine_ops`, que **obliga** a consultar con `<=>`. Con
+`<->` o `<#>` el planificador deja de poder usarlo y recorre la tabla entera: sin error
+y sin aviso, devolviendo resultados que parecen correctos.
+
+Por eso la única consulta ANN del proyecto vive en un solo fichero, la distancia forma
+parte del contrato del proveedor de embeddings, y `assertEmbeddingSchema` compara ambas
+cosas **al arrancar**. Lo mismo con la anchura del vector: la columna se crea con
+`EMBEDDING_DIMENSION` y el arranque aborta si dejan de coincidir, en lugar de fallar en
+el primer trabajo.
+
+Esa comprobación es local y bloquea el arranque de la API y del worker por igual. Lo que
+**no** hace la API es esperar a que el proveedor responda: un tercero caído no puede
+impedir que arranque el archivo entero, y `/search` dirá lo que pasa cuando se le
+pregunte. Quien sí espera es el worker, porque aceptar trabajos contra una máquina de
+inferencia muerta no sirve de nada.
+
+### Cola y worker
+
+La API no convierte nada: encola `{ document, organization }` y devuelve. El payload no
+lleva más que esos dos identificadores porque un trabajo puede pasar horas esperando y
+todo lo demás se relee de la base —meter la ruta ahí es como se acaba convirtiendo el
+fichero anterior después de un reemplazo—.
+
+El encolado ocurre **después del commit** y no se espera: Redis caído no puede tumbar un
+depósito ya confirmado, y lo que se quede sin encolar lo recupera `npm run reindex`.
+Redis es transporte; el estado de verdad son las columnas `index_*` de PostgreSQL.
+
+Dos claves gobiernan el worker, y son dos y no un enum de tres valores para que no exista
+el estado imposible «worker embebido con la indexación desactivada»:
+
+| Clave | Defecto | Qué hace |
+|---|---|---|
+| `INDEXING_ENABLED` | `false` | La API acepta `?index=true` y existe la cola. |
+| `INDEXING_WORKER_EMBEDDED` | `true` | El worker corre dentro del proceso de la API. En el `docker-compose.yml` va a `false` y se levanta `pergamo-worker`, la misma imagen con `PERGAMO_ROLE=worker`. |
+
+En producción interesa separarlo: abre ficheros no confiables con un parser de documentos,
+y una reindexación no debe competir por CPU con las peticiones.
+
+```bash
+npm run worker              # worker suelto
+npm run reindex             # devuelve a la cola lo pendiente y lo del modelo viejo
+npm run reindex -- --all    # además, el corpus que la migración dejó en 'none'
+```
+
+El barrido **encola, no indexa**: recorre por keyset lo que está en `pending`, lo indexado
+con otro modelo y lo que lleva demasiado en `indexing` —un worker que murió a media
+faena—, así que no depende de que la máquina de inferencia responda en ese momento.
+
+### El disparo
+
+`POST /document?index=true`, en la query string y **no** como campo del multipart: multer
+solo puebla `req.body` con los campos que llegan *antes* del fichero, así que un cliente
+que lo mandara detrás pediría indexar y no lo obtendría, sin error. El esquema es
+`.strict()`, de modo que `?indexx=true` es un `400` y no una petición que se ignora.
+
+Pedir indexación con la funcionalidad desactivada también es un `400`: el cliente no debe
+creer que tiene vectores. Y reemplazar el fichero (`PUT /document/:id/file`) tira los
+vectores del contenido anterior y vuelve a `pending` conservando la intención, porque
+sustituir un fichero no debe poder desindexar un documento por omisión.
+
+`GET /document/:id/index` devuelve el estado, gemelo de `/scan` y por el mismo motivo: el
+cuerpo de `GET /document/:id` es el JSONB tal cual y añadirle claves cambiaría un contrato
+que ya se consume.
+
+En la interfaz es una casilla del diálogo de subida, que **solo aparece si el despliegue
+indexa**: `GET /config` lleva `indexing_enabled` justamente para no ofrecer una casilla
+que solo puede devolver un `400`. La ficha del documento muestra entonces el estado del
+índice, y mientras el trabajo está vivo (`pending`, `indexing`) se refresca sola —con
+tope, para que una pestaña olvidada no pregunte para siempre—.
+
+### Búsqueda
+
+`POST /search`, con **la misma autenticación que todo lo demás**: se entra por
+`POST /organization/login`, y el token que devuelve sirve para buscar igual que para
+depositar un documento. El ámbito sale del token y de ningún otro sitio, así que no hay
+forma de pedir que se busque en el fondo de otra organización. El token maestro no lleva
+organización y recibe un `400`, como en el listado.
+
+```http
+POST /search
+Authorization: <token>
+
+{ "query": "condiciones de entrega", "limit": 10, "min_similarity": 0.35 }
+```
+
+Devuelve por fragmento `content`, `document_id`, `chunk_id`, `section`, `heading_path`,
+`page`, `similarity` y `score`. **El vector no sale nunca**: un embedding es parcialmente
+reversible y hereda la confidencialidad del documento.
+
+Dense y léxica, fusionadas con **Reciprocal Rank Fusion** en una sola consulta. Las dos
+hacen falta y ninguna sustituye a la otra: el vector encuentra lo que se dice de otra
+manera, y el texto encuentra un número de factura o un nombre propio que el modelo no vio
+nunca. RRF las combina por *posición* y no por puntuación, que es lo que permite sumarlas
+sin normalizar dos escalas que no tienen nada que ver.
+
+Se piden más candidatos de los que se devuelven (`SEARCH_CANDIDATES_FACTOR`) y se recorta
+después: es la sutura por la que entraría un reranker sin tocar ni el almacén ni el
+endpoint.
+
+`min_similarity` es opcional y conviene usarlo. Sin umbral, un fondo sin nada relevante
+devuelve igualmente los trozos menos malos, y quien pregunte los tomará por buenos.
+
+### Elegir proveedor de embeddings
+
+`EMBEDDING_PROVIDER=openai-compatible` cubre Ollama, vLLM y OpenAI con un solo cliente:
+los tres exponen `POST /embeddings` con `{ model, input }`.
+
+| | Configuración |
+|---|---|
+| Ollama (máquina propia) | `EMBEDDING_BASE_URL=http://maquina-ia:11434/v1`, `EMBEDDING_MODEL=bge-m3`, sin clave |
+| OpenAI | `EMBEDDING_BASE_URL=https://api.openai.com/v1`, `EMBEDDING_MODEL=text-embedding-3-small`, `EMBEDDING_API_KEY=sk-...` |
+
+La anchura se pide con el parámetro `dimensions`, así que un modelo de otra anchura nativa
+—los `text-embedding-3` de OpenAI son 1536— entrega vectores del tamaño que tiene la
+columna y cambiar de proveedor no exige una versión nueva del índice. Un proveedor que no
+lo respete falla en el arranque, no en el primer trabajo.
+
+Lo que sí exige reindexar es **cambiar de modelo**: dos modelos nunca comparten espacio
+vectorial, por muy iguales que sean las dimensiones. Se hace con `npm run reindex`, que
+recoge lo indexado bajo otro `index_model`.
+
+Y una consecuencia del despliegue que conviene decir en voz alta: **con OpenAI el
+contenido de los documentos sale de la instalación**. Para probar está bien; para un fondo
+con documentos de clientes, la máquina propia es lo que evita ese viaje.
+
+### Prerrequisito
+
+pgvector es requisito de **toda** instalación, indexe o no: la migración `005` lo exige.
+No es una extensión «trusted», así que la instala el superusuario junto a las otras tres.
+La alternativa —crear las tablas solo si la extensión está— dejaría dos esquemas
+distintos bajo el mismo id en `pergamo.schema_migrations`.
+
+### Superficie nueva
+
+El contenido de los trozos se pinta en la ficha del documento, y sale de ficheros de
+clientes. Se renderiza construyendo nodos de React y **nunca por `innerHTML`**, así que un
+documento con HTML incrustado no puede inyectar nada. El renderizador es propio
+(`web/src/components/ChunkContent.tsx`) y no una librería de markdown: el conversor emite una
+gramática de tres construcciones —tabla de tuberías, lista de guiones y párrafo, sin
+encabezados ni negritas ni enlaces—, y traerse el árbol de `unified` para eso son decenas de
+paquetes y unos 100 KB. Es el mismo criterio con que se descartó langchain para el troceado.
+
+Se introduce un parser de documentos sobre ficheros no confiables, contra un principio
+explícito del proyecto. Se acota: solo sobre documentos que ya pasaron el antivirus y el
+filtro de contenido activo, en el proceso del worker y con tope de tiempo por documento y
+límites de descompresión, que es lo que el propio `officeParser` pide hacer —su README
+declara mantenedor único y hardening «best-effort, not a guarantee»—.
 
 ## Licencia
 

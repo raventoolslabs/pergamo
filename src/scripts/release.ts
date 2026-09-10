@@ -1,24 +1,21 @@
-import log from '../utils/log';
-import sequelize, { QueryTypes } from '../utils/db';
+import log from '@/shared/logger';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 
 /**
  * Liberacion de un falso positivo.
  *
  * Uso: npm run scan:release -- <id-documento>
  *
- * Por que un script y no un endpoint: el modelo de autorizacion actual solo
- * distingue organizacion y organizacion maestra. Anadir una via de liberacion a
- * la API obligaria a inventar un rol de administrador y a exponerlo en red;
- * esta operacion la ejecuta un operador con acceso al despliegue, que es
- * exactamente el nivel de privilegio que corresponde.
+ * Es un script y no un endpoint porque el modelo de autorizacion solo distingue
+ * organizacion y maestra: exponerlo en la API obligaria a inventar un rol de
+ * administrador, y esto lo ejecuta quien tiene acceso al despliegue.
  *
- * El documento pasa a 'clean' CONSERVANDO scan_signature: un falso positivo
- * liberado sigue siendo trazable, y esa es la informacion que permite decidir
- * si la firma merece entrar en clamav/local.ign2.
+ * Es tambien la unica salida de la cuarentena por contenido activo, que no
+ * levanta un reescaneo sino la decision de alguien que responde del documento.
  *
- * El fichero no se modifica en ningun momento. Los falsos positivos se liberan
- * mediante revision; no se "arreglan" alterando el documento, que destruiria su
- * hash de registro y cualquier firma electronica que contenga.
+ * Pasa a 'clean' conservando scan_signature, para que siga siendo trazable y se
+ * pueda decidir si la firma merece entrar en docker/clamav/local.ign2. El fichero no
+ * se toca: alterarlo destruiria su hash y su firma electronica.
  */
 
 const release = async () => {
@@ -51,7 +48,7 @@ const release = async () => {
   });
 
   log.warn(`Document ${id} (organization ${document.organization}) released from "${document.scan_status}" to "clean". Retained signature: ${document.scan_signature || 'none'}`);
-  log.info('If this signature keeps flagging legitimate documents, add it to clamav/local.ign2 and restart the clamav service.');
+  log.info('If this signature keeps flagging legitimate documents, add it to docker/clamav/local.ign2 and restart the clamav service.');
 }
 
 release()

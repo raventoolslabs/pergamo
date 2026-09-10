@@ -1,0 +1,26 @@
+# Scripts de instalacion (postinstall) que se permiten ejecutar.
+#
+# pnpm 10+ no ejecuta ninguno por defecto: los deja apuntados aqui y ESPERA UNA
+# DECISION. Mientras el valor no sea true o false, `pnpm install` termina con
+# ERR_PNPM_IGNORED_BUILDS y las dependencias quedan a medio instalar, que es lo
+# que rompe `npm run dev` despues. No es un aviso: es una pregunta sin
+# responder.
+#
+# Los dos son dependencias transitivas de jest, es decir de desarrollo: no
+# entran en la imagen de produccion, que instala solo dependencies.
+allowBuilds:
+  # jest-haste-map lo usa para vigilar ficheros. Sin su script no se instala el
+  # binario nativo y jest cae a fb-watchman o al fs, que es exactamente lo que
+  # esta pasando ahora: la bateria entera (62 pruebas) corre sin el. Solo
+  # aceleraria `jest --watch`, que este proyecto no usa en ningun script, y no
+  # se ejecuta codigo de instalacion por una comodidad que nadie ejerce.
+  '@parcel/watcher': false
+  msgpackr-extract: false
+  tesseract.js: false
+  # jest-resolve si lo necesita. Su script (napi-postinstall) enlaza el binding
+  # nativo que corresponde a la plataforma; aqui funciona sin el porque pnpm ha
+  # instalado el binding opcional de linux-x64-gnu, pero en musl o con otra
+  # resolucion de opcionales el require falla con un "Cannot find module
+  # @unrs/resolver-binding-..." que no dice nada a quien lo sufre. Se permite
+  # para que las pruebas arranquen igual en cualquier maquina del equipo.
+  unrs-resolver: true

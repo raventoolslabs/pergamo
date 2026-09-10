@@ -4,22 +4,20 @@ import fs from 'fs';
 import FormData from 'form-data';
 import { StatusCodes } from 'http-status-codes';
 
-import { app } from '../src/app';
-import sequelize, { QueryTypes } from '../src/utils/db';
-import Config from '../src/config';
+import { app } from '@/server';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import Config from '@/shared/config';
 
 /**
  * Estado de cuarentena y bloqueo de descarga.
  *
- * Cubre la brecha estructural que ClamAV no puede cerrar por si solo: se
- * escaneaba una unica vez, en la subida, y un fichero limpio hoy puede tener
- * firma dentro de tres dias. Estas pruebas verifican que un documento cuyo
- * veredicto no es 'clean' deja de servirse, y que sus metadatos siguen siendo
- * consultables para que el cliente pueda saber por que.
+ * Lo que fijan estas pruebas es donde esta la linea: retienen 'infected',
+ * 'malicious' y 'error' —lo que exige que alguien intervenga— y no 'pending',
+ * que se resuelve solo. Los metadatos siguen consultandose en todos los casos,
+ * que es como el cliente descubre por que no se le entrega un documento.
  *
  * El estado se fuerza por base de datos en lugar de tumbar clamd: lo que se
- * comprueba aqui es el gate, y hacerlo depender de la disponibilidad real del
- * escaner convertiria la prueba en intermitente.
+ * comprueba es el gate, y depender del escaner haria la prueba intermitente.
  */
 describe('Scan quarantine gate', () => {
 
@@ -72,7 +70,7 @@ describe('Scan quarantine gate', () => {
     await sequelize.close();
   });
 
-  it('Should store a freshly uploaded document as clean', async () => {
+  it('Should record a verdict on deposit only when something gave one', async () => {
 
     const rows:any = await sequelize.query(
       'SELECT scan_status, scan_engine FROM pergamo.document WHERE id = :id;', {
@@ -81,11 +79,29 @@ describe('Scan quarantine gate', () => {
     });
 
     expect(rows.length).toBe(1);
-    expect(rows[0].scan_status).toBe('clean');
 
-    // Con el antivirus activo queda registrado con que motor y base de firmas
-    // se aprobo: es lo que define despues que hay que reescanear.
-    if(Config.enable_antivirus) expect(rows[0].scan_engine).toBeTruthy();
+    if(Config.enable_antivirus) {
+      // Con el antivirus activo queda registrado con que motor y base de firmas
+      // se aprobo: es lo que define despues que hay que reescanear.
+      expect(rows[0].scan_status).toBe('clean');
+      expect(rows[0].scan_engine).toBeTruthy();
+    } else {
+      // Sin antivirus no hay veredicto que escribir. 'clean' seria un veredicto
+      // que nadie emitio, y quien consuma la API por fuera de la interfaz lo
+      // leeria como «analizado y limpio».
+      expect(rows[0].scan_status).toBe('pending');
+      expect(rows[0].scan_engine).toBeNull();
+    }
+  });
+
+  it('Should still deliver a document deposited without a verdict', async () => {
+
+    const response = await api.get(`/document/${documentId}/file`, {
+      headers: { authorization: token }
+    });
+
+    // 'pending' es una verificacion que falta, no un hallazgo: no retiene.
+    expect(response.status).toBe(200);
   });
 
   it('Should block the download of an infected document with 423', async () => {
@@ -112,18 +128,32 @@ describe('Scan quarantine gate', () => {
     expect(response.data.uuid).toBe(documentId);
   });
 
-  it('Should block the download of a pending document with 423', async () => {
+  it('Should still serve a pending document', async () => {
 
-    // 'pending' es el estado en que queda una subida aceptada mientras el
-    // escaner estaba habilitado pero no disponible.
+    // 'pending' es la subida aceptada mientras el escaner no respondia, y no
+    // retiene: es una verificacion que falta, no un hallazgo. Retener por ella
+    // convertia una caida de clamd en un archivo que deja de entregar.
     await setStatus('pending');
 
     const response = await api.get(`/document/${documentId}/file`, {
       headers: { authorization: token }
     });
 
+    expect(response.status).toBe(StatusCodes.OK);
+  });
+
+  it('Should block the download of a document whose file is missing', async () => {
+
+    // 'error' si retiene, y por un motivo distinto: falta el fichero del
+    // almacen, asi que no hay nada que revisar del documento.
+    await setStatus('error', 'FILE_MISSING');
+
+    const response = await api.get(`/document/${documentId}/file`, {
+      headers: { authorization: token }
+    });
+
     expect(response.status).toBe(StatusCodes.LOCKED);
-    expect(response.data.error).toContain('pending');
+    expect(response.data.error).toContain('missing from storage');
   });
 
   it('Should serve the file again once the scan is clean', async () => {
@@ -139,8 +169,8 @@ describe('Scan quarantine gate', () => {
 
   it('Should quote and escape the filename in Content-Disposition', async () => {
 
-    // El nombre procede del originalname del cliente. Sin comillas ni escape se
-    // podian inyectar parametros adicionales en la cabecera.
+    // El nombre viene del originalname del cliente: sin escape se podian
+    // inyectar parametros en la cabecera.
     const response = await api.get(`/document/${documentId}/file`, {
       headers: { authorization: token }
     });

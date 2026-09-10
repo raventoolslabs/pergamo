@@ -1,200 +1,253 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { DragEvent } from 'react';
 
 import { api } from '../api/client';
 import { useConfig } from '../api/config';
-import { Aviso, Dialogo, formatearTamano, mensajeDeError } from './ui';
+import type { ScanInfo } from '../api/types';
+import { t } from '../i18n';
+import { Dialog, Notice, Verdict, errorMessage, formatSize, isDeliverable } from './ui';
 
-type Estado = 'pendiente' | 'subiendo' | 'done' | 'error';
+type ItemState = 'pending' | 'uploading' | 'done' | 'held' | 'error';
 
-interface Item {
-  fichero: File;
-  estado: Estado;
-  nota?: string;
+interface QueueItem {
+  file: File;
+  state: ItemState;
+  note?: string;
+  /** Solo en 'held': el veredicto con que entro, para nombrarlo igual que la ficha. */
+  scan?: ScanInfo;
 }
 
 /**
- * Nombre corriente de un formato.
- *
- * VALID_MIMETYPE es configurable, asi que la lista no se puede cerrar: lo que
- * no este aqui se muestra con su mimetype entero, que sera largo pero es
+ * Nombre corriente de un formato. VALID_MIMETYPE es configurable, asi que lo
+ * que no este aqui se muestra con su mimetype entero: sera largo, pero es
  * cierto. Recortar por la barra convertia el ODT en
- * «vnd.oasis.opendocument.text», que no le dice nada a nadie.
+ * «vnd.oasis.opendocument.text».
+ *
+ * Solo los que el servidor puede verificar por firma: anunciar DOC, XLS o ZIP
+ * ofrecia formatos que la subida rechaza con un 400.
  */
-const FORMATO: Record<string, string> = {
+const FORMAT: Record<string, string> = {
   'application/pdf': 'PDF',
+  'application/rtf': 'RTF',
+  'application/epub+zip': 'EPUB',
   'application/vnd.oasis.opendocument.text': 'ODT',
   'application/vnd.oasis.opendocument.spreadsheet': 'ODS',
   'application/vnd.oasis.opendocument.presentation': 'ODP',
-  'application/msword': 'DOC',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
-  'application/vnd.ms-excel': 'XLS',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-  'image/jpeg': 'JPG',
-  'image/png': 'PNG',
-  'image/tiff': 'TIFF',
-  'text/plain': 'TXT',
-  'text/csv': 'CSV',
-  'application/zip': 'ZIP'
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX'
 };
 
-const formatoDe = (mimetype: string) => FORMATO[mimetype] || mimetype;
+const formatOf = (mimetype: string) => FORMAT[mimetype] || mimetype;
 
 /** «PDF y ODT», «PDF, ODT y DOCX». */
-const enumerar = (valores: string[]) => {
-  if (valores.length < 2) return valores.join('');
-  return `${valores.slice(0, -1).join(', ')} y ${valores[valores.length - 1]}`;
+const listOut = (values: string[]) => {
+  if (values.length < 2) return values.join('');
+  return `${values.slice(0, -1).join(', ')}${t('upload.listJoin')}${values[values.length - 1]}`;
 };
 
 /**
- * Deposito de documentos.
- *
- * La API acepta un fichero por peticion, asi que varios ficheros se envian en
- * serie: en paralelo, cada uno ocuparia una conexion y un analisis de ClamAV
- * simultaneos, que es justo lo que el escaner peor lleva.
+ * La API acepta un fichero por peticion, asi que varios se envian en serie: en
+ * paralelo, cada uno ocuparia una conexion y un analisis de ClamAV
+ * simultaneos, que es lo que el escaner peor lleva.
  */
 export const UploadDialog = ({ onClose, onUploaded }: {
   onClose: () => void;
-  onUploaded: () => void;
+  /** `held` son los que entraron retenidos: la lista cambia, pero no hay nada
+      que celebrar. */
+  onUploaded: (result: { uploaded: number; held: number }) => void;
 }) => {
 
   const config = useConfig();
-  const entrada = useRef<HTMLInputElement>(null);
 
-  const [items, setItems] = useState<Item[]>([]);
-  const [encima, setEncima] = useState(false);
-  const [enviando, setEnviando] = useState(false);
-  const [subidos, setSubidos] = useState(0);
+  const [items, setItems] = useState<QueueItem[]>([]);
+  const [indexing, setIndexing] = useState(true);
+  const [over, setOver] = useState(false);
+  const [sending, setSending] = useState(false);
+  // Enviado y con algo que contar: el dialogo deja de pedir ficheros y pasa a
+  // ser el resumen de lo que ha pasado con los que se enviaron.
+  const [settled, setSettled] = useState(false);
 
-  /**
-   * Comprobacion previa con los mismos limites que aplica el servidor. No
-   * sustituye a la suya: solo evita subir 50 MB para recibir un 400.
-   */
-  const problemaDe = useCallback((fichero: File): string | null => {
+  // Comprobacion previa con los mismos limites que aplica el servidor. No
+  // sustituye a la suya: solo evita subir el fichero entero para recibir un 400.
+  const problemWith = useCallback((file: File): string | null => {
     if (!config) return null;
 
-    if (config.max_file_size && fichero.size > config.max_file_size)
-      return `Supera los ${formatearTamano(config.max_file_size)}`;
+    if (config.max_file_size && file.size > config.max_file_size)
+      return t('upload.tooLarge', { limit: formatSize(config.max_file_size) });
 
-    if (config.valid_mimetype.length && !config.valid_mimetype.includes(fichero.type))
-      return fichero.type ? `Tipo no admitido: ${fichero.type}` : 'El navegador no reconoce su tipo';
+    if (config.valid_mimetype.length && !config.valid_mimetype.includes(file.type))
+      return file.type ? t('upload.badType', { type: file.type }) : t('upload.unknownType');
 
     return null;
   }, [config]);
 
-  const anadir = useCallback((ficheros: FileList | null) => {
-    if (!ficheros?.length) return;
+  const add = useCallback((files: FileList | null) => {
+    if (!files?.length) return;
 
-    setItems((actuales) => [
-      ...actuales,
-      ...Array.from(ficheros).map((fichero): Item => {
-        const problema = problemaDe(fichero);
-        return problema ? { fichero, estado: 'error', nota: problema } : { fichero, estado: 'pendiente' };
-      })
-    ]);
-  }, [problemaDe]);
+    // La lista se copia antes de tocar el estado: el input se limpia nada mas
+    // volver de elegir, y su FileList no puede quedar a merced de cuando React
+    // ejecute el actualizador.
+    const queued = Array.from(files).map((file): QueueItem => {
+      const problem = problemWith(file);
+      return problem ? { file, state: 'error', note: problem } : { file, state: 'pending' };
+    });
 
-  const soltar = (evento: DragEvent) => {
-    evento.preventDefault();
-    setEncima(false);
-    anadir(evento.dataTransfer.files);
+    setItems((current) => [...current, ...queued]);
+  }, [problemWith]);
+
+  const drop = (event: DragEvent) => {
+    event.preventDefault();
+    setOver(false);
+    add(event.dataTransfer.files);
   };
 
-  const enviar = async () => {
-    setEnviando(true);
-    let correctos = 0;
+  const submit = async () => {
+    setSending(true);
+    let succeeded = 0;
+    // Los rechazados antes de enviarse ya cuentan: si hay alguno, el dialogo se
+    // queda abierto para que se vea cual.
+    let failed = items.filter((item) => item.state === 'error').length;
+    // Retenidos: entraron en el archivo, pero llamarlos «Subido» y cerrar el
+    // dialogo esconderia lo unico que hay que mirar.
+    let held = 0;
 
-    for (let indice = 0; indice < items.length; indice += 1) {
-      if (items[indice].estado !== 'pendiente') continue;
+    // La casilla viene marcada, pero pedir indexacion donde no la hay es un 400.
+    const wantIndex = indexing && config?.indexing_enabled === true;
 
-      setItems((actuales) => actuales.map((item, posicion) =>
-        posicion === indice ? { ...item, estado: 'subiendo' } : item));
+    for (let index = 0; index < items.length; index += 1) {
+      if (items[index].state !== 'pending') continue;
+
+      setItems((current) => current.map((item, position) =>
+        position === index ? { ...item, state: 'uploading' } : item));
 
       try {
-        await api.upload(items[indice].fichero);
-        correctos += 1;
-        setItems((actuales) => actuales.map((item, posicion) =>
-          posicion === indice ? { ...item, estado: 'done', nota: 'Subido' } : item));
-      } catch (fallo) {
-        setItems((actuales) => actuales.map((item, posicion) =>
-          posicion === indice ? { ...item, estado: 'error', nota: mensajeDeError(fallo) } : item));
+
+        const created = await api.upload(items[index].file, wantIndex);
+
+        // Un deposito puede entrar retenido —contenido activo— y eso no es
+        // «Subido»: el veredicto se pregunta antes de darlo por bueno, porque la
+        // respuesta de la subida solo trae los metadatos.
+        const scan = await api.scan(created.uuid).catch(() => null);
+        const state:ItemState = scan && !isDeliverable(scan.scan_status) ? 'held' : 'done';
+
+        if(state === 'held') held += 1; else succeeded += 1;
+
+        setItems((current) => current.map((item, position) =>
+          position === index
+            ? { ...item, state, scan: scan ?? undefined, note: state === 'done' ? t('upload.done') : undefined }
+            : item));
+
+      } catch (failure) {
+        failed += 1;
+        setItems((current) => current.map((item, position) =>
+          position === index ? { ...item, state: 'error', note: errorMessage(failure) } : item));
       }
     }
 
-    setEnviando(false);
-    setSubidos((actual) => actual + correctos);
-    // Se refresca el registro aunque alguno haya fallado: los que si entraron
-    // deben verse ya.
-    if (correctos) onUploaded();
+    setSending(false);
+    setSettled(true);
+    // Se refresca aunque alguno haya fallado: los que si entraron deben verse.
+    if (succeeded || held) onUploaded({ uploaded: succeeded, held });
+    // Sin nada que mirar el dialogo estorba; con un error o una cuarentena se
+    // queda, porque eso solo se cuenta aqui.
+    if (succeeded && !failed && !held) onClose();
   };
 
-  const pendientes = items.filter((item) => item.estado === 'pendiente').length;
-  const admitidos = config?.valid_mimetype.length ? config.valid_mimetype.join(',') : undefined;
+  const pending = items.filter((item) => item.state === 'pending').length;
+  const accept = config?.valid_mimetype.length ? config.valid_mimetype.join(',') : undefined;
 
   return (
-    <Dialogo
-      titulo="Subir documento"
+    <Dialog
+      title={t('upload.title')}
       onClose={onClose}
-      pie={
-        <>
-          <button type="button" className="btn" onClick={onClose}>{subidos ? 'Cerrar' : 'Cancelar'}</button>
-          <button type="button" className="btn btn--principal" onClick={enviar} disabled={enviando || !pendientes}>
-            {enviando
-              ? <><span className="girando" aria-hidden="true" /> Subiendo…</>
-              : `Subir${pendientes > 1 ? ` ${pendientes}` : ''}`}
+      footer={
+        settled ? (
+          <button type="button" className="btn btn--primary" onClick={onClose}>
+            {t('common.close')}
           </button>
-        </>
+        ) : (
+          <>
+            <button type="button" className="btn" onClick={onClose}>
+              {t('common.cancel')}
+            </button>
+            <button type="button" className="btn btn--primary" onClick={submit} disabled={sending || !pending}>
+              {sending
+                ? <><span className="spinner" aria-hidden="true" /> {t('upload.submitting')}</>
+                : pending > 1 ? t('upload.submitCount', { count: pending }) : t('upload.submit')}
+            </button>
+          </>
+        )
       }
     >
-      <div className="dialogo__cuerpo">
-        <div
-          className={`soltar${encima ? ' encima' : ''}`}
-          role="button"
-          tabIndex={0}
-          onClick={() => entrada.current?.click()}
-          onKeyDown={(evento) => { if (evento.key === 'Enter' || evento.key === ' ') entrada.current?.click(); }}
-          onDragOver={(evento) => { evento.preventDefault(); setEncima(true); }}
-          onDragLeave={() => setEncima(false)}
-          onDrop={soltar}
-        >
-          <strong>Arrastra los ficheros aquí</strong>
-          <span>o pulsa para elegirlos</span>
-        </div>
+      <div className="dialog__body">
+        {/* Una etiqueta con el input dentro, y no un div que llama a click():
+            un input `hidden` no responde a la llamada en todos los navegadores,
+            y asi abre el selector el propio navegador. */}
+        {settled ? null : (
+          <label
+            className={`dropzone${over ? ' over' : ''}`}
+            onDragOver={(event) => { event.preventDefault(); setOver(true); }}
+            onDragLeave={() => setOver(false)}
+            onDrop={drop}
+          >
+            <strong>{t('upload.dropHere')}</strong>
+            <span>{t('upload.orClick')}</span>
 
-        <input
-          ref={entrada}
-          type="file"
-          multiple
-          accept={admitidos}
-          hidden
-          onChange={(evento) => { anadir(evento.target.files); evento.target.value = ''; }}
-        />
+            <input
+              className="sr-only"
+              type="file"
+              multiple
+              accept={accept}
+              onChange={(event) => { add(event.target.files); event.target.value = ''; }}
+            />
+          </label>
+        )}
 
-        {config && (config.valid_mimetype.length || config.max_file_size) ? (
-          <p className="campo__pista">
+        {!settled && config && (config.valid_mimetype.length || config.max_file_size) ? (
+          <p className="field__hint">
             {config.valid_mimetype.length
-              ? `Se admiten ${enumerar(config.valid_mimetype.map(formatoDe))}. `
+              ? t('upload.accepted', { formats: listOut(config.valid_mimetype.map(formatOf)) })
               : ''}
-            {config.max_file_size ? `Hasta ${formatearTamano(config.max_file_size)} por fichero.` : ''}
+            {config.max_file_size ? t('upload.maxSize', { limit: formatSize(config.max_file_size) }) : ''}
           </p>
         ) : null}
 
+        {/* Solo si el despliegue indexa: una casilla que siempre devuelve un 400
+            es peor que no ofrecer la funcionalidad. */}
+        {!settled && config?.indexing_enabled ? (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={indexing}
+              disabled={sending}
+              onChange={(event) => setIndexing(event.target.checked)}
+            />
+            <span>
+              <strong>{t('upload.index')}</strong>
+              {t('upload.indexHint')}
+            </span>
+          </label>
+        ) : null}
+
         {items.length ? (
-          <div className="cola">
-            {items.map((item, indice) => (
-              <div key={`${item.fichero.name}-${indice}`} className={`cola__item cola__item--${item.estado}`}>
-                <span className="cola__nombre">{item.fichero.name}</span>
-                <span className="cola__estado">
-                  {item.estado === 'subiendo'
-                    ? <span className="girando" aria-hidden="true" />
-                    : item.nota || formatearTamano(item.fichero.size)}
+          <div className="queue">
+            {items.map((item, index) => (
+              <div key={`${item.file.name}-${index}`} className={`queue__item queue__item--${item.state}`}>
+                <span className="queue__name">{item.file.name}</span>
+                <span className="queue__status">
+                  {item.state === 'uploading'
+                    ? <span className="spinner" aria-hidden="true" />
+                    : item.state === 'held' && item.scan
+                      ? <Verdict status={item.scan.scan_status} engine={item.scan.scan_engine} />
+                      : item.note || formatSize(item.file.size)}
                 </span>
-                {item.estado === 'pendiente' && !enviando ? (
+                {item.state === 'pending' && !sending ? (
                   <button
                     type="button"
-                    className="btn btn--plano btn--menudo"
-                    onClick={() => setItems((actuales) => actuales.filter((_, posicion) => posicion !== indice))}
-                    aria-label={`Quitar ${item.fichero.name}`}
+                    className="btn btn--flat btn--tiny"
+                    onClick={() => setItems((current) => current.filter((_, position) => position !== index))}
+                    aria-label={t('common.remove', { name: item.file.name })}
                   >✕</button>
                 ) : null}
               </div>
@@ -202,11 +255,12 @@ export const UploadDialog = ({ onClose, onUploaded }: {
           </div>
         ) : null}
 
-        <Aviso tipo="info">
-          Cada fichero se analiza antes de guardarse. Si el analizador no está disponible, el
-          documento se guarda pero no podrá descargarse hasta que un reanálisis lo apruebe.
-        </Aviso>
+        {/* Solo cuando este despliegue no analiza: que analice es lo que se
+            espera, y repetirlo en cada subida no dice nada. */}
+        {!settled && config?.enable_antivirus === false ? (
+          <Notice kind="warn">{t('upload.antivirusOff')}</Notice>
+        ) : null}
       </div>
-    </Dialogo>
+    </Dialog>
   );
 };

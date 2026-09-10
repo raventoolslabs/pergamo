@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-import { app } from '../src/app';
-import sequelize, { QueryTypes } from "../src/utils/db";
-import Config from '../src/config'
+import { app } from '@/server';
+import sequelize, { QueryTypes } from "@/infrastructure/db/client";
+import Config from '@/shared/config'
 import { StatusCodes } from 'http-status-codes';
 
 const packageJson = require('../package.json');

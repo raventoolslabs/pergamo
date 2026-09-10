@@ -1,7 +1,8 @@
 import { api } from '../api/client';
 import { useSession } from '../auth/session';
-import { CambiarContrasena } from '../components/PasswordChange';
-import { Aviso, Dato } from '../components/ui';
+import { PasswordChange } from '../components/PasswordChange';
+import { Datum, Notice } from '../components/ui';
+import { t } from '../i18n';
 
 export const Account = () => {
 
@@ -9,26 +10,27 @@ export const Account = () => {
 
   return (
     <>
-      <div className="encabezado">
-        <div className="encabezado__texto">
-          <h1>Mi cuenta</h1>
-          <p>La sesión con la que estás trabajando y su contraseña.</p>
+      <div className="pagehead">
+        <div className="pagehead__text">
+          <h1>{t('account.title')}</h1>
+          <p>{t('account.subtitle')}</p>
         </div>
       </div>
 
-      <dl className="datos">
-        <Dato termino="Organización">{session?.name}</Dato>
-        <Dato termino="Identificador"><span className="mono">{session?.organization || '—'}</span></Dato>
+      <dl className="data">
+        <Datum term={t('common.organization')}>{session?.name}</Datum>
+        <Datum term={t('common.identifier')}>
+          <span className="mono">{session?.organization || t('common.none')}</span>
+        </Datum>
       </dl>
 
-      <section className="seccion">
-        {/* Sin tarjeta ni descripcion: el .seccion de arriba ya separa este
-            bloque del resto de la pagina, y el titulo "Cambiar la contraseña"
-            no necesita una segunda linea explicando lo obvio. */}
-        <CambiarContrasena desnudo onSubmit={(contrasena) => api.changePassword(contrasena)} />
+      <section className="section">
+        {/* La seccion ya separa este bloque del resto: el titulo no necesita una
+            segunda linea explicando lo obvio. */}
+        <PasswordChange bare onSubmit={(password) => api.changePassword(password)} />
       </section>
 
-      {session?.master ? <Aviso tipo="info">Estás usando el usuario master.</Aviso> : null}
+      {session?.master ? <Notice kind="info">{t('account.masterNotice')}</Notice> : null}
     </>
   );
 };

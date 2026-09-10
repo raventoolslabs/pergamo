@@ -9,7 +9,7 @@ import './styles/app.css';
 
 const container = document.getElementById('root');
 
-if (!container) throw new Error('No existe el contenedor #root');
+if (!container) throw new Error('Missing #root container');
 
 createRoot(container).render(
   <StrictMode>

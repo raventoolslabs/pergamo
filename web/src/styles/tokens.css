@@ -1,59 +1,51 @@
 /*
- * Paleta de Pergamo.
+ * Paleta de Pergamo. Tema oscuro unico, sin conmutador: un archivo se mira
+ * durante horas y lo que debe destacar es el documento, no la interfaz.
  *
- * Tema oscuro unico. Viene del diseño de la pantalla de documentos
- * (web/mock/documentos): un archivo se mira durante horas y de lo que se trata
- * es de que destaque el documento, no la interfaz. No hay variante clara ni
- * conmutador: dos temas serian dos diseños que mantener, y el claro ya no es el
- * que se ha dibujado.
- *
- * La regla que separa esto de cualquier panel de administracion sigue intacta:
- * el verde NO es el color de los botones, es el color de un dato concreto
- * —documento analizado—. Cuando un color informa no puede gastarse en
- * decoracion, o deja de significar nada. Por eso la accion principal va en
- * papel (--tinta) sobre el fondo, y el unico sitio donde el verde cubre
- * superficie es el membrete, que es marca y no dato.
+ * El verde no es el color de los botones, es el color de un dato concreto
+ * —documento analizado—: cuando un color informa no puede gastarse en
+ * decoracion. La accion principal va en papel (--ink) sobre el fondo, y el
+ * unico sitio donde el verde cubre superficie es el membrete, que es marca.
  */
 :root {
   color-scheme: dark;
 
   /* Tinta: texto y acciones. Sobre fondo oscuro la tinta es el papel. */
-  --tinta: #f2f1ee;
-  --tinta-media: rgba(242, 241, 238, .6);
-  --tinta-tenue: rgba(242, 241, 238, .45);
-  --tinta-contra: #141413;
+  --ink: #f2f1ee;
+  --ink-mid: rgba(242, 241, 238, .6);
+  --ink-faint: rgba(242, 241, 238, .45);
+  --ink-contrast: #141413;
 
   /* Papel. */
-  --pergamino: #141413;
-  --hoja: #191918;
+  --parchment: #141413;
+  --sheet: #191918;
   --menu: #1c1c1a;
-  --pauta: rgba(242, 241, 238, .09);
-  --pauta-fuerte: rgba(242, 241, 238, .14);
-  --roce: rgba(242, 241, 238, .035);
-  --relleno: rgba(242, 241, 238, .06);
+  --rule: rgba(242, 241, 238, .09);
+  --rule-strong: rgba(242, 241, 238, .14);
+  --hover: rgba(242, 241, 238, .035);
+  --fill: rgba(242, 241, 238, .06);
 
-  /* Veredictos. El tono pleno marca y ademas se lee: sobre #141413 los tres
-     pasan de 4.5:1, asi que aqui no hace falta la pareja pleno/oscuro que
-     exigia el papel claro. */
-  --verde: #7fdba4;
-  --verde-texto: #7fdba4;
-  --verde-tenue: rgba(127, 219, 164, .12);
+  /* Veredictos. Sobre #141413 los tres pasan de 4.5:1, asi que no hace falta la
+     pareja pleno/oscuro que exigia el papel claro. */
+  --green: #7fdba4;
+  --green-text: #7fdba4;
+  --green-soft: rgba(127, 219, 164, .12);
 
-  --lacre: #f08c72;
-  --lacre-tenue: rgba(240, 140, 114, .12);
+  --seal: #f08c72;
+  --seal-soft: rgba(240, 140, 114, .12);
 
-  --espera: #e0b061;
-  --espera-tenue: rgba(224, 176, 97, .12);
+  --pending: #e0b061;
+  --pending-soft: rgba(224, 176, 97, .12);
 
-  /* Verde de marca: solo el membrete. Es el verde del logotipo, mas saturado
-     que el del veredicto a proposito, para que uno no se lea como el otro. */
-  --marca: #00b25a;
-  --marca-tinta: #082a19;
+  /* Verde de marca, solo para el membrete: mas saturado que el del veredicto a
+     proposito, para que uno no se lea como el otro. */
+  --brand: #00b25a;
+  --brand-ink: #082a19;
 
-  --sombra-flotante: 0 18px 48px rgba(0, 0, 0, .6);
-  --sombra-aviso: 0 6px 20px rgba(0, 0, 0, .5);
-  --sombra-menu: 0 18px 40px rgba(0, 0, 0, .5);
+  --shadow-toast: 0 18px 48px rgba(0, 0, 0, .6);
+  --shadow-notice: 0 6px 20px rgba(0, 0, 0, .5);
+  --shadow-menu: 0 18px 40px rgba(0, 0, 0, .5);
 
-  --texto: 'Outfit Variable', system-ui, sans-serif;
+  --font: 'Outfit Variable', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }

@@ -31,7 +31,7 @@ WORKDIR /usr/src/app
 #
 # ClamAV ya no vive en esta imagen. Corria en el mismo contenedor y cgroup que
 # la API, con ~1-1.5 GB residentes: un OOM del escaner tumbaba el servicio.
-# Ahora es el servicio 'clamav' de docker-compose.yml, con su propia imagen
+# Ahora es el servicio 'clamav' de docker/docker-compose.yml, con su propia imagen
 # oficial fijada, su volumen de firmas y un healthcheck real. La aplicacion le
 # habla por TCP (CLAMAV_HOST/CLAMAV_PORT).
 RUN apk add --no-cache su-exec

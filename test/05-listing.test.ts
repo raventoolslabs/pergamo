@@ -3,9 +3,9 @@ import path from 'path';
 import fs from 'fs';
 import FormData from 'form-data';
 
-import { app } from '../src/app';
-import sequelize, { QueryTypes } from '../src/utils/db';
-import Config from '../src/config';
+import { app } from '@/server';
+import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import Config from '@/shared/config';
 import { StatusCodes } from 'http-status-codes';
 
 /**
@@ -194,6 +194,65 @@ describe('Listing endpoints', () => {
     expect(response.data.total).toBeGreaterThanOrEqual(response.data.documents.length);
   });
 
+  it('Should sort by name and by scan status severity', async () => {
+
+    // Se insertan por SQL y no subiendo ficheros: hacen falta un veredicto y un
+    // nombre concretos, y ninguno de los dos lo decide quien sube.
+    const [organization]:any = await sequelize.query(
+      "SELECT id FROM pergamo.organization WHERE name = 'pergamo';", { type: QueryTypes.SELECT });
+
+    const seeded = [
+      { id: 'sort-a', name: 'Angulo-sortcase', status: 'pending' },
+      { id: 'sort-b', name: 'Bruma-sortcase', status: 'malicious' },
+      { id: 'sort-c', name: 'Zeta-sortcase', status: 'clean' }
+    ];
+
+    for(const row of seeded) {
+      await sequelize.query(
+        `INSERT INTO pergamo.document(id, organization, path, metadata, scan_status)
+        VALUES (:id, :organization, '/dev/null', :metadata::jsonb, :status);`, {
+        replacements: {
+          id: row.id,
+          organization: organization.id,
+          status: row.status,
+          metadata: JSON.stringify({
+            name: row.name, extension: 'pdf', mimetype: 'application/pdf', hash: row.id
+          })
+        },
+        type: QueryTypes.INSERT
+      });
+    }
+
+    const names = async (query:string) => {
+      const response = await api.get(`/document?name=sortcase&${query}`, {
+        headers: { authorization: tokenOwner }
+      });
+      expect([query, response.status]).toEqual([query, StatusCodes.OK]);
+      return response.data.documents.map((item:any) => item.metadata.name);
+    };
+
+    try {
+
+      expect(await names('sort=name&order=asc'))
+        .toEqual(['Angulo-sortcase', 'Bruma-sortcase', 'Zeta-sortcase']);
+      expect(await names('sort=name&order=desc'))
+        .toEqual(['Zeta-sortcase', 'Bruma-sortcase', 'Angulo-sortcase']);
+
+      // Por gravedad y no alfabeticamente: lo retenido en un extremo y lo
+      // entregable en el otro.
+      expect(await names('sort=scan_status&order=asc'))
+        .toEqual(['Zeta-sortcase', 'Angulo-sortcase', 'Bruma-sortcase']);
+      expect(await names('sort=scan_status&order=desc'))
+        .toEqual(['Bruma-sortcase', 'Angulo-sortcase', 'Zeta-sortcase']);
+
+    } finally {
+      await sequelize.query('DELETE FROM pergamo.document WHERE id IN (:ids);', {
+        replacements: { ids: seeded.map((row) => row.id) },
+        type: QueryTypes.DELETE
+      });
+    }
+  });
+
   it('Should reject invalid query parameters instead of ignoring them', async () => {
 
     for(const query of ['limit=0', 'limit=1000', 'offset=-1', 'sort=path', 'order=random',
@@ -236,7 +295,7 @@ describe('Listing endpoints', () => {
     });
 
     expect(response.status).toBe(StatusCodes.OK);
-    expect(['pending', 'clean', 'infected', 'error']).toContain(response.data.scan_status);
+    expect(['pending', 'clean', 'infected', 'error', 'malicious']).toContain(response.data.scan_status);
     expect(response.data).toHaveProperty('scan_signature');
   });
 
