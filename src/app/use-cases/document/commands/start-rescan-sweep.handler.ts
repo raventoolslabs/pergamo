@@ -2,6 +2,7 @@ import Config from '@/shared/config';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { SweepState } from '@/app/ports/services/rescan-queue.service';
 import { DocumentDeps } from '../dependencies';
+import { countScannablePending } from './sweep-pending-documents.handler';
 
 /**
  * Pide un barrido de los pendientes de la organizacion.
@@ -14,5 +15,10 @@ export const startRescanSweep = async (organization:string, deps:DocumentDeps):P
   if(!Config.enable_antivirus) throw new ValidationError(
     'ANTIVIRUS_DISABLED', 'This deployment has no scanner to rescan with');
 
-  return deps.rescanQueue.enqueueSweep(organization);
+  const [state, pending] = await Promise.all([
+    deps.rescanQueue.enqueueSweep(organization),
+    countScannablePending(organization, deps)
+  ]);
+
+  return { ...state, pending };
 }

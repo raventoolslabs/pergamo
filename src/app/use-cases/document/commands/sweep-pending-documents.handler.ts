@@ -1,9 +1,10 @@
 import Config from '@/shared/config';
 import log from '@/shared/logger';
 import { ScannerUnavailableError } from '@/domain/exceptions/scanner-unavailable.exception';
+import { DocumentListFilter } from '@/app/ports/repositories/document.repository';
 import { SweepProgress } from '@/app/ports/services/rescan-queue.service';
 import { DocumentDeps } from '../dependencies';
-import { exceedsScanLimit, scanStoredFile } from '../scan-stored-file';
+import { scanStoredFile } from '../scan-stored-file';
 import { getDocument } from '../queries/get-document.handler';
 
 export interface SweepPendingInput {
@@ -18,63 +19,68 @@ export interface SweepPendingInput {
 const BATCH_SIZE = 100;
 
 /**
+ * Lo que un barrido puede resolver: sin veredicto y dentro de lo que el escaner
+ * lee. Lo que no le cabe no cuenta como pendiente de analizar, porque ningun
+ * analisis se lo va a dar.
+ *
+ * Se declara aqui y lo usa tambien el recuento que decide si hay algo que
+ * barrer: dos definiciones distintas ofrecerian un barrido de cero documentos.
+ */
+export const scannablePending = (organization:string):DocumentListFilter => ({
+  organization,
+  scanStatus: ['pending'],
+  maxSize: Config.max_file_size,
+  limit: BATCH_SIZE,
+  offset: 0,
+  sort: 'creationDate',
+  order: 'asc'
+});
+
+/** Cuantos quedan por analizar, con el mismo criterio con que se analizan. */
+export const countScannablePending = async (organization:string, deps:DocumentDeps):Promise<number> =>
+  (await deps.documents.list({ ...scannablePending(organization), limit: 1 })).total;
+
+/**
  * Analiza todo lo que quedo sin veredicto.
  *
- * Se paginan siempre los primeros cien pendientes y no se avanza el desfase: al
- * analizar uno deja de ser 'pending', asi que la siguiente vuelta trae los
- * siguientes. Avanzar el offset se saltaria uno de cada dos.
+ * Se paginan siempre los primeros cien y no se avanza el desfase: al analizar
+ * uno deja de ser 'pending', asi que la siguiente vuelta trae los siguientes.
+ * Avanzar el offset se saltaria uno de cada dos.
  *
- * Un escaner que no contesta detiene el barrido entero —seguir solo produciria
- * el mismo fallo mil veces—, pero un fichero mayor de lo que ese escaner lee no:
- * ese se salta y se sigue, porque el problema es del fichero y no del motor.
+ * Un escaner que no contesta detiene el barrido entero: seguir solo produciria
+ * el mismo fallo mil veces.
  */
 export const sweepPendingDocuments = async (input:SweepPendingInput, deps:DocumentDeps):Promise<SweepProgress> => {
 
   const { organization, trace, report } = input;
 
   const progress:SweepProgress = {
-    scanned: 0, clean: 0, quarantined: 0, missing: 0, skipped: 0, total: 0
+    scanned: 0, clean: 0, quarantined: 0, missing: 0, failed: 0, total: 0
   };
 
-  // Los saltados siguen siendo 'pending', asi que volverian a salir en la
-  // siguiente pagina: se recuerdan para no contarlos ni mirarlos dos veces.
-  const skipped = new Set<string>();
+  // Un documento que falla por lo suyo sigue siendo 'pending', asi que volveria
+  // a salir en la siguiente pagina: se recuerda para no reintentarlo en bucle.
+  const failed = new Set<string>();
 
   for(;;) {
 
-    const page = await deps.documents.list({
-      organization,
-      scanStatus: ['pending'],
-      limit: BATCH_SIZE,
-      offset: 0,
-      sort: 'creationDate',
-      order: 'asc'
-    });
+    const page = await deps.documents.list(scannablePending(organization));
 
     // El total se fija en la primera vuelta: cada documento analizado deja de
     // ser 'pending', asi que releerlo lo veria encoger hasta cero.
     if(progress.total === 0) progress.total = page.total;
 
-    const batch = page.documents.filter((summary) => !skipped.has(summary.id));
+    const batch = page.documents.filter((summary) => !failed.has(summary.id));
 
     if(batch.length === 0) break;
 
     for(const summary of batch) {
 
-      // El listado no trae `path` —es almacenamiento y no sale del repositorio—,
-      // asi que el documento entero se pide aqui.
-      const document = await getDocument(organization, summary.id, deps);
-
-      if(exceedsScanLimit(document)) {
-        skipped.add(summary.id);
-        progress.skipped++;
-        log.warn(`${trace} | Document ${summary.id} skipped: larger than the ${Config.max_file_size} bytes the scanner reads`);
-        if(report) await report({ ...progress });
-        continue;
-      }
-
       try {
 
+        // El listado no trae `path` —es almacenamiento y no sale del
+        // repositorio—, asi que el documento entero se pide aqui.
+        const document = await getDocument(organization, summary.id, deps);
         const { outcome } = await scanStoredFile(document, deps, trace);
 
         progress.scanned++;
@@ -88,8 +94,8 @@ export const sweepPendingDocuments = async (input:SweepPendingInput, deps:Docume
 
         // Un fallo propio de este documento no se lleva por delante el barrido:
         // se anota y se sigue con el siguiente.
-        skipped.add(summary.id);
-        progress.skipped++;
+        failed.add(summary.id);
+        progress.failed++;
         log.error(`${trace} | Document ${summary.id} could not be rescanned: ${error.message}`);
       }
 
@@ -97,7 +103,7 @@ export const sweepPendingDocuments = async (input:SweepPendingInput, deps:Docume
     }
   }
 
-  log.info(`${trace} | Rescan sweep finished for ${organization}: ${progress.scanned} scanned (${progress.clean} clean, ${progress.quarantined} quarantined, ${progress.missing} missing, ${progress.skipped} skipped)`);
+  log.info(`${trace} | Rescan sweep finished for ${organization}: ${progress.scanned} scanned (${progress.clean} clean, ${progress.quarantined} quarantined, ${progress.missing} missing, ${progress.failed} failed)`);
 
   return progress;
 }

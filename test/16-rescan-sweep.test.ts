@@ -94,6 +94,35 @@ describe('Rescan sweep', () => {
 
     expect(response.status).toBe(StatusCodes.OK);
     expect(response.data.status).toBe('idle');
+    // Y lo que queda por analizar, que es lo que decide si hay algo que ofrecer.
+    expect(response.data.pending).toBeGreaterThan(0);
+  });
+
+  it('Should leave out of the count what the scanner cannot read', async () => {
+
+    const before = await api.get('/document/rescan', { headers: { authorization: token } });
+
+    // Pasado el tope del escaner deja de ser trabajo pendiente: ningun analisis
+    // le va a dar veredicto, asi que un barrido no lo cuenta ni lo mira.
+    await sequelize.query(
+      `UPDATE pergamo.document
+      SET metadata = jsonb_set(metadata, '{size}', to_jsonb(:size::bigint))
+      WHERE id = :id;`, {
+      replacements: { id: documentId, size: Config.max_file_size + 1 },
+      type: QueryTypes.UPDATE
+    });
+
+    const after = await api.get('/document/rescan', { headers: { authorization: token } });
+
+    expect(after.data.pending).toBe(before.data.pending - 1);
+
+    await sequelize.query(
+      `UPDATE pergamo.document
+      SET metadata = jsonb_set(metadata, '{size}', to_jsonb(:size::bigint))
+      WHERE id = :id;`, {
+      replacements: { id: documentId, size: 13536 },
+      type: QueryTypes.UPDATE
+    });
   });
 
   it('Should queue a sweep of the pending documents', async () => {

@@ -4,8 +4,8 @@ export interface SweepProgress {
   clean: number;
   quarantined: number;
   missing: number;
-  /** Mayores de lo que el escaner lee: se dejan como estaban. */
-  skipped: number;
+  /** Los que fallaron por lo suyo; el barrido siguio con el resto. */
+  failed: number;
   total: number;
 }
 
@@ -13,6 +13,8 @@ export type SweepStatus = 'idle' | 'queued' | 'running' | 'done' | 'failed';
 
 export interface SweepState {
   status: SweepStatus;
+  /** Cuantos quedan por analizar de los que el escaner puede leer. */
+  pending?: number;
   progress?: SweepProgress;
   /** Por que fallo, cuando fallo. */
   error?: string;

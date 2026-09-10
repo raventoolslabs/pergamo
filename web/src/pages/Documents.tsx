@@ -102,6 +102,7 @@ export const Documents = () => {
 
   const config = useConfig();
   const sweepPolls = useRef(0);
+  const watchedSweep = useRef(false);
 
   const offset = (page - 1) * pageSize;
 
@@ -195,6 +196,7 @@ export const Documents = () => {
   const startSweep = async () => {
     try {
       sweepPolls.current = 0;
+      watchedSweep.current = true;
       setSweep(await api.startSweep());
     } catch (failure) {
       toast(errorMessage(failure), 'error');
@@ -214,9 +216,17 @@ export const Documents = () => {
   const filtered = !!(filters.name || filters.tag || filters.scan_status || filters.from || filters.to);
 
   const sweeping = sweep?.status === 'queued' || sweep?.status === 'running';
-  // Solo donde hay algo que barrer y con que barrerlo. Mientras corre se sigue
-  // enseñando, deshabilitado, para que no parezca que se ha ido.
-  const showSweep = config?.enable_antivirus === true && (sweeping || !!holdings?.pending);
+  // Solo donde hay algo que barrer y con que barrerlo. El recuento lo da el
+  // propio barrido, que no cuenta lo que el analizador no puede leer: ofrecer
+  // analizar eso seria ofrecer no hacer nada. Mientras corre se sigue enseñando,
+  // deshabilitado, para que no parezca que se ha ido.
+  const showSweep = config?.enable_antivirus === true && (sweeping || !!sweep?.pending);
+
+  // El resultado se cuenta una vez, a quien estaba mirando. Al volver a entrar,
+  // un barrido que termino hace rato ya no es novedad: lo que dejo hecho lo dice
+  // el listado.
+  const showSweepNotice = !!sweep && sweep.status !== 'idle'
+    && (sweeping || watchedSweep.current);
   // Sin documentos y sin filtro puesto no hay nada que filtrar: los campos solo
   // entorpecen el camino al primer deposito.
   const showFilters = filtered || documents.length > 0;
@@ -233,7 +243,7 @@ export const Documents = () => {
             <button type="button" className="btn" onClick={startSweep} disabled={sweeping}>
               {sweeping
                 ? <><span className="spinner" aria-hidden="true" /> {t('documents.sweeping')}</>
-                : <><RescanIcon /> {t('documents.sweep', { count: holdings?.pending ?? 0 })}</>}
+                : <><RescanIcon /> {t('documents.sweep', { count: sweep?.pending ?? 0 })}</>}
             </button>
           ) : null}
           <button type="button" className="btn btn--primary" onClick={() => setUploading(true)}>
@@ -245,7 +255,7 @@ export const Documents = () => {
 
       <ErrorNotice error={error} />
 
-      {sweep && sweep.status !== 'idle' ? (
+      {showSweepNotice && sweep ? (
         <div className="spaced">
           <Notice
             wide
@@ -262,8 +272,7 @@ export const Documents = () => {
                 : t('documents.sweepCount', {
                     count: sweep.progress.scanned,
                     scanned: sweep.progress.scanned,
-                    total: sweep.progress.total,
-                    skipped: sweep.progress.skipped
+                    total: sweep.progress.total
                   })}
           </Notice>
         </div>

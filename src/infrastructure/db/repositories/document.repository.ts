@@ -114,7 +114,7 @@ export const documentRepository:DocumentRepository = {
 
   async list(filter:DocumentListFilter):Promise<DocumentPage> {
 
-    const { organization, limit, offset, name, tag, scanStatus, from, to, sort, order } = filter;
+    const { organization, limit, offset, name, tag, scanStatus, maxSize, from, to, sort, order } = filter;
 
     const replacements:any = { organization, limit, offset };
     const conditions:string[] = [];
@@ -136,6 +136,12 @@ export const documentRepository:DocumentRepository = {
       // el array del replacement, asi que los valores siguen enlazados.
       conditions.push(`scan_status IN (:scan_status)`);
       replacements.scan_status = scanStatus;
+    }
+
+    if(maxSize !== undefined) {
+      // Sin tamano guardado no se afirma nada: entra, y decide el escaner.
+      conditions.push(`COALESCE((metadata->>'size')::bigint, 0) <= :max_size`);
+      replacements.max_size = maxSize;
     }
 
     // Franja inclusiva por los dos lados: quien pide «hasta las 12:00» espera

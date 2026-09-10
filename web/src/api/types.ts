@@ -62,13 +62,15 @@ export interface SweepProgress {
   clean: number;
   quarantined: number;
   missing: number;
-  /** Mayores de lo que el analizador lee: se dejan como estaban. */
-  skipped: number;
+  /** Los que fallaron por lo suyo; el barrido siguió con el resto. */
+  failed: number;
   total: number;
 }
 
 export interface SweepState {
   status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
+  /** Cuántos quedan por analizar de los que el analizador puede leer. */
+  pending?: number;
   progress?: SweepProgress;
   error?: string;
 }

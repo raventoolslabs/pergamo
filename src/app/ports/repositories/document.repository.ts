@@ -24,6 +24,12 @@ export interface DocumentListFilter {
   name?: string;
   tag?: string;
   scanStatus?: ScanStatus[];
+  /**
+   * Tope de tamano en bytes. No lo ofrece la query string: lo usa el barrido
+   * para dejar fuera lo que el escaner no puede leer. Un documento sin tamano
+   * guardado entra, que es lo que hace tambien `exceedsScanLimit`.
+   */
+  maxSize?: number;
   from?: Date;
   to?: Date;
   sort: 'creationDate' | 'modificationDate';
