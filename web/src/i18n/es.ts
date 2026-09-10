@@ -133,7 +133,6 @@ export const es = {
   'upload.index': 'Indexar el contenido',
   'upload.indexHint': 'Se extrae el texto del fichero y se guarda troceado para poder buscar por lo que dice, y no solo por su nombre y sus etiquetas. El fichero original no se toca.',
   'upload.antivirusOff': 'Este servidor tiene el antivirus desactivado: los ficheros se guardan sin analizar y quedan marcados como «Sin analizar» hasta que un reanálisis les dé veredicto.',
-  'upload.antivirusOn': 'Cada fichero se analiza antes de guardarse. Si el analizador no está disponible, el documento se guarda y se entrega igual, marcado como «Análisis pendiente» hasta que el próximo análisis le dé veredicto.',
 
   'detail.opening': 'Abriendo el documento…',
   'detail.back': 'Volver a Documentos',

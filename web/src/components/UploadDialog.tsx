@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { DragEvent } from 'react';
 
 import { api } from '../api/client';
@@ -54,10 +54,9 @@ export const UploadDialog = ({ onClose, onUploaded }: {
 }) => {
 
   const config = useConfig();
-  const input = useRef<HTMLInputElement>(null);
 
   const [items, setItems] = useState<QueueItem[]>([]);
-  const [indexing, setIndexing] = useState(false);
+  const [indexing, setIndexing] = useState(true);
   const [over, setOver] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploaded, setUploaded] = useState(0);
@@ -79,13 +78,15 @@ export const UploadDialog = ({ onClose, onUploaded }: {
   const add = useCallback((files: FileList | null) => {
     if (!files?.length) return;
 
-    setItems((current) => [
-      ...current,
-      ...Array.from(files).map((file): QueueItem => {
-        const problem = problemWith(file);
-        return problem ? { file, state: 'error', note: problem } : { file, state: 'pending' };
-      })
-    ]);
+    // La lista se copia antes de tocar el estado: el input se limpia nada mas
+    // volver de elegir, y su FileList no puede quedar a merced de cuando React
+    // ejecute el actualizador.
+    const queued = Array.from(files).map((file): QueueItem => {
+      const problem = problemWith(file);
+      return problem ? { file, state: 'error', note: problem } : { file, state: 'pending' };
+    });
+
+    setItems((current) => [...current, ...queued]);
   }, [problemWith]);
 
   const drop = (event: DragEvent) => {
@@ -97,6 +98,12 @@ export const UploadDialog = ({ onClose, onUploaded }: {
   const submit = async () => {
     setSending(true);
     let succeeded = 0;
+    // Los rechazados antes de enviarse ya cuentan: si hay alguno, el dialogo se
+    // queda abierto para que se vea cual.
+    let failed = items.filter((item) => item.state === 'error').length;
+
+    // La casilla viene marcada, pero pedir indexacion donde no la hay es un 400.
+    const wantIndex = indexing && config?.indexing_enabled === true;
 
     for (let index = 0; index < items.length; index += 1) {
       if (items[index].state !== 'pending') continue;
@@ -105,11 +112,12 @@ export const UploadDialog = ({ onClose, onUploaded }: {
         position === index ? { ...item, state: 'uploading' } : item));
 
       try {
-        await api.upload(items[index].file, indexing);
+        await api.upload(items[index].file, wantIndex);
         succeeded += 1;
         setItems((current) => current.map((item, position) =>
           position === index ? { ...item, state: 'done', note: t('upload.done') } : item));
       } catch (failure) {
+        failed += 1;
         setItems((current) => current.map((item, position) =>
           position === index ? { ...item, state: 'error', note: errorMessage(failure) } : item));
       }
@@ -119,6 +127,9 @@ export const UploadDialog = ({ onClose, onUploaded }: {
     setUploaded((current) => current + succeeded);
     // Se refresca aunque alguno haya fallado: los que si entraron deben verse.
     if (succeeded) onUploaded();
+    // Sin nada que mirar el dialogo estorba; con un error se queda, porque el
+    // motivo solo se cuenta aqui.
+    if (succeeded && !failed) onClose();
   };
 
   const pending = items.filter((item) => item.state === 'pending').length;
@@ -142,28 +153,26 @@ export const UploadDialog = ({ onClose, onUploaded }: {
       }
     >
       <div className="dialog__body">
-        <div
+        {/* Una etiqueta con el input dentro, y no un div que llama a click():
+            un input `hidden` no responde a la llamada en todos los navegadores,
+            y asi abre el selector el propio navegador. */}
+        <label
           className={`dropzone${over ? ' over' : ''}`}
-          role="button"
-          tabIndex={0}
-          onClick={() => input.current?.click()}
-          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') input.current?.click(); }}
           onDragOver={(event) => { event.preventDefault(); setOver(true); }}
           onDragLeave={() => setOver(false)}
           onDrop={drop}
         >
           <strong>{t('upload.dropHere')}</strong>
           <span>{t('upload.orClick')}</span>
-        </div>
 
-        <input
-          ref={input}
-          type="file"
-          multiple
-          accept={accept}
-          hidden
-          onChange={(event) => { add(event.target.files); event.target.value = ''; }}
-        />
+          <input
+            className="sr-only"
+            type="file"
+            multiple
+            accept={accept}
+            onChange={(event) => { add(event.target.files); event.target.value = ''; }}
+          />
+        </label>
 
         {config && (config.valid_mimetype.length || config.max_file_size) ? (
           <p className="field__hint">
@@ -214,11 +223,11 @@ export const UploadDialog = ({ onClose, onUploaded }: {
           </div>
         ) : null}
 
-        {/* No se promete lo que este despliegue no hace: con el antivirus
-            apagado el fichero entra tal cual. */}
-        <Notice kind={config?.enable_antivirus === false ? 'warn' : 'info'}>
-          {config?.enable_antivirus === false ? t('upload.antivirusOff') : t('upload.antivirusOn')}
-        </Notice>
+        {/* Solo cuando este despliegue no analiza: que analice es lo que se
+            espera, y repetirlo en cada subida no dice nada. */}
+        {config?.enable_antivirus === false ? (
+          <Notice kind="warn">{t('upload.antivirusOff')}</Notice>
+        ) : null}
       </div>
     </Dialog>
   );

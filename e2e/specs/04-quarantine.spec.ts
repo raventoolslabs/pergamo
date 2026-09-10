@@ -1,4 +1,4 @@
-import { test, expect, shot, login, asset, closeDialog, sql } from '../helpers';
+import { test, expect, shot, login, asset, sql } from '../helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -16,8 +16,9 @@ test.describe('Quarantine', () => {
     const dialog = page.getByRole('dialog');
     await dialog.locator('input[type=file]').setInputFiles(asset('test.pdf'));
     await dialog.getByRole('button', { name: /^subir/i }).click();
-    await expect(dialog.getByText(/subido/i)).toBeVisible();
-    await closeDialog(page);
+    // El dialogo se cierra solo en cuanto todo ha entrado: no queda nada que
+    // mirar ni que cerrar.
+    await expect(dialog).toHaveCount(0);
 
     await sql(`UPDATE pergamo.document
       SET scan_status = 'infected', scan_signature = 'Eicar-Test-Signature',
@@ -51,8 +52,9 @@ test.describe('Quarantine', () => {
     const dialog = page.getByRole('dialog');
     await dialog.locator('input[type=file]').setInputFiles(asset('payloads/payload3.pdf'));
     await dialog.getByRole('button', { name: /^subir/i }).click();
-    await expect(dialog.getByText(/subido/i)).toBeVisible();
-    await closeDialog(page);
+    // El dialogo se cierra solo en cuanto todo ha entrado: no queda nada que
+    // mirar ni que cerrar.
+    await expect(dialog).toHaveCount(0);
 
     await page.getByRole('link', { name: 'payload3' }).click();
 
@@ -83,7 +85,7 @@ test.describe('Quarantine', () => {
     // mismo estado describian el servidor en la ficha de cada documento.
     // Por texto y no por rol: el aviso es un `warn`, y el rol 'alert'
     // —asertivo, interrumpe al lector de pantalla— se reserva a los errores.
-    await expect(page.getByText(/todavía no hay veredicto/i)).toBeVisible();
+    await expect(page.getByText(/todavía no tiene veredicto/i)).toBeVisible();
 
     await shot(page, 'detail-pending-scan');
   });

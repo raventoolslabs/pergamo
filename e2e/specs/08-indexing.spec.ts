@@ -1,4 +1,4 @@
-import { test, expect, shot, login, asset, closeDialog, sql } from '../helpers';
+import { test, expect, shot, login, asset, sql } from '../helpers';
 
 /**
  * Solo con E2E_INDEXING: sin maquina de inferencia detras no hay nada que
@@ -33,8 +33,9 @@ test.describe('Semantic index', () => {
     await shot(page, 'upload-indexing');
 
     await dialog.getByRole('button', { name: /^subir/i }).click();
-    await expect(dialog.getByText(/subido/i)).toBeVisible();
-    await closeDialog(page);
+    // El dialogo se cierra solo en cuanto todo ha entrado: no queda nada que
+    // mirar ni que cerrar.
+    await expect(dialog).toHaveCount(0);
 
     await page.getByRole('link', { name: 'multipage' }).first().click();
 
@@ -63,8 +64,9 @@ test.describe('Semantic index', () => {
     await dialog.locator('input[type=file]').setInputFiles(asset('structured.docx'));
     await dialog.getByRole('checkbox').check();
     await dialog.getByRole('button', { name: /^subir/i }).click();
-    await expect(dialog.getByText(/subido/i)).toBeVisible();
-    await closeDialog(page);
+    // El dialogo se cierra solo en cuanto todo ha entrado: no queda nada que
+    // mirar ni que cerrar.
+    await expect(dialog).toHaveCount(0);
 
     await page.getByRole('link', { name: 'structured' }).first().click();
     await expect(page.getByText(/^indexado$/i).first()).toBeVisible({ timeout: 60000 });
@@ -125,9 +127,13 @@ test.describe('Semantic index', () => {
 
     const dialog = page.getByRole('dialog');
     await dialog.locator('input[type=file]').setInputFiles(asset('test.pdf'));
+    // La casilla viene marcada: dejar el documento fuera del indice es
+    // desmarcarla.
+    await dialog.getByRole('checkbox').uncheck();
     await dialog.getByRole('button', { name: /^subir/i }).click();
-    await expect(dialog.getByText(/subido/i)).toBeVisible();
-    await closeDialog(page);
+    // El dialogo se cierra solo en cuanto todo ha entrado: no queda nada que
+    // mirar ni que cerrar.
+    await expect(dialog).toHaveCount(0);
 
     await page.getByRole('link', { name: 'test' }).first().click();
 

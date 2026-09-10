@@ -706,6 +706,9 @@ a:hover { text-decoration-color: currentColor; }
 }
 .dropzone strong { color: var(--ink); font-size: 15px; }
 .dropzone.over { border-color: var(--green); border-style: solid; background: var(--green-soft); color: var(--green-text); }
+/* El input va dentro y no se ve: el anillo de foco lo lleva la zona, que
+   es lo que se esta pulsando. */
+.dropzone:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 /* La etiqueta entera es el area de pulsacion, no solo el cuadrito: es una
    opcion que se explica en dos lineas y obligar a acertar en 13 px sobra. */

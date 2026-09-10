@@ -38,13 +38,22 @@ test.describe('Document holdings', () => {
     await page.getByRole('button', { name: /subir documento/i }).click();
 
     const dialog = page.getByRole('dialog');
-    await dialog.locator('input[type=file]').setInputFiles(asset('test.pdf'));
+
+    // Se elige pulsando, que es el camino que setInputFiles no recorre: ese
+    // escribe en el input directamente y se salta la zona de arrastre.
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      dialog.getByText(/arrastra los ficheros/i).click()
+    ]);
+    await chooser.setFiles(asset('test.pdf'));
+
+    await expect(dialog.getByText('test.pdf')).toBeVisible();
     await shot(page, 'upload-ready');
 
     await dialog.getByRole('button', { name: /^subir/i }).click();
-    await expect(dialog.getByText(/subido/i)).toBeVisible();
-
-    await closeDialog(page);
+    // El dialogo se cierra solo en cuanto todo ha entrado: no queda nada que
+    // mirar ni que cerrar.
+    await expect(dialog).toHaveCount(0);
 
     await expect(page.getByRole('link', { name: 'test' })).toBeVisible();
     await shot(page, 'documents-with-one');
