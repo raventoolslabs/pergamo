@@ -32,7 +32,7 @@ export interface DocumentListFilter {
   maxSize?: number;
   from?: Date;
   to?: Date;
-  sort: 'creationDate' | 'modificationDate';
+  sort: 'creationDate' | 'modificationDate' | 'name' | 'scanStatus';
   order: 'asc' | 'desc';
 }
 

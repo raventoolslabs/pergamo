@@ -32,6 +32,8 @@ export const es = {
   'a11y.showPassword': 'Mostrar contraseña',
   'a11y.hidePassword': 'Ocultar contraseña',
   'a11y.viewPassword': 'Ver contraseña',
+  'a11y.sortAscending': 'Ordenar por {column}, ascendente',
+  'a11y.sortDescending': 'Ordenar por {column}, descendente',
 
   'masthead.session': 'Sesión',
   'masthead.master': 'Master',
@@ -126,6 +128,8 @@ export const es = {
   'documents.columnDeposited': 'Depósito',
   'documents.download': 'Descargar',
   'documents.downloadNamed': 'Descargar {name}',
+  'documents.sortedAscending': 'Ordenado de forma ascendente',
+  'documents.sortedDescending': 'Ordenado de forma descendente',
 
   'upload.title': 'Subir documento',
   'upload.dropHere': 'Arrastra los ficheros aquí',

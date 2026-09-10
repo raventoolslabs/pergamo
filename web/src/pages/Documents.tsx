@@ -7,7 +7,7 @@ import type { DocumentList, DocumentQuery, SweepState } from '../api/types';
 import { UploadDialog } from '../components/UploadDialog';
 import { useToast } from '../components/toast';
 import {
-  Empty, ErrorNotice, Loading, Notice, PAGE_SIZES, Pagination, VERDICT, Verdict,
+  Empty, ErrorNotice, Loading, Notice, PAGE_SIZES, Pagination, SortHeader, VERDICT, Verdict,
   errorMessage, formatDate, formatSize, isDeliverable, verdictOf
 } from '../components/ui';
 import { t } from '../i18n';
@@ -30,6 +30,19 @@ const STATUS_FILTERS = [
   { value: 'infected,malicious', text: t('documents.statusQuarantined') },
   { value: 'error', text: t('documents.statusError') }
 ];
+
+/**
+ * Columnas que ordenan, con el sentido de su primer clic: alfabetico en el
+ * nombre, y lo que reclama atencion arriba en el estado y en la fecha.
+ *
+ * La etiqueta se queda fuera: es una lista, y ordenar por ella obligaria a
+ * elegir uno de los tags por el documento.
+ */
+const SORTABLE = {
+  document: { column: 'name', label: t('documents.columnDocument'), fallback: 'asc' },
+  status: { column: 'scan_status', label: t('documents.columnStatus'), fallback: 'desc' },
+  deposited: { column: 'creation_date', label: t('documents.columnDeposited'), fallback: 'desc' }
+} as const;
 
 /** Ritmo con que se pregunta por un barrido vivo, y su tope. */
 const SWEEP_POLL_MS = 3000;
@@ -157,6 +170,8 @@ export const Documents = () => {
     setPage(1);
     setFilters((current) => ({ ...current, ...change }));
   };
+
+  const sortBy = (sort: NonNullable<DocumentQuery['sort']>, order: 'asc' | 'desc') => update({ sort, order });
 
   const refresh = useCallback(() => setReload((value) => value + 1), []);
 
@@ -355,17 +370,21 @@ export const Documents = () => {
               <button
                 type="button"
                 className="btn btn--pill"
-                onClick={() => { setPage(1); setFilters(EMPTY_FILTERS); }}
+                onClick={() => {
+                  setPage(1);
+                  // El orden no es un filtro: quien lo eligio no ha pedido deshacerlo.
+                  setFilters({ ...EMPTY_FILTERS, sort: filters.sort, order: filters.order });
+                }}
               >{t('common.clearFilters')}</button>
             ) : null}
           </div>
 
           <div className="ledger">
             <div className="ledger__header">
-              <span>{t('documents.columnDocument')}</span>
+              <SortHeader {...SORTABLE.document} sort={filters.sort} order={filters.order} onSort={sortBy} />
               <span>{t('documents.columnTag')}</span>
-              <span>{t('documents.columnStatus')}</span>
-              <span>{t('documents.columnDeposited')}</span>
+              <SortHeader {...SORTABLE.status} sort={filters.sort} order={filters.order} onSort={sortBy} />
+              <SortHeader {...SORTABLE.deposited} sort={filters.sort} order={filters.order} onSort={sortBy} />
               <span />
             </div>
 

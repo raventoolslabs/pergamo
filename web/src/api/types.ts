@@ -158,6 +158,6 @@ export interface DocumentQuery {
       en UTC y el formulario recoge hora local. */
   from?: string;
   to?: string;
-  sort?: 'creation_date' | 'modification_date';
+  sort?: 'creation_date' | 'modification_date' | 'name' | 'scan_status';
   order?: 'asc' | 'desc';
 }

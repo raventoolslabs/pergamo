@@ -31,6 +31,16 @@ import { listDocumentChunks } from '@/app/use-cases/document/queries/list-docume
 
 const trace = (req:any) => `${req.method} ${req.originalUrl} - ${req.id}`;
 
+// La query string nombra las columnas como las devuelve la respuesta y el
+// dominio las nombra en camelCase. Como mapa y no como ternario: con cuatro
+// columnas, un ternario manda al mismo sitio todo lo que no acierte.
+const SORT_FIELD = {
+  creation_date: 'creationDate',
+  modification_date: 'modificationDate',
+  name: 'name',
+  scan_status: 'scanStatus'
+} as const;
+
 const requireId = (req:any) => {
   if(!req?.params?.id) throw new ValidationError('FIELD_REQUIRED', 'Value "id" is required');
   return req.params.id as string;
@@ -221,7 +231,7 @@ const list = async (req, res, next) => {
       organization: req.user.organization,
       limit, offset, name, tag, from, to, order,
       scanStatus: scan_status,
-      sort: sort === 'creation_date' ? 'creationDate' : 'modificationDate'
+      sort: SORT_FIELD[sort]
     }, deps);
 
     res.status(StatusCodes.OK)

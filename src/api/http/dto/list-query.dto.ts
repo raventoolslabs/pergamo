@@ -32,7 +32,8 @@ export const documentListQuerySchema = z.object({
   scan_status: scanStatusFilter.optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
-  sort: z.enum(['creation_date', 'modification_date']).default('creation_date'),
+  sort: z.enum(['creation_date', 'modification_date', 'name', 'scan_status'])
+    .default('creation_date'),
   order: z.enum(['asc', 'desc']).default('desc')
 }).strict();
 

@@ -186,6 +186,36 @@ test.describe('Document holdings', () => {
     await sql(`DELETE FROM pergamo.document WHERE metadata->>'name' = 'sin-fichero';`);
   });
 
+  test('Should sort the holdings by the column that is clicked', async ({ page }) => {
+
+    // Dos nombres que rodean al del documento subido: asi el orden se lee sin
+    // depender de cuantos documentos haya dejado la prueba anterior.
+    await sql(`INSERT INTO pergamo.document(organization, path, metadata)
+      SELECT 'pergamo', 'sin-usar', jsonb_build_object(
+        'name', n, 'extension', 'pdf', 'mimetype', 'application/pdf',
+        'hash', md5(n), 'tags', '[]'::jsonb)
+      FROM unnest(ARRAY['aaa-orden', 'zzz-orden']) AS n;`);
+
+    await page.reload();
+
+    const titles = page.locator('.record__title a');
+
+    await page.getByRole('button', { name: /ordenar por documento/i }).click();
+    await expect(titles).toHaveText(['aaa-orden', 'test', 'zzz-orden']);
+    await shot(page, 'documents-sorted-by-name');
+
+    // El segundo clic sobre la misma columna invierte el sentido.
+    await page.getByRole('button', { name: /ordenar por documento/i }).click();
+    await expect(titles).toHaveText(['zzz-orden', 'test', 'aaa-orden']);
+
+    // Volver al deposito manda lo recien insertado arriba y deja 'test', que
+    // entro antes, en el ultimo lugar.
+    await page.getByRole('button', { name: /ordenar por depósito/i }).click();
+    await expect(titles.last()).toHaveText('test');
+
+    await sql(`DELETE FROM pergamo.document WHERE metadata->>'name' LIKE '%-orden';`);
+  });
+
   test('Should download the document', async ({ page }) => {
     const pending = page.waitForEvent('download');
     await page.getByRole('button', { name: /descargar/i }).first().click();

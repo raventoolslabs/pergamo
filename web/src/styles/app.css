@@ -340,6 +340,31 @@ a:hover { text-decoration-color: currentColor; }
   color: rgba(242, 241, 238, .4);
 }
 
+/* El rotulo de columna que ordena es un boton, pero no debe parecerlo: hereda
+   la tipografia de la cabecera y solo el chevron dice que se puede pulsar. */
+.ledger__sort { min-width: 0; }
+.sorter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.sorter:hover { color: rgba(242, 241, 238, .7); }
+.sorter--on { color: rgba(242, 241, 238, .8); }
+
+/* El chevron se reserva su hueco siempre: sin eso, el rotulo se desplaza al
+   ordenar por su columna. */
+.sorter svg { flex: none; opacity: 0; transition: opacity .12s ease; }
+.sorter:hover svg, .sorter:focus-visible svg { opacity: .45; }
+.sorter--on svg { opacity: 1; }
+
 .record {
   padding: 15px 20px;
   border-bottom: 1px solid var(--fill);

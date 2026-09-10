@@ -9,9 +9,17 @@ import { toDocument, toDocumentSummary } from '@/infrastructure/db/mappers/docum
 import { escapeLike } from '@/shared/validation';
 
 // El orden llega como concepto del dominio; la columna es cosa de aqui.
+//
+// El nombre se ordena con clean_str, igual que se filtra: sin ella la ene con
+// virgulilla cae detras de la zeta. El estado se ordena por gravedad y no por
+// letra, que pondria 'clean' antes que 'error' y no agruparia lo retenido.
 const SORT_COLUMN:Record<DocumentListFilter['sort'], string> = {
   creationDate: 'creation_date',
-  modificationDate: 'modification_date'
+  modificationDate: 'modification_date',
+  name: `clean_str(metadata->>'name')`,
+  scanStatus: `CASE scan_status
+    WHEN 'clean' THEN 0 WHEN 'pending' THEN 1 WHEN 'error' THEN 2
+    WHEN 'infected' THEN 3 WHEN 'malicious' THEN 4 END`
 };
 
 const scanReplacements = (scan:ScanRecord) => ({
@@ -161,12 +169,17 @@ export const documentRepository:DocumentRepository = {
     }
 
     const where = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
+    const direction = order.toUpperCase();
 
     // COUNT(*) OVER() da el total sin paginar en la misma pasada: una segunda
     // consulta podria ademas ver un corpus distinto.
     //
     // La columna y el sentido se interpolan porque un identificador no admite
     // parametro enlazado; ambos salen de un enum cerrado, no de la peticion.
+    //
+    // El id desempata: con valores repetidos, dos paginas consecutivas pueden
+    // traer la misma fila y saltarse otra. Va en el mismo sentido que la
+    // columna para que el indice sirva el orden entero sin reordenar.
     //
     // scan_engine viaja aunque nadie lo muestre: es lo unico que distingue un
     // 'clean' analizado de uno que nunca paso por un escaner.
@@ -175,7 +188,7 @@ export const documentRepository:DocumentRepository = {
         COUNT(*) OVER() AS total
       FROM pergamo.document
       WHERE organization = :organization${where}
-      ORDER BY ${SORT_COLUMN[sort]} ${order.toUpperCase()}
+      ORDER BY ${SORT_COLUMN[sort]} ${direction}, id ${direction}
       LIMIT :limit OFFSET :offset;`, {
       replacements,
       type: QueryTypes.SELECT

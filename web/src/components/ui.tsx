@@ -283,6 +283,59 @@ export const TabPanel = () => {
   );
 };
 
+/* ================================================================ ordenar == */
+
+const SortIcon = ({ order }: { order: 'asc' | 'desc' }) => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {order === 'asc' ? <path d="M6 15l6-6 6 6" /> : <path d="M6 9l6 6 6-6" />}
+  </svg>
+);
+
+/**
+ * Rotulo de columna que ordena el listado. El sentido del primer clic lo elige
+ * cada columna con `fallback` —A→Z en un nombre, lo reciente arriba en una
+ * fecha—; a partir de ahi, el clic invierte.
+ *
+ * El listado no es una tabla sino una rejilla de divs, asi que no lleva
+ * aria-sort: el estado va en texto para lector de pantalla junto al boton, y el
+ * aria-label del boton dice lo que hara el clic.
+ */
+export const SortHeader = <T extends string>({ column, label, sort, order, fallback, onSort }: {
+  column: T;
+  label: string;
+  /** La columna activa del listado, que puede no ser ninguna de las que ordenan. */
+  sort: string | undefined;
+  order: 'asc' | 'desc' | undefined;
+  fallback: 'asc' | 'desc';
+  onSort: (sort: T, order: 'asc' | 'desc') => void;
+}) => {
+
+  const active = sort === column;
+  const shown = active && order ? order : fallback;
+  const next = active ? (shown === 'asc' ? 'desc' : 'asc') : fallback;
+
+  return (
+    <span className="ledger__sort">
+      <button
+        type="button"
+        className={`sorter${active ? ' sorter--on' : ''}`}
+        aria-label={t(next === 'asc' ? 'a11y.sortAscending' : 'a11y.sortDescending', { column: label })}
+        onClick={() => onSort(column, next)}
+      >
+        {label}
+        <SortIcon order={shown} />
+      </button>
+
+      {active ? (
+        <span className="sr-only">
+          {t(shown === 'asc' ? 'documents.sortedAscending' : 'documents.sortedDescending')}
+        </span>
+      ) : null}
+    </span>
+  );
+};
+
 /* ============================================================= pagination == */
 
 /** Tamanos de pagina que se ofrecen. El primero es el de partida. */
