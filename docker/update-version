@@ -1,0 +1,28 @@
+#!/bin/bash
+
+URL_VERSION=http://localhost:3000/version
+
+set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")"
+
+version() {
+    local body
+    body=$(curl -sf -m 5 "$@" "$URL_VERSION") || { echo 'N/A'; return 0; }
+    if [[ $body =~ \"version\":\"([^\"]+)\" ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        echo 'N/A'
+    fi
+}
+
+before=$(version)
+docker compose pull
+docker compose up -d
+after=$(version --retry 30 --retry-delay 2 --retry-connrefused)
+echo "before: $before  after: $after"
+
+if [[ $after == 'N/A' ]] || [[ $after == "$before" ]]; then
+    echo '[FAIL] Update version'
+    exit 1
+fi
+echo '[OK] Update version'
