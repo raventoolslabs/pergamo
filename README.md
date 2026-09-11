@@ -22,7 +22,7 @@ La API sigue una arquitectura por capas, con la regla de dependencias descrita e
 * `dev.js` — arranque de desarrollo: API e interfaz en un solo comando.
 * `e2e` — recorrido en navegador de la interfaz, en contenedor. Proyecto npm propio, fuera de `web/` para que Playwright no entre en el build de la imagen.
 * `public` — logo y favicons, que Vite incorpora al build de la interfaz.
-* `docker` — despliegue: `docker-compose.yml`, `.env.example` del contenedor y la configuración del demonio ClamAV (`clamd.conf` y lista local de firmas ignoradas).
+* `docker` — despliegue: `docker-compose.yml`, `.env.example` del contenedor y la configuración de referencia de ClamAV (`clamd.conf` y lista local de firmas ignoradas).
 * `test` — pruebas de integración.
 * `.claude` — configuración del agente: skills del proyecto, hooks y reglas. Ver «Skills de Claude Code».
 
@@ -141,13 +141,66 @@ Variables que conviene revisar antes de desplegar:
 | `JWT_EXPIRES_IN` | Caducidad de los tokens (por defecto `8h`). |
 | `TRUST_PROXY` | Saltos de proxy inverso en los que confiar. **Si hay un proxy delante y vale 0, el rate limiting agrupará a todos los clientes bajo una sola IP.** |
 | `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` | Intentos permitidos por IP en los endpoints de credenciales. |
-| `MAX_FILE_SIZE` | Tamaño máximo por fichero subido, en bytes. **Si lo cambias, ajusta también `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` en `docker/clamav/clamd.conf`**: por debajo de este valor, ClamAV deja de analizar por completo los ficheros más grandes. |
+| `MAX_FILE_SIZE` | Tamaño máximo por fichero subido, en bytes. **Si lo cambias, ajusta también `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` en el `clamd.conf` del host** (ver [ClamAV](#clamav)): por debajo de este valor, ClamAV deja de analizar por completo los ficheros más grandes. |
 | `DEBUG` | Nivel de log `debug`; registra metadatos completos de fichero y documento. |
 | `ENABLE_ANTIVIRUS` | Análisis con ClamAV. Si no se define, el antivirus queda **desactivado** y el arranque lo advierte por log. Acepta `true/1/yes/on` y `false/0/no/off` sin distinguir mayúsculas; **un valor no reconocido detiene el arranque** en lugar de desactivar el escaneo en silencio. |
-| `CLAMAV_HOST` / `CLAMAV_PORT` | Destino del demonio clamd. Con `ENABLE_ANTIVIRUS` activo hay que definir esto o `CLAMAV_SOCKET`: sin uno de los dos, el arranque falla. |
-| `CLAMAV_SOCKET` | Alternativa a host/puerto para un clamd local por socket unix. |
+| `CLAMAV_SOCKET` | Socket unix de clamd. Vacío, y sin `CLAMAV_HOST`, vale `/run/clamav/clamd.ctl`: el del `clamav-daemon` del host. |
+| `CLAMAV_HOST` / `CLAMAV_PORT` | clamd por TCP en lugar de por socket. Declarar `CLAMAV_HOST` desactiva el socket por defecto. |
 | `CLAMAV_INIT_RETRIES` / `CLAMAV_INIT_RETRY_DELAY_MS` | Reintentos de conexión al arrancar. clamd tarda decenas de segundos en cargar las firmas. |
 | `TMP_MAX_AGE_MS` / `TMP_CLEANUP_INTERVAL_MS` | Limpieza periódica de temporales huérfanos en `data/tmp`. |
+
+## ClamAV
+
+Pergamo analiza con ClamAV cada subida antes de guardarla —con `ENABLE_ANTIVIRUS` activo— y el reescaneo del corpus pasa también por él. No lo lleva dentro: habla con el demonio `clamd` **del host**, tanto en desarrollo como en Docker, por su socket unix `/run/clamav/clamd.ctl`. Es el valor por defecto cuando no se declara `CLAMAV_HOST` ni `CLAMAV_SOCKET`, y el compose monta `/run/clamav` en los contenedores. El análisis va por `INSTREAM`: el fichero viaja por el socket, así que clamd no necesita ver las rutas de Pergamo.
+
+Con el antivirus activo y sin clamd, Pergamo no arranca: reintenta `CLAMAV_INIT_RETRIES` veces y termina con código 1 en lugar de aceptar subidas sin escáner.
+
+### Instalación
+
+En Debian o Ubuntu:
+
+```
+sudo apt install clamav-daemon clamav-freshclam
+sudo systemctl enable --now clamav-freshclam clamav-daemon
+```
+
+`clamav-freshclam` mantiene las firmas al día. `clamav-daemon` no responde hasta tener una base de firmas, así que el primer arranque tarda lo que tarde esa descarga.
+
+### Configuración
+
+La configuración del paquete **no sirve tal cual**: sus límites (25 MB) quedan por debajo de `MAX_FILE_SIZE`, y ClamAV da por limpio, por defecto, lo que no llega a analizar. En `/etc/clamav/clamd.conf`:
+
+```
+MaxFileSize 64M
+StreamMaxLength 64M
+MaxScanSize 256M
+AlertExceedsMax yes
+AlertOLE2Macros yes
+AlertPartitionIntersection yes
+LocalSocketMode 666
+```
+
+* `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` deben ser siempre **mayores o iguales que `MAX_FILE_SIZE`**. `StreamMaxLength` es el crítico, porque el análisis va por `INSTREAM`. Si se desalinean, clamd corta la conexión con los ficheros grandes; la prueba `Should scan a file up to MAX_FILE_SIZE` existe para detectarlo.
+* `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, al revés que ClamAV por defecto.
+* `LocalSocketMode 666` deja abrir el socket al proceso de Pergamo, que en Docker corre como `node`. Es el valor del paquete de Debian.
+
+`docker/clamav/clamd.conf` es la referencia completa, con el porqué de cada valor. Tras cambiarla:
+
+```
+sudo systemctl restart clamav-daemon
+```
+
+En Debian, `/etc/clamav/clamd.conf` lo genera debconf: `dpkg-reconfigure clamav-daemon` o una actualización del paquete pueden proponer sobrescribirlo, y hay que conservar estas líneas.
+
+### Comprobación
+
+```
+ls -l /run/clamav/clamd.ctl     # srw-rw-rw- ... clamav clamav
+```
+
+Al arrancar, Pergamo registra la versión del motor y de las firmas (`Antivirus: ClamAV 1.4.3/28119/...`). Para comprobar la detección de punta a punta, sube el fichero EICAR (ver [Fichero de prueba](#fichero-de-prueba)).
+
+Si en el host no se puede instalar ClamAV, puede ejecutarse en Docker con el perfil `clamav` de `docker/docker-compose.yml`.
 
 ## Construcción y ejecución
 
@@ -180,28 +233,19 @@ cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.yml up --build
 ```
 
-Eso levanta dos servicios: **clamav** y **pergamo**. Antes el compose declaraba un único servicio, con ClamAV dentro del contenedor de la API.
+Eso levanta la aplicación (`pergamo`, interfaz y API en el puerto 3000), el worker de indexación (`pergamo-worker`) y la cola (`redis`).
 
-| Servicio | Papel |
-|---|---|
-| `clamav` | Demonio de análisis, imagen oficial con versión fijada, volumen propio para las firmas y `healthcheck` real contra el puerto 3310. Su puerto **no** se publica al host. |
-| `pergamo` | La aplicación: interfaz y API en el puerto 3000. No arranca hasta que el escáner está sano. |
-
-**La base de datos no la declara el compose.** Sale de `DB_HOST` y `DB_PORT` del `.env`, y se alcanza por la red `steamfront`, que es externa —no la crea este fichero— y es donde vive el postgres compartido del host. Antes el compose levantaba su propio contenedor de postgres con su propio volumen, lo que creaba una segunda base en máquinas que ya tenían una. Si la red no existe todavía:
+**La base de datos no la declara el compose.** Sale de `DB_HOST` y `DB_PORT` del `.env`, y se alcanza por la red `db`, que es externa —no la crea este fichero— y es donde vive el postgres compartido del host. Antes el compose levantaba su propio contenedor de postgres con su propio volumen, lo que creaba una segunda base en máquinas que ya tenían una. Si la red no existe todavía:
 
 ```
-docker network create steamfront
+docker network create db
 ```
+
+**ClamAV tampoco**: los contenedores usan el `clamav-daemon` del host, cuyo directorio `/run/clamav` monta el compose. Hay que tenerlo instalado y configurado antes de levantar nada (ver [ClamAV](#clamav)).
 
 El contenedor publica el **3000**, que es la puerta de entrada: el mismo puerto que ocupa la interfaz en `npm run dev`, para que el proxy inverso apunte siempre al mismo sitio. Los dos entornos comparten ese puerto a propósito, así que solo puede correr uno de los dos a la vez. El compose fija `PORT=3000` dentro de la imagen, de modo que el `PORT=3001` que el `.env` lleva para desarrollo no se filtra al contenedor.
 
-En un host cuyos contenedores no tengan salida a internet, el servicio `clamav` necesita `CLAMAV_NO_FRESHCLAMD=true` y que las firmas se siembren desde fuera sobre el volumen que monta en `/var/lib/clamav`: freshclam no puede actualizarse por sí mismo desde dentro, y sin esa variable falla en cada arranque.
-
-ClamAV vive ahora en su propio contenedor por tres motivos: aísla su ~1–1,5 GB residentes del cgroup de la API (antes un OOM del escáner tumbaba el servicio), permite un healthcheck de verdad, y saca la lógica de arranque de clamd del `docker-entrypoint.sh`. La aplicación le habla por TCP y espera a poder hacerlo **antes** de escuchar: la ventana en la que cada subida devolvía un `500` opaco mientras clamd cargaba firmas ya no existe.
-
 La imagen de la aplicación ejecuta el proceso como usuario `node`: **no corre como root**.
-
-Los límites de `docker/clamav/clamd.conf` (`MaxFileSize`, `MaxScanSize`, `StreamMaxLength`) deben ser siempre mayores o iguales que `MAX_FILE_SIZE`. Están en dos ficheros distintos, así que la prueba `Should scan a file up to MAX_FILE_SIZE` existe precisamente para detectar que se han desalineado. `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, que es el comportamiento contrario al de ClamAV por defecto.
 
 ## Interfaz web
 
@@ -443,7 +487,7 @@ En una tabla `document` grande, añadir la restricción toma un bloqueo exclusiv
 
 ### 6. ClamAV pasa a ser un servicio propio (acción obligatoria)
 
-La imagen de la aplicación **ya no incluye ClamAV**, y el `docker-entrypoint.sh` ya no arranca clamd ni freshclam. El escáner es ahora el servicio `clamav` de `docker/docker-compose.yml`.
+La imagen de la aplicación **ya no incluye ClamAV**, y el `docker-entrypoint.sh` ya no arranca clamd ni freshclam. El escáner es un clamd externo: el `clamav-daemon` del host (ver [ClamAV](#clamav)).
 
 Antes de actualizar:
 
@@ -514,7 +558,7 @@ Las pruebas son de **integración**: levantan la aplicación real y necesitan
 
 * una instancia de PostgreSQL accesible, con pgvector instalado y ya inicializada con `npm run init`;
 * un Redis alcanzable en `REDIS_URL`, que usa la suite de la cola con el prefijo `pergamo-test` para no tocar nada más de esa instancia;
-* un demonio ClamAV alcanzable en `CLAMAV_HOST`/`CLAMAV_PORT` si `ENABLE_ANTIVIRUS` está activo;
+* un demonio ClamAV si `ENABLE_ANTIVIRUS` está activo: por defecto el del host, en `/run/clamav/clamd.ctl` (ver [ClamAV](#clamav));
 * `RATE_LIMIT_MAX` suficientemente alto para no toparse con el límite de intentos;
 * `USER_MASTER` distinto del nombre de la organización `pergamo`, y `PASSWORD_MASTER` **entrecomillado** en el `.env` si contiene `#` (dotenv trataría el resto de la línea como comentario).
 
@@ -645,7 +689,7 @@ npm run scan:release -- <id-documento>
 
 Pasa el documento a `clean` **conservando `scan_signature`**, de modo que el falso positivo queda trazado. El fichero no se modifica en ningún momento: los falsos positivos se **liberan** mediante revisión, no se "arreglan" alterando el documento.
 
-Si una misma firma reincide sobre documentos legítimos, se añade a `docker/clamav/local.ign2` y se reinicia el servicio `clamav`.
+Si una misma firma reincide sobre documentos legítimos, se añade al `local.ign2` del directorio de firmas de clamd —`/var/lib/clamav/local.ign2` en el host, con el formato y el procedimiento de `docker/clamav/local.ign2`— y se reinicia `clamav-daemon`.
 
 > **Por qué no hay saneado automático de PDF (CDR).** Se evaluó y se descartó. Reescribir un PDF para eliminar JavaScript, `/OpenAction`, `/Launch` o ficheros embebidos **rompe cualquier firma electrónica**, porque una firma PAdES/PKCS#7 cubre un `ByteRange` de bytes concretos. Además, los PDF firmados contienen legítimamente lo que un CDR elimina: PAdES-LTV embebe respuestas OCSP y CRLs *como ficheros embebidos*. Y el fallo sería silencioso: un rechazo por falso positivo devuelve 400 y el cliente reclama; una sanitización devuelve 200 y un fichero aparentemente correcto, cuyo daño se descubre meses después. Por último, rompería `metadata.hash`, que es la identidad de registro del documento.
 >

@@ -108,7 +108,7 @@ describe('Document Tests', () => {
 
   itAntivirus('Should scan a file up to MAX_FILE_SIZE', async () => {
 
-    // Esta es la prueba que detecta que los limites de docker/clamav/clamd.conf
+    // Esta es la prueba que detecta que los limites del clamd.conf del host
     // (MaxFileSize, MaxScanSize, StreamMaxLength) se han quedado por debajo de
     // MAX_FILE_SIZE. Cuando eso ocurre, ClamAV deja de analizar el fichero por
     // completo y —con AlertExceedsMax desactivado— lo da por bueno: la subida

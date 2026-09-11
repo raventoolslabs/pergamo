@@ -25,7 +25,7 @@ const config = {
   debug: parseBoolean(process.env.DEBUG, false, 'DEBUG'),
   remove_file_disk: parseBoolean(process.env.REMOVE_FILE_DISK, true, 'REMOVE_FILE_DISK'),
   // Sin esto NodeClam ejecuta el binario clamdscan local en vez de abrir
-  // conexion, y con clamd en su propio contenedor eso no funciona.
+  // conexion, y dentro de un contenedor ese binario no existe.
   antivirus: {
     // Solo lo declarado: el defecto vive en `socket`, y un host ademas obligaria
     // a NodeClam a elegir entre dos destinos.
@@ -36,8 +36,8 @@ const config = {
     // Debian declara LocalSocket y ningun TCPSocket, de modo que el TCP se
     // rechaza con el demonio vivo y las firmas al dia.
     //
-    // En Docker el compose fija CLAMAV_HOST al nombre del servicio, asi que este
-    // defecto no le llega; declarar un host lo desactiva.
+    // Es tambien lo que usa Docker: el compose monta /run/clamav del host.
+    // Declarar un host lo desactiva.
     socket: optionalValue(process.env.CLAMAV_SOCKET) ||
       (optionalValue(process.env.CLAMAV_HOST) ? undefined : DEFAULT_CLAMAV_SOCKET),
     timeout: process.env.CLAMAV_TIMEOUT ? Number.parseInt(process.env.CLAMAV_TIMEOUT) : 60000,
@@ -50,8 +50,8 @@ const config = {
   tmp_cleanup_interval_ms: process.env.TMP_CLEANUP_INTERVAL_MS ? Number.parseInt(process.env.TMP_CLEANUP_INTERVAL_MS) : 900000,
   valid_metadata_modify,
   valid_mimetype,
-  // Reglas de contenido activo que este despliegue no aplica: el equivalente de
-  // docker/clamav/local.ign2 para el detector propio. Un archivo de facturas firmadas
+  // Reglas de contenido activo que este despliegue no aplica: el equivalente del
+  // local.ign2 de clamd para el detector propio. Un archivo de facturas firmadas
   // lleva ficheros embebidos por norma y sin esta valvula queda en cuarentena
   // entero. Se anota siempre por que se ignora.
   malicious_active_content_ignore,
@@ -61,8 +61,8 @@ const config = {
   // distribuciones). Aceptar mas de lo que el escaner mira deja entrar
   // documentos sin analizar y sin decirlo: se guardan 'pending' porque el
   // escaner corta la conexion, y ese estado no se distingue de una caida.
-  // docker/clamav/clamd.conf sube esos limites a 64M, de modo que ahi si se
-  // puede subir este valor.
+  // La configuracion de referencia de clamd (seccion ClamAV del README) sube
+  // esos limites a 64M, de modo que ahi si se puede subir este valor.
   max_file_size: process.env.MAX_FILE_SIZE ? Number.parseInt(process.env.MAX_FILE_SIZE) : 26214400,
   port: process.env.PORT || 3000,
   jwt_expires_in: process.env.JWT_EXPIRES_IN ? process.env.JWT_EXPIRES_IN : '8h',

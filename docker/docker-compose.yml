@@ -1,27 +1,37 @@
-# Pergamo: escaner antivirico y aplicacion. Dos servicios, no tres.
+# Pergamo: aplicacion, worker de indexacion y cola.
 #
 #   docker compose -f docker/docker-compose.yml up --build
 #
 # El .env y el directorio ./data que montan los servicios se buscan junto a este
 # fichero, dentro de docker/; el contexto de construccion es la raiz.
 #
-# La base de datos NO se declara aqui. Este fichero levantaba antes su propio
-# contenedor de postgres con su propio volumen, y eso creaba una segunda base
-# en maquinas que ya tienen una: el destino sale ahora del .env (DB_HOST,
-# DB_PORT) y se alcanza por la red 'steamfront', que es donde vive el postgres
-# compartido del host.
+# Dos dependencias externas que este fichero NO declara:
+#
+# * PostgreSQL: el destino sale del .env (DB_HOST, DB_PORT) y se alcanza por la
+#   red 'db', donde vive el postgres compartido del host.
+# * ClamAV: el clamav-daemon del host, por su socket unix. La aplicacion usa su
+#   defecto, /run/clamav/clamd.ctl, sin declarar nada en el .env. Ver la
+#   seccion ClamAV del README.
 #
 # La red es EXTERNA: no la crea este fichero. Si no existe todavia:
 #
-#   docker network create steamfront
+#   docker network create db
 
 # Sin esto el proyecto tomaria el nombre del directorio ('docker'), y con el se
 # renombrarian la imagen y el volumen de firmas.
 name: "pergamo"
 
+# Se monta el DIRECTORIO y no el socket: clamd lo recrea en cada reinicio, y un
+# montaje del fichero se quedaria apuntando al inodo viejo.
+x-clamav-socket: &clamav-socket "/run/clamav:/run/clamav:ro"
+
 services:
 
+  # Solo para hosts donde no se puede instalar clamav-daemon. Se activa con
+  # `--profile clamav` y CLAMAV_HOST=clamav en el .env, que cambia la aplicacion
+  # de socket a TCP.
   clamav:
+    profiles: ["clamav"]
     container_name: "pergamo-clamav"
     # Version fijada: el motor y el formato de la base de firmas van
     # emparejados, y un salto de version no anunciado puede dejar a clamd sin
@@ -46,8 +56,7 @@ services:
     expose:
       - "3310"
     healthcheck:
-      # PING/PONG por TCP: clamd no responde mientras carga las firmas, que es
-      # justo la ventana que antes dejaba a la API devolviendo 500.
+      # PING/PONG por TCP: clamd no responde mientras carga las firmas.
       #
       # Se pregunta a 127.0.0.1 y no se usa clamdcheck.sh, el script de la
       # imagen oficial, porque ese consulta `nc localhost 3310` y dentro del
@@ -60,8 +69,6 @@ services:
       # La primera carga de firmas tarda; hasta agotarlo, un fallo no cuenta
       # como reintento ni marca el servicio como no sano.
       start_period: "180s"
-    networks:
-      - "steamfront"
 
   redis:
     container_name: "pergamo-redis"
@@ -77,8 +84,6 @@ services:
       interval: "10s"
       timeout: "5s"
       retries: 5
-    networks:
-      - "steamfront"
 
   pergamo:
     container_name: "pergamo"
@@ -97,6 +102,7 @@ services:
       - "3000:3000"
     volumes:
       - "./data:/usr/src/app/data"
+      - *clamav-socket
     env_file:
       - ".env"
     environment:
@@ -106,9 +112,6 @@ services:
       # llevar 3001, que es el puerto de la API en desarrollo (ahi el 3000 lo
       # ocupa Vite), y esa diferencia no debe filtrarse al contenedor.
       PORT: "3000"
-      # El escaner se alcanza por el nombre del servicio, no por localhost.
-      CLAMAV_HOST: "clamav"
-      CLAMAV_PORT: "3310"
       REDIS_URL: "redis://redis:6379"
       # El worker va en su propio contenedor: abre ficheros no confiables con un
       # parser de documentos, y una reindexacion no debe competir por CPU con
@@ -116,14 +119,16 @@ services:
       INDEXING_WORKER_EMBEDDED: "false"
     depends_on:
       clamav:
-        # La API espera a que el escaner este sano. Con ENABLE_ANTIVIRUS
-        # desactivado esta espera sigue aplicandose; si no quieres el escaner en
-        # este despliegue, elimina el servicio y esta dependencia.
+        # Solo con el perfil clamav activo. Con el ClamAV del host no hay
+        # servicio que esperar: la API reintenta la conexion al arrancar
+        # (CLAMAV_INIT_RETRIES) y no escucha hasta tener escaner.
         condition: "service_healthy"
+        required: false
       redis:
         condition: "service_healthy"
     networks:
-      - "steamfront"
+      - "default"
+      - "db"
 
   # La misma imagen, otro rol. Arranca despues de la API porque es ella quien
   # aplica las migraciones.
@@ -135,12 +140,12 @@ services:
       dockerfile: "Dockerfile"
     volumes:
       - "./data:/usr/src/app/data"
+      # Tambien analiza: es quien atiende el reescaneo del corpus.
+      - *clamav-socket
     env_file:
       - ".env"
     environment:
       PERGAMO_ROLE: "worker"
-      CLAMAV_HOST: "clamav"
-      CLAMAV_PORT: "3310"
       REDIS_URL: "redis://redis:6379"
     depends_on:
       pergamo:
@@ -148,11 +153,12 @@ services:
       redis:
         condition: "service_healthy"
     networks:
-      - "steamfront"
+      - "default"
+      - "db"
 
 volumes:
   clamav-data:
 
 networks:
-  steamfront:
+  db:
     external: true
