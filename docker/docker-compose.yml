@@ -94,12 +94,12 @@ services:
     build:
       context: ".."
       dockerfile: "Dockerfile"
-    # El 3000 es la puerta de entrada, la misma que usa `npm run dev` para la
+    # El 6231 es la puerta de entrada, la misma que usa `npm run dev` para la
     # interfaz de Vite. Los dos entornos comparten puerto a proposito: el proxy
     # inverso apunta siempre aqui y no hay que tocarlo al cambiar de uno a otro,
     # a cambio de que solo pueda correr uno de los dos a la vez.
     ports:
-      - "3000:3000"
+      - "6231:6231"
     volumes:
       - "./data:/usr/src/app/data"
       - *clamav-socket
@@ -108,10 +108,10 @@ services:
     environment:
       # Sobrescriben lo que venga del .env.
       #
-      # PORT: dentro de la imagen se escucha SIEMPRE en el 3000. El .env puede
-      # llevar 3001, que es el puerto de la API en desarrollo (ahi el 3000 lo
+      # PORT: dentro de la imagen se escucha SIEMPRE en el 6231. El .env puede
+      # llevar 6230, que es el puerto de la API en desarrollo (ahi el 6231 lo
       # ocupa Vite), y esa diferencia no debe filtrarse al contenedor.
-      PORT: "3000"
+      PORT: "6231"
       REDIS_URL: "redis://redis:6379"
       # El worker va en su propio contenedor: abre ficheros no confiables con un
       # parser de documentos, y una reindexacion no debe competir por CPU con

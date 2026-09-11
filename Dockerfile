@@ -49,7 +49,7 @@ COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh && \
     chown -R node:node /usr/src/app
 
-EXPOSE 3000
+EXPOSE 6231
 
 # Activa el modo produccion de Express y hace que el logger emita JSON
 # estructurado en lugar del formato legible de desarrollo.
