@@ -29,11 +29,10 @@ WORKDIR /usr/src/app
 # su-exec: permite lanzar la aplicacion con su propio usuario desde el
 # entrypoint, de modo que no quede corriendo como root.
 #
-# ClamAV ya no vive en esta imagen. Corria en el mismo contenedor y cgroup que
-# la API, con ~1-1.5 GB residentes: un OOM del escaner tumbaba el servicio.
-# Ahora es el servicio 'clamav' de docker/docker-compose.yml, con su propia imagen
-# oficial fijada, su volumen de firmas y un healthcheck real. La aplicacion le
-# habla por TCP (CLAMAV_HOST/CLAMAV_PORT).
+# ClamAV no vive en esta imagen. Corria en el mismo contenedor y cgroup que la
+# API, con ~1-1.5 GB residentes: un OOM del escaner tumbaba el servicio. Ahora
+# es el clamav-daemon del host, al que la aplicacion habla por su socket unix
+# (/run/clamav, que monta docker/docker-compose.yml).
 RUN apk add --no-cache su-exec
 
 COPY package.json package-lock.json ./
@@ -45,8 +44,8 @@ COPY --from=build /usr/src/app/dist ./dist
 COPY docker-entrypoint.sh ./
 
 # El usuario 'node' (uid 1000) ya existe en la imagen base; solo se le da
-# propiedad del codigo. Ya no hace falta el grupo clamav: la conexion con el
-# escaner es por TCP, no por socket local.
+# propiedad del codigo. No hace falta el grupo clamav: el socket de clamd se
+# abre con LocalSocketMode 666.
 RUN chmod +x docker-entrypoint.sh && \
     chown -R node:node /usr/src/app
 
