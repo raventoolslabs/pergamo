@@ -1,6 +1,6 @@
 #!/bin/bash
 
-URL_VERSION=http://localhost:3000/version
+URL_VERSION=http://localhost:6231/version
 
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"

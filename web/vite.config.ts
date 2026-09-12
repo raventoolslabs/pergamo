@@ -1,11 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// El destino de la API en desarrollo. El 3001 y no el 3000 porque el 3000 lo
+// El destino de la API en desarrollo. El 6230 y no el 6231 porque el 6231 lo
 // ocupa este mismo servidor de Vite: es la puerta de entrada compartida con el
 // contenedor. En produccion no hay proxy: la interfaz la sirve el propio
 // Express desde dist/web, en el mismo origen que la API.
-const API_TARGET = process.env.PERGAMO_API || 'http://127.0.0.1:3001';
+const API_TARGET = process.env.PERGAMO_API || 'http://127.0.0.1:6230';
 
 // Host publico por el que se llega a la interfaz a traves del proxy inverso
 // (en este despliegue, pergamo.raventools.labs). Vacio en local.

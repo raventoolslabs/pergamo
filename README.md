@@ -233,7 +233,7 @@ cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.yml up --build
 ```
 
-Eso levanta la aplicación (`pergamo`, interfaz y API en el puerto 3000), el worker de indexación (`pergamo-worker`) y la cola (`redis`).
+Eso levanta la aplicación (`pergamo`, interfaz y API en el puerto 6231), el worker de indexación (`pergamo-worker`) y la cola (`redis`).
 
 **La base de datos no la declara el compose.** Sale de `DB_HOST` y `DB_PORT` del `.env`, y se alcanza por la red `db`, que es externa —no la crea este fichero— y es donde vive el postgres compartido del host. Antes el compose levantaba su propio contenedor de postgres con su propio volumen, lo que creaba una segunda base en máquinas que ya tenían una. Si la red no existe todavía:
 
@@ -243,15 +243,15 @@ docker network create db
 
 **ClamAV tampoco**: los contenedores usan el `clamav-daemon` del host, cuyo directorio `/run/clamav` monta el compose. Hay que tenerlo instalado y configurado antes de levantar nada (ver [ClamAV](#clamav)).
 
-El contenedor publica el **3000**, que es la puerta de entrada: el mismo puerto que ocupa la interfaz en `npm run dev`, para que el proxy inverso apunte siempre al mismo sitio. Los dos entornos comparten ese puerto a propósito, así que solo puede correr uno de los dos a la vez. El compose fija `PORT=3000` dentro de la imagen, de modo que el `PORT=3001` que el `.env` lleva para desarrollo no se filtra al contenedor.
+El contenedor publica el **6231**, que es la puerta de entrada: el mismo puerto que ocupa la interfaz en `npm run dev`, para que el proxy inverso apunte siempre al mismo sitio. Los dos entornos comparten ese puerto a propósito, así que solo puede correr uno de los dos a la vez. El compose fija `PORT=6231` dentro de la imagen, de modo que el `PORT=6230` que el `.env` lleva para desarrollo no se filtra al contenedor.
 
 La imagen de la aplicación ejecuta el proceso como usuario `node`: **no corre como root**.
 
 ## Interfaz web
 
 La interfaz vive en `web/` (React + Vite) y se compila a `dist/web`, junto al JavaScript de la
-API. Express la sirve en la raíz del mismo puerto, así que `http://localhost:3000` abre la
-aplicación y `http://localhost:3000/document` sigue siendo la API. Si `dist/web` no existe —por
+API. Express la sirve en la raíz del mismo puerto, así que `http://localhost:6231` abre la
+aplicación y `http://localhost:6231/document` sigue siendo la API. Si `dist/web` no existe —por
 ejemplo tras un `npm run build:api` a secas— el arranque lo advierte por log y el servicio
 funciona igual, solo que sin interfaz.
 
@@ -301,15 +301,15 @@ interfaz con Vite, ya enlazadas entre sí.
 
 | | |
 |---|---|
-| Interfaz | `http://127.0.0.1:3000` |
-| API | `http://127.0.0.1:3001` |
+| Interfaz | `http://127.0.0.1:6231` |
+| API | `http://127.0.0.1:6230` |
 
-La interfaz ocupa el **3000**, que es el mismo puerto que publica el contenedor. Es deliberado: el
+La interfaz ocupa el **6231**, que es el mismo puerto que publica el contenedor. Es deliberado: el
 proxy inverso apunta siempre ahí y no hay que tocarlo para cambiar de un entorno a otro, a cambio
-de que solo pueda correr uno de los dos. Si el 3000 está pillado por el contenedor, el arranque lo
+de que solo pueda correr uno de los dos. Si el 6231 está pillado por el contenedor, el arranque lo
 dice y basta con un `docker stop pergamo`.
 
-La API se va al 3001, detrás. El proxy de Vite redirige `/organization`, `/document`, `/version` y
+La API se va al 6230, detrás. El proxy de Vite redirige `/organization`, `/document`, `/version` y
 `/config` a ella, así que se trabaja contra datos reales; `PERGAMO_API` apunta a otro destino si
 hace falta, y `PERGAMO_DEV_WEB_PORT` mueve la interfaz para levantarla con el contenedor en marcha.
 

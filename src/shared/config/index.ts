@@ -64,7 +64,7 @@ const config = {
   // La configuracion de referencia de clamd (seccion ClamAV del README) sube
   // esos limites a 64M, de modo que ahi si se puede subir este valor.
   max_file_size: process.env.MAX_FILE_SIZE ? Number.parseInt(process.env.MAX_FILE_SIZE) : 26214400,
-  port: process.env.PORT || 3000,
+  port: process.env.PORT || 6230,
   jwt_expires_in: process.env.JWT_EXPIRES_IN ? process.env.JWT_EXPIRES_IN : '8h',
   trust_proxy: process.env.TRUST_PROXY ? Number.parseInt(process.env.TRUST_PROXY) : 0,
   rate_limit: {
