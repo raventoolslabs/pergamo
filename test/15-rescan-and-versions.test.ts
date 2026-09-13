@@ -56,25 +56,25 @@ describe('Rescan and archived versions', () => {
       validateStatus: () => true
     });
 
-    let response = await api.post('/organization/login', {
+    let response = await api.post('/api/organization/login', {
       name: 'pergamo',
       password: Config.password_master
     });
     token = response.data.token;
 
-    response = await api.post('/organization/login', {
+    response = await api.post('/api/organization/login', {
       name: Config.user_master,
       password: Config.password_master
     });
     const tokenMaster = response.data.token;
 
-    response = await api.post('/organization/master/create', {
+    response = await api.post('/api/organization/master/create', {
       name: OTHER_ORGANIZATION,
       password: OTHER_PASSWORD
     }, { headers: { authorization: tokenMaster } });
     otherId = response.data.id;
 
-    response = await api.post('/organization/login', {
+    response = await api.post('/api/organization/login', {
       name: OTHER_ORGANIZATION,
       password: OTHER_PASSWORD
     });
@@ -83,7 +83,7 @@ describe('Rescan and archived versions', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(path.join(__dirname, 'assets', 'test.pdf')));
 
-    response = await api.post('/document', form, {
+    response = await api.post('/api/document', form, {
       headers: { authorization: token, ...form.getHeaders() }
     });
 
@@ -93,7 +93,7 @@ describe('Rescan and archived versions', () => {
   afterAll(async () => {
 
     if(documentId) {
-      await api.delete(`/document/${documentId}`, { headers: { authorization: token } });
+      await api.delete(`/api/document/${documentId}`, { headers: { authorization: token } });
     }
 
     if(otherId) {
@@ -111,7 +111,7 @@ describe('Rescan and archived versions', () => {
 
     await setStatus('pending');
 
-    const response = await api.post(`/document/${documentId}/scan`, null, {
+    const response = await api.post(`/api/document/${documentId}/scan`, null, {
       headers: { authorization: token }
     });
 
@@ -133,7 +133,7 @@ describe('Rescan and archived versions', () => {
 
     await setStatus('malicious', 'ACTIVE_CONTENT:javascript');
 
-    const response = await api.post(`/document/${documentId}/scan`, null, {
+    const response = await api.post(`/api/document/${documentId}/scan`, null, {
       headers: { authorization: token }
     });
 
@@ -168,7 +168,7 @@ describe('Rescan and archived versions', () => {
 
     try {
 
-      const response = await api.post(`/document/${documentId}/scan`, null, {
+      const response = await api.post(`/api/document/${documentId}/scan`, null, {
         headers: { authorization: token }
       });
 
@@ -185,7 +185,7 @@ describe('Rescan and archived versions', () => {
 
     await setStatus('error', 'FILE_MISSING');
 
-    const response = await api.post(`/document/${documentId}/scan`, null, {
+    const response = await api.post(`/api/document/${documentId}/scan`, null, {
       headers: { authorization: token }
     });
 
@@ -211,7 +211,7 @@ describe('Rescan and archived versions', () => {
       type: QueryTypes.UPDATE
     });
 
-    const response = await api.post(`/document/${documentId}/scan`, null, {
+    const response = await api.post(`/api/document/${documentId}/scan`, null, {
       headers: { authorization: token }
     });
 
@@ -231,7 +231,7 @@ describe('Rescan and archived versions', () => {
 
     await setStatus('infected', 'Test.Signature-1');
 
-    const response = await api.post(`/document/${documentId}/release`, null, {
+    const response = await api.post(`/api/document/${documentId}/release`, null, {
       headers: { authorization: token }
     });
 
@@ -242,7 +242,7 @@ describe('Rescan and archived versions', () => {
     expect(response.data.scan_signature).toBe('Test.Signature-1');
 
     // Y con la retencion levantada, el fichero vuelve a entregarse.
-    const file = await api.get(`/document/${documentId}/file`, {
+    const file = await api.get(`/api/document/${documentId}/file`, {
       headers: { authorization: token }
     });
 
@@ -253,7 +253,7 @@ describe('Rescan and archived versions', () => {
 
     await setStatus('malicious', 'ACTIVE_CONTENT:javascript');
 
-    const response = await api.post(`/document/${documentId}/release`, null, {
+    const response = await api.post(`/api/document/${documentId}/release`, null, {
       headers: { authorization: token }
     });
 
@@ -267,7 +267,7 @@ describe('Rescan and archived versions', () => {
     // afirmar que se entrega algo que no existe.
     await setStatus('error', 'FILE_MISSING');
 
-    let response = await api.post(`/document/${documentId}/release`, null, {
+    let response = await api.post(`/api/document/${documentId}/release`, null, {
       headers: { authorization: token }
     });
 
@@ -276,7 +276,7 @@ describe('Rescan and archived versions', () => {
 
     await setStatus('clean');
 
-    response = await api.post(`/document/${documentId}/release`, null, {
+    response = await api.post(`/api/document/${documentId}/release`, null, {
       headers: { authorization: token }
     });
 
@@ -287,7 +287,7 @@ describe('Rescan and archived versions', () => {
 
     await setStatus('infected', 'Test.Signature-1');
 
-    const response = await api.post(`/document/${documentId}/release`, null, {
+    const response = await api.post(`/api/document/${documentId}/release`, null, {
       headers: { authorization: tokenOther }
     });
 
@@ -299,7 +299,7 @@ describe('Rescan and archived versions', () => {
   it('Should carry the domain code alongside the message', async () => {
 
     // Sin el codigo, un cliente solo puede ensenar la frase interna en ingles.
-    const response = await api.get('/document/does-not-exist', {
+    const response = await api.get('/api/document/does-not-exist', {
       headers: { authorization: token }
     });
 
@@ -309,7 +309,7 @@ describe('Rescan and archived versions', () => {
 
   it('Should not let one organization rescan another\'s document', async () => {
 
-    const response = await api.post(`/document/${documentId}/scan`, null, {
+    const response = await api.post(`/api/document/${documentId}/scan`, null, {
       headers: { authorization: tokenOther }
     });
 
@@ -325,20 +325,20 @@ describe('Rescan and archived versions', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(path.join(__dirname, 'assets', 'test2.pdf')));
 
-    const replaced = await api.put(`/document/${documentId}/file`, form, {
+    const replaced = await api.put(`/api/document/${documentId}/file`, form, {
       headers: { authorization: token, ...form.getHeaders() }
     });
 
     expect(replaced.status).toBe(StatusCodes.OK);
 
-    const versions = await api.get(`/document/${documentId}/versions`, {
+    const versions = await api.get(`/api/document/${documentId}/versions`, {
       headers: { authorization: token }
     });
 
     expect(versions.data.length).toBeGreaterThan(0);
 
     // Se entrega el ZIP tal cual lo dejo el archivador, no el fichero original.
-    const response = await api.get(`/document/${documentId}/versions/1/file`, {
+    const response = await api.get(`/api/document/${documentId}/versions/1/file`, {
       headers: { authorization: token },
       responseType: 'arraybuffer'
     });
@@ -350,7 +350,7 @@ describe('Rescan and archived versions', () => {
 
   it('Should answer 404 for a version that was never archived', async () => {
 
-    const response = await api.get(`/document/${documentId}/versions/99/file`, {
+    const response = await api.get(`/api/document/${documentId}/versions/99/file`, {
       headers: { authorization: token }
     });
 
@@ -359,7 +359,7 @@ describe('Rescan and archived versions', () => {
 
   it('Should reject a version number that is not one', async () => {
 
-    const response = await api.get(`/document/${documentId}/versions/0/file`, {
+    const response = await api.get(`/api/document/${documentId}/versions/0/file`, {
       headers: { authorization: token }
     });
 
@@ -370,7 +370,7 @@ describe('Rescan and archived versions', () => {
 
     await setStatus('infected', 'Test.Signature-1');
 
-    const response = await api.get(`/document/${documentId}/versions/1/file`, {
+    const response = await api.get(`/api/document/${documentId}/versions/1/file`, {
       headers: { authorization: token }
     });
 
@@ -383,7 +383,7 @@ describe('Rescan and archived versions', () => {
 
   it('Should not let one organization download another\'s archived version', async () => {
 
-    const response = await api.get(`/document/${documentId}/versions/1/file`, {
+    const response = await api.get(`/api/document/${documentId}/versions/1/file`, {
       headers: { authorization: tokenOther }
     });
 

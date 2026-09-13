@@ -68,10 +68,10 @@ describe('Document chunks', () => {
       validateStatus: () => true
     });
 
-    token = (await api.post('/organization/login',
+    token = (await api.post('/api/organization/login',
       { name: 'pergamo', password: Config.password_master })).data.token;
 
-    masterToken = (await api.post('/organization/login',
+    masterToken = (await api.post('/api/organization/login',
       { name: Config.user_master, password: Config.password_master })).data.token;
 
     await sequelize.query(
@@ -79,7 +79,7 @@ describe('Document chunks', () => {
        VALUES (:id, :id, crypt('Pergamo0123#', gen_salt('bf'))) ON CONFLICT (id) DO NOTHING;`, {
       replacements: { id: OTHER }, type: QueryTypes.INSERT });
 
-    otherToken = (await api.post('/organization/login',
+    otherToken = (await api.post('/api/organization/login',
       { name: OTHER, password: 'Pergamo0123#' })).data.token;
 
     mine = await seedDocument('pergamo',
@@ -101,7 +101,7 @@ describe('Document chunks', () => {
   });
 
   const chunks = (id:string, query = '', authorization = token) =>
-    api.get(`/document/${id}/chunks${query}`, { headers: { authorization } });
+    api.get(`/api/document/${id}/chunks${query}`, { headers: { authorization } });
 
   /* ------------------------------------------------------------ lectura -- */
 
@@ -216,7 +216,7 @@ describe('Document chunks', () => {
 
   it('Should reject an unauthenticated request', async () => {
 
-    const response = await api.get(`/document/${mine}/chunks`);
+    const response = await api.get(`/api/document/${mine}/chunks`);
 
     expect(response.status).toBe(401);
   });

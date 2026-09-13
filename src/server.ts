@@ -10,17 +10,13 @@ import { indexQueue } from '@/infrastructure/queue/index.queue';
 import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
 import { assertIndexReady } from '@/container';
 import FilesUtils from '@/infrastructure/files/storage';
+import { NotFoundError } from '@/domain/exceptions/domain.exception';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
 
 const packageJson = require('../package.json')
 const bodyParser = require('body-parser')
-
-// Prefijos de la API. El fallback de la interfaz no puede tragarselos: un GET
-// desconocido bajo uno de ellos debe seguir devolviendo el 404 JSON de la API y
-// no el index.html de la SPA.
-const API_PREFIXES = ['/organization', '/document', '/search', '/version', '/config'];
 
 /**
  * Sirve la interfaz compilada, si existe. Vite deja el resultado en dist/web,
@@ -51,8 +47,7 @@ const serveWeb = (app:express.Express) => {
 
   // Express 5 exige nombrar el comodin, y las llaves hacen falta: '/*splat' no
   // casa la raiz '/', y '/{*splat}' casa las dos cosas.
-  app.get('/{*splat}', (req, res, next) => {
-    if(API_PREFIXES.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) return next();
+  app.get('/{*splat}', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     return res.sendFile(indexFile);
   });
@@ -107,14 +102,17 @@ export const app = async (port:any = Config.port) => {
 
   app.use(Middleware.global);
 
-  app.get('/version', (req, res) => {
+  // Toda la API cuelga de /api: el resto de rutas son de la interfaz.
+  const api = express.Router();
+
+  api.get('/version', (req, res) => {
     res.status(200).json({ version: packageJson.version })
   });
 
   // Limites del despliegue que la interfaz necesita para validar antes de
   // enviar. Viven en variables de entorno: la alternativa era duplicarlos en el
   // frontend y verlos divergir. Va autenticado porque describe la instalacion.
-  app.get('/config', Middleware.auth, (req, res) => {
+  api.get('/config', Middleware.auth, (req, res) => {
     res.status(200).json({
       // La interfaz lo necesita para no prometer un analisis que no va a
       // ocurrir; no revela nada que scan_engine no diga ya.
@@ -128,9 +126,14 @@ export const app = async (port:any = Config.port) => {
     })
   });
 
-  app.use('/organization', Routes.organization);
-  app.use('/document', Routes.document);
-  app.use('/search', Routes.search);
+  api.use('/organization', Routes.organization);
+  api.use('/document', Routes.document);
+  api.use('/search', Routes.search);
+
+  // Una ruta desconocida bajo /api responde en JSON, nunca con la SPA.
+  api.use((req, res, next) => next(new NotFoundError('ROUTE_NOT_FOUND', 'Route not found')));
+
+  app.use('/api', api);
 
   serveWeb(app);
 

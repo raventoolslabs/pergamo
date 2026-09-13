@@ -11,8 +11,7 @@ const API_TARGET = process.env.PERGAMO_API || 'http://127.0.0.1:6230';
 // (en este despliegue, pergamo.raventools.labs). Vacio en local.
 const WEB_HOST = process.env.PERGAMO_WEB_HOST;
 
-const proxy = ['/organization', '/document', '/version', '/config']
-  .reduce((routes, path) => ({ ...routes, [path]: { target: API_TARGET, changeOrigin: true } }), {});
+const proxy = { '/api': { target: API_TARGET, changeOrigin: true } };
 
 export default defineConfig({
   plugins: [react()],

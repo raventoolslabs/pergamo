@@ -45,7 +45,7 @@ describe('Rescan sweep', () => {
       validateStatus: () => true
     });
 
-    const login = await api.post('/organization/login', {
+    const login = await api.post('/api/organization/login', {
       name: 'pergamo',
       password: Config.password_master
     });
@@ -59,7 +59,7 @@ describe('Rescan sweep', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(path.join(__dirname, 'assets', 'test.pdf')));
 
-    const upload = await api.post('/document', form, {
+    const upload = await api.post('/api/document', form, {
       headers: { authorization: token, ...form.getHeaders() }
     });
 
@@ -76,7 +76,7 @@ describe('Rescan sweep', () => {
   afterAll(async () => {
 
     if(documentId) {
-      await api.delete(`/document/${documentId}`, { headers: { authorization: token } });
+      await api.delete(`/api/document/${documentId}`, { headers: { authorization: token } });
     }
 
     await queue.obliterate({ force: true }).catch(() => {});
@@ -90,7 +90,7 @@ describe('Rescan sweep', () => {
 
   it('Should report no sweep before anything is asked for', async () => {
 
-    const response = await api.get('/document/rescan', { headers: { authorization: token } });
+    const response = await api.get('/api/document/rescan', { headers: { authorization: token } });
 
     expect(response.status).toBe(StatusCodes.OK);
     expect(response.data.status).toBe('idle');
@@ -100,7 +100,7 @@ describe('Rescan sweep', () => {
 
   it('Should leave out of the count what the scanner cannot read', async () => {
 
-    const before = await api.get('/document/rescan', { headers: { authorization: token } });
+    const before = await api.get('/api/document/rescan', { headers: { authorization: token } });
 
     // Pasado el tope del escaner deja de ser trabajo pendiente: ningun analisis
     // le va a dar veredicto, asi que un barrido no lo cuenta ni lo mira.
@@ -112,7 +112,7 @@ describe('Rescan sweep', () => {
       type: QueryTypes.UPDATE
     });
 
-    const after = await api.get('/document/rescan', { headers: { authorization: token } });
+    const after = await api.get('/api/document/rescan', { headers: { authorization: token } });
 
     expect(after.data.pending).toBe(before.data.pending - 1);
 
@@ -127,7 +127,7 @@ describe('Rescan sweep', () => {
 
   it('Should queue a sweep of the pending documents', async () => {
 
-    const response = await api.post('/document/rescan', null, { headers: { authorization: token } });
+    const response = await api.post('/api/document/rescan', null, { headers: { authorization: token } });
 
     if(!Config.enable_antivirus) {
       // Sin motor no hay barrido que ofrecer.
@@ -146,8 +146,8 @@ describe('Rescan sweep', () => {
 
     if(!Config.enable_antivirus) return;
 
-    const first = await api.post('/document/rescan', null, { headers: { authorization: token } });
-    const second = await api.post('/document/rescan', null, { headers: { authorization: token } });
+    const first = await api.post('/api/document/rescan', null, { headers: { authorization: token } });
+    const second = await api.post('/api/document/rescan', null, { headers: { authorization: token } });
 
     expect(first.status).toBe(StatusCodes.ACCEPTED);
     expect(second.status).toBe(StatusCodes.ACCEPTED);
