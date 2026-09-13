@@ -42,7 +42,7 @@ describe('Scan quarantine gate', () => {
       validateStatus: () => true
     });
 
-    const login = await api.post('/organization/login', {
+    const login = await api.post('/api/organization/login', {
       name: 'pergamo',
       password: Config.password_master
     });
@@ -51,7 +51,7 @@ describe('Scan quarantine gate', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(path.join(__dirname, 'assets', 'test.pdf')));
 
-    const upload = await api.post('/document', form, {
+    const upload = await api.post('/api/document', form, {
       headers: { authorization: token, ...form.getHeaders() }
     });
 
@@ -63,7 +63,7 @@ describe('Scan quarantine gate', () => {
     if(documentId) {
       // El borrado exige que el documento exista; su estado de analisis no
       // interviene, asi que se limpia igual estando en cuarentena.
-      await api.delete(`/document/${documentId}`, { headers: { authorization: token } });
+      await api.delete(`/api/document/${documentId}`, { headers: { authorization: token } });
     }
 
     server.close();
@@ -96,7 +96,7 @@ describe('Scan quarantine gate', () => {
 
   it('Should still deliver a document deposited without a verdict', async () => {
 
-    const response = await api.get(`/document/${documentId}/file`, {
+    const response = await api.get(`/api/document/${documentId}/file`, {
       headers: { authorization: token }
     });
 
@@ -108,7 +108,7 @@ describe('Scan quarantine gate', () => {
 
     await setStatus('infected', 'Test.Signature-1');
 
-    const response = await api.get(`/document/${documentId}/file`, {
+    const response = await api.get(`/api/document/${documentId}/file`, {
       headers: { authorization: token }
     });
 
@@ -120,7 +120,7 @@ describe('Scan quarantine gate', () => {
 
     // El bloqueo se aplica en getFile y NO en getInfo: los metadatos son como
     // el cliente descubre por que el documento esta bloqueado.
-    const response = await api.get(`/document/${documentId}`, {
+    const response = await api.get(`/api/document/${documentId}`, {
       headers: { authorization: token }
     });
 
@@ -135,7 +135,7 @@ describe('Scan quarantine gate', () => {
     // convertia una caida de clamd en un archivo que deja de entregar.
     await setStatus('pending');
 
-    const response = await api.get(`/document/${documentId}/file`, {
+    const response = await api.get(`/api/document/${documentId}/file`, {
       headers: { authorization: token }
     });
 
@@ -148,7 +148,7 @@ describe('Scan quarantine gate', () => {
     // almacen, asi que no hay nada que revisar del documento.
     await setStatus('error', 'FILE_MISSING');
 
-    const response = await api.get(`/document/${documentId}/file`, {
+    const response = await api.get(`/api/document/${documentId}/file`, {
       headers: { authorization: token }
     });
 
@@ -160,7 +160,7 @@ describe('Scan quarantine gate', () => {
 
     await setStatus('clean');
 
-    const response = await api.get(`/document/${documentId}/file`, {
+    const response = await api.get(`/api/document/${documentId}/file`, {
       headers: { authorization: token }
     });
 
@@ -171,7 +171,7 @@ describe('Scan quarantine gate', () => {
 
     // El nombre viene del originalname del cliente: sin escape se podian
     // inyectar parametros en la cabecera.
-    const response = await api.get(`/document/${documentId}/file`, {
+    const response = await api.get(`/api/document/${documentId}/file`, {
       headers: { authorization: token }
     });
 

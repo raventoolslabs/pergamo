@@ -124,10 +124,10 @@ describe('Document search', () => {
       validateStatus: () => true
     });
 
-    token = (await api.post('/organization/login',
+    token = (await api.post('/api/organization/login',
       { name: 'pergamo', password: Config.password_master })).data.token;
 
-    masterToken = (await api.post('/organization/login',
+    masterToken = (await api.post('/api/organization/login',
       { name: Config.user_master, password: Config.password_master })).data.token;
 
     await sequelize.query(
@@ -135,7 +135,7 @@ describe('Document search', () => {
        VALUES (:id, :id, crypt('Pergamo0123#', gen_salt('bf'))) ON CONFLICT (id) DO NOTHING;`, {
       replacements: { id: OTHER }, type: QueryTypes.INSERT });
 
-    otherToken = (await api.post('/organization/login',
+    otherToken = (await api.post('/api/organization/login',
       { name: OTHER, password: 'Pergamo0123#' })).data.token;
 
     mine = await seedDocument('pergamo', [
@@ -163,7 +163,7 @@ describe('Document search', () => {
   });
 
   const search = (body:any, authorization = token) =>
-    api.post('/search', body, { headers: { authorization } });
+    api.post('/api/search', body, { headers: { authorization } });
 
   /**
    * La organizacion de cada documento devuelto, sin repetir. Es lo que permite
@@ -272,7 +272,7 @@ describe('Document search', () => {
 
   it('Should refuse an unauthenticated search', async () => {
 
-    const response = await api.post('/search', { query: 'presupuesto' });
+    const response = await api.post('/api/search', { query: 'presupuesto' });
 
     expect(response.status).toBe(401);
   });
