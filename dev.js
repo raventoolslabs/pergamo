@@ -54,7 +54,7 @@ for (const linea of fs.readFileSync(ENV_FILE, 'utf8').split('\n')) {
   entorno[pareja[1]] = pareja[2].trim().replace(/^["']|["']$/g, '');
 }
 
-const PUERTO_API = Number.parseInt(entorno.PORT || '3001', 10);
+const PUERTO_API = Number.parseInt(entorno.PORT || '6230', 10);
 
 /**
  * Los mismos defectos que shared/config: sin destino declarado el antivirus va
@@ -74,10 +74,10 @@ const CLAMAV_SOCKET = ajuste('CLAMAV_SOCKET') || (CLAMAV_HOST ? '' : '/run/clama
 const INDEXA = ajuste('INDEXING_ENABLED') === 'true';
 const WORKER_EMBEBIDO = ajuste('INDEXING_WORKER_EMBEDDED') !== 'false';
 
-// El 3000 es la puerta de entrada: la misma que publica el contenedor, para
+// El 6231 es la puerta de entrada: la misma que publica el contenedor, para
 // que el proxy inverso apunte siempre ahi y no haya que tocarlo al cambiar de
-// entorno. Aqui lo ocupa Vite, y la API se va al 3001.
-const PUERTO_WEB = Number.parseInt(process.env.PERGAMO_DEV_WEB_PORT || entorno.PERGAMO_DEV_WEB_PORT || '3000', 10);
+// entorno. Aqui lo ocupa Vite, y la API se va al 6230.
+const PUERTO_WEB = Number.parseInt(process.env.PERGAMO_DEV_WEB_PORT || entorno.PERGAMO_DEV_WEB_PORT || '6231', 10);
 
 // Por defecto solo el equipo local. Abrirlo a la red no basta con esto: el
 // firewall del host tiene politica DROP y solo admite 22, 80 y 443. El proxy
@@ -168,14 +168,14 @@ const arrancar = async () => {
   }
 
   // La API y la interfaz no pueden pedir el mismo puerto. Pasa en cuanto un
-  // .env se copia de un despliegue, donde PORT es 3000 porque ahi la aplicacion
+  // .env se copia de un despliegue, donde PORT es 6231 porque ahi la aplicacion
   // sirve las dos cosas a la vez; aqui son dos procesos.
   if (PUERTO_API === PUERTO_WEB) {
     morir(
       `La API y la interfaz piden las dos el puerto ${PUERTO_API}.`,
-      `  PORT=3001   en ${path.basename(ENV_FILE)}\n\n` +
-      '  El 3000 es la puerta de entrada y lo ocupa la interfaz, que es a donde\n' +
-      '  apunta el proxy inverso; la API va detras, en el 3001.'
+      `  PORT=6230   en ${path.basename(ENV_FILE)}\n\n` +
+      '  El 6231 es la puerta de entrada y lo ocupa la interfaz, que es a donde\n' +
+      '  apunta el proxy inverso; la API va detras, en el 6230.'
     );
   }
 
@@ -185,7 +185,7 @@ const arrancar = async () => {
         `El puerto ${puerto} ya esta ocupado, y lo necesita ${quien}.`,
         `  ss -ltnp 'sport = :${puerto}'\n\n` +
         '  Puede ser un arranque anterior que no llego a morir, u otro servicio\n' +
-        '  del host. El 3000 lo comparten a proposito este entorno y el\n' +
+        '  del host. El 6231 lo comparten a proposito este entorno y el\n' +
         '  contenedor, para que el proxy inverso apunte siempre al mismo sitio:\n' +
         '  si lo tiene el contenedor, `docker stop pergamo` y vuelve a probar.'
       );

@@ -81,7 +81,7 @@ const handle = async (response: Response) => {
 };
 
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
-  const response = await handle(await fetch(path, {
+  const response = await handle(await fetch(`/api${path}`, {
     ...init,
     headers: { ...authHeaders(), ...(init.headers || {}) }
   }));
@@ -127,7 +127,7 @@ const filenameFrom = (disposition: string | null, fallback: string) => {
  */
 const saveFile = async (path: string, fallbackName: string) => {
 
-  const response = await handle(await fetch(path, { headers: authHeaders() }));
+  const response = await handle(await fetch(`/api${path}`, { headers: authHeaders() }));
 
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

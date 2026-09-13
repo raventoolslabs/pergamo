@@ -22,7 +22,7 @@ La API sigue una arquitectura por capas, con la regla de dependencias descrita e
 * `dev.js` — arranque de desarrollo: API e interfaz en un solo comando.
 * `e2e` — recorrido en navegador de la interfaz, en contenedor. Proyecto npm propio, fuera de `web/` para que Playwright no entre en el build de la imagen.
 * `public` — logo y favicons, que Vite incorpora al build de la interfaz.
-* `docker` — despliegue: `docker-compose.yml`, `.env.example` del contenedor y la configuración del demonio ClamAV (`clamd.conf` y lista local de firmas ignoradas).
+* `docker` — despliegue: `docker-compose.yml`, `.env.example` del contenedor y la configuración de referencia de ClamAV (`clamd.conf` y lista local de firmas ignoradas).
 * `test` — pruebas de integración.
 * `.claude` — configuración del agente: skills del proyecto, hooks y reglas. Ver «Skills de Claude Code».
 
@@ -141,13 +141,66 @@ Variables que conviene revisar antes de desplegar:
 | `JWT_EXPIRES_IN` | Caducidad de los tokens (por defecto `8h`). |
 | `TRUST_PROXY` | Saltos de proxy inverso en los que confiar. **Si hay un proxy delante y vale 0, el rate limiting agrupará a todos los clientes bajo una sola IP.** |
 | `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` | Intentos permitidos por IP en los endpoints de credenciales. |
-| `MAX_FILE_SIZE` | Tamaño máximo por fichero subido, en bytes. **Si lo cambias, ajusta también `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` en `docker/clamav/clamd.conf`**: por debajo de este valor, ClamAV deja de analizar por completo los ficheros más grandes. |
+| `MAX_FILE_SIZE` | Tamaño máximo por fichero subido, en bytes. **Si lo cambias, ajusta también `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` en el `clamd.conf` del host** (ver [ClamAV](#clamav)): por debajo de este valor, ClamAV deja de analizar por completo los ficheros más grandes. |
 | `DEBUG` | Nivel de log `debug`; registra metadatos completos de fichero y documento. |
 | `ENABLE_ANTIVIRUS` | Análisis con ClamAV. Si no se define, el antivirus queda **desactivado** y el arranque lo advierte por log. Acepta `true/1/yes/on` y `false/0/no/off` sin distinguir mayúsculas; **un valor no reconocido detiene el arranque** en lugar de desactivar el escaneo en silencio. |
-| `CLAMAV_HOST` / `CLAMAV_PORT` | Destino del demonio clamd. Con `ENABLE_ANTIVIRUS` activo hay que definir esto o `CLAMAV_SOCKET`: sin uno de los dos, el arranque falla. |
-| `CLAMAV_SOCKET` | Alternativa a host/puerto para un clamd local por socket unix. |
+| `CLAMAV_SOCKET` | Socket unix de clamd. Vacío, y sin `CLAMAV_HOST`, vale `/run/clamav/clamd.ctl`: el del `clamav-daemon` del host. |
+| `CLAMAV_HOST` / `CLAMAV_PORT` | clamd por TCP en lugar de por socket. Declarar `CLAMAV_HOST` desactiva el socket por defecto. |
 | `CLAMAV_INIT_RETRIES` / `CLAMAV_INIT_RETRY_DELAY_MS` | Reintentos de conexión al arrancar. clamd tarda decenas de segundos en cargar las firmas. |
 | `TMP_MAX_AGE_MS` / `TMP_CLEANUP_INTERVAL_MS` | Limpieza periódica de temporales huérfanos en `data/tmp`. |
+
+## ClamAV
+
+Pergamo analiza con ClamAV cada subida antes de guardarla —con `ENABLE_ANTIVIRUS` activo— y el reescaneo del corpus pasa también por él. No lo lleva dentro: habla con el demonio `clamd` **del host**, tanto en desarrollo como en Docker, por su socket unix `/run/clamav/clamd.ctl`. Es el valor por defecto cuando no se declara `CLAMAV_HOST` ni `CLAMAV_SOCKET`, y el compose monta `/run/clamav` en los contenedores. El análisis va por `INSTREAM`: el fichero viaja por el socket, así que clamd no necesita ver las rutas de Pergamo.
+
+Con el antivirus activo y sin clamd, Pergamo no arranca: reintenta `CLAMAV_INIT_RETRIES` veces y termina con código 1 en lugar de aceptar subidas sin escáner.
+
+### Instalación
+
+En Debian o Ubuntu:
+
+```
+sudo apt install clamav-daemon clamav-freshclam
+sudo systemctl enable --now clamav-freshclam clamav-daemon
+```
+
+`clamav-freshclam` mantiene las firmas al día. `clamav-daemon` no responde hasta tener una base de firmas, así que el primer arranque tarda lo que tarde esa descarga.
+
+### Configuración
+
+La configuración del paquete **no sirve tal cual**: sus límites (25 MB) quedan por debajo de `MAX_FILE_SIZE`, y ClamAV da por limpio, por defecto, lo que no llega a analizar. En `/etc/clamav/clamd.conf`:
+
+```
+MaxFileSize 64M
+StreamMaxLength 64M
+MaxScanSize 256M
+AlertExceedsMax yes
+AlertOLE2Macros yes
+AlertPartitionIntersection yes
+LocalSocketMode 666
+```
+
+* `MaxFileSize`, `MaxScanSize` y `StreamMaxLength` deben ser siempre **mayores o iguales que `MAX_FILE_SIZE`**. `StreamMaxLength` es el crítico, porque el análisis va por `INSTREAM`. Si se desalinean, clamd corta la conexión con los ficheros grandes; la prueba `Should scan a file up to MAX_FILE_SIZE` existe para detectarlo.
+* `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, al revés que ClamAV por defecto.
+* `LocalSocketMode 666` deja abrir el socket al proceso de Pergamo, que en Docker corre como `node`. Es el valor del paquete de Debian.
+
+`docker/clamav/clamd.conf` es la referencia completa, con el porqué de cada valor. Tras cambiarla:
+
+```
+sudo systemctl restart clamav-daemon
+```
+
+En Debian, `/etc/clamav/clamd.conf` lo genera debconf: `dpkg-reconfigure clamav-daemon` o una actualización del paquete pueden proponer sobrescribirlo, y hay que conservar estas líneas.
+
+### Comprobación
+
+```
+ls -l /run/clamav/clamd.ctl     # srw-rw-rw- ... clamav clamav
+```
+
+Al arrancar, Pergamo registra la versión del motor y de las firmas (`Antivirus: ClamAV 1.4.3/28119/...`). Para comprobar la detección de punta a punta, sube el fichero EICAR (ver [Fichero de prueba](#fichero-de-prueba)).
+
+Si en el host no se puede instalar ClamAV, puede ejecutarse en Docker con el perfil `clamav` de `docker/docker-compose.yml`.
 
 ## Construcción y ejecución
 
@@ -180,34 +233,26 @@ cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.yml up --build
 ```
 
-Eso levanta dos servicios: **clamav** y **pergamo**. Antes el compose declaraba un único servicio, con ClamAV dentro del contenedor de la API.
+Eso levanta la aplicación (`pergamo`, interfaz y API en el puerto 6231), el worker de indexación (`pergamo-worker`) y la cola (`redis`).
 
-| Servicio | Papel |
-|---|---|
-| `clamav` | Demonio de análisis, imagen oficial con versión fijada, volumen propio para las firmas y `healthcheck` real contra el puerto 3310. Su puerto **no** se publica al host. |
-| `pergamo` | La aplicación: interfaz y API en el puerto 3000. No arranca hasta que el escáner está sano. |
-
-**La base de datos no la declara el compose.** Sale de `DB_HOST` y `DB_PORT` del `.env`, y se alcanza por la red `steamfront`, que es externa —no la crea este fichero— y es donde vive el postgres compartido del host. Antes el compose levantaba su propio contenedor de postgres con su propio volumen, lo que creaba una segunda base en máquinas que ya tenían una. Si la red no existe todavía:
+**La base de datos no la declara el compose.** Sale de `DB_HOST` y `DB_PORT` del `.env`, y se alcanza por la red `db`, que es externa —no la crea este fichero— y es donde vive el postgres compartido del host. Antes el compose levantaba su propio contenedor de postgres con su propio volumen, lo que creaba una segunda base en máquinas que ya tenían una. Si la red no existe todavía:
 
 ```
-docker network create steamfront
+docker network create db
 ```
 
-El contenedor publica el **3000**, que es la puerta de entrada: el mismo puerto que ocupa la interfaz en `npm run dev`, para que el proxy inverso apunte siempre al mismo sitio. Los dos entornos comparten ese puerto a propósito, así que solo puede correr uno de los dos a la vez. El compose fija `PORT=3000` dentro de la imagen, de modo que el `PORT=3001` que el `.env` lleva para desarrollo no se filtra al contenedor.
+**ClamAV tampoco**: los contenedores usan el `clamav-daemon` del host, cuyo directorio `/run/clamav` monta el compose. Hay que tenerlo instalado y configurado antes de levantar nada (ver [ClamAV](#clamav)).
 
-En un host cuyos contenedores no tengan salida a internet, el servicio `clamav` necesita `CLAMAV_NO_FRESHCLAMD=true` y que las firmas se siembren desde fuera sobre el volumen que monta en `/var/lib/clamav`: freshclam no puede actualizarse por sí mismo desde dentro, y sin esa variable falla en cada arranque.
-
-ClamAV vive ahora en su propio contenedor por tres motivos: aísla su ~1–1,5 GB residentes del cgroup de la API (antes un OOM del escáner tumbaba el servicio), permite un healthcheck de verdad, y saca la lógica de arranque de clamd del `docker-entrypoint.sh`. La aplicación le habla por TCP y espera a poder hacerlo **antes** de escuchar: la ventana en la que cada subida devolvía un `500` opaco mientras clamd cargaba firmas ya no existe.
+El contenedor publica el **6231**, que es la puerta de entrada: el mismo puerto que ocupa la interfaz en `npm run dev`, para que el proxy inverso apunte siempre al mismo sitio. Los dos entornos comparten ese puerto a propósito, así que solo puede correr uno de los dos a la vez. El compose fija `PORT=6231` dentro de la imagen, de modo que el `PORT=6230` que el `.env` lleva para desarrollo no se filtra al contenedor.
 
 La imagen de la aplicación ejecuta el proceso como usuario `node`: **no corre como root**.
-
-Los límites de `docker/clamav/clamd.conf` (`MaxFileSize`, `MaxScanSize`, `StreamMaxLength`) deben ser siempre mayores o iguales que `MAX_FILE_SIZE`. Están en dos ficheros distintos, así que la prueba `Should scan a file up to MAX_FILE_SIZE` existe precisamente para detectar que se han desalineado. `AlertExceedsMax yes` hace que lo que no se pueda analizar se **señale** en lugar de aprobarse, que es el comportamiento contrario al de ClamAV por defecto.
 
 ## Interfaz web
 
 La interfaz vive en `web/` (React + Vite) y se compila a `dist/web`, junto al JavaScript de la
-API. Express la sirve en la raíz del mismo puerto, así que `http://localhost:3000` abre la
-aplicación y `http://localhost:3000/document` sigue siendo la API. Si `dist/web` no existe —por
+API. Express sirve las dos en el mismo puerto: **toda la API cuelga de `/api`**
+(`http://localhost:6231/api/document`) y el resto de rutas son de la interfaz. Una ruta
+desconocida bajo `/api` devuelve un `404` JSON, nunca la pantalla de login. Si `dist/web` no existe —por
 ejemplo tras un `npm run build:api` a secas— el arranque lo advierte por log y el servicio
 funciona igual, solo que sin interfaz.
 
@@ -257,16 +302,15 @@ interfaz con Vite, ya enlazadas entre sí.
 
 | | |
 |---|---|
-| Interfaz | `http://127.0.0.1:3000` |
-| API | `http://127.0.0.1:3001` |
+| Interfaz | `http://127.0.0.1:6231` |
+| API | `http://127.0.0.1:6230` |
 
-La interfaz ocupa el **3000**, que es el mismo puerto que publica el contenedor. Es deliberado: el
+La interfaz ocupa el **6231**, que es el mismo puerto que publica el contenedor. Es deliberado: el
 proxy inverso apunta siempre ahí y no hay que tocarlo para cambiar de un entorno a otro, a cambio
-de que solo pueda correr uno de los dos. Si el 3000 está pillado por el contenedor, el arranque lo
+de que solo pueda correr uno de los dos. Si el 6231 está pillado por el contenedor, el arranque lo
 dice y basta con un `docker stop pergamo`.
 
-La API se va al 3001, detrás. El proxy de Vite redirige `/organization`, `/document`, `/version` y
-`/config` a ella, así que se trabaja contra datos reales; `PERGAMO_API` apunta a otro destino si
+La API se va al 6230, detrás. El proxy de Vite le reenvía todo lo que empieza por `/api`, así que se trabaja contra datos reales; `PERGAMO_API` apunta a otro destino si
 hace falta, y `PERGAMO_DEV_WEB_PORT` mueve la interfaz para levantarla con el contenedor en marcha.
 
 Para llegar por un dominio y no por `localhost`, `PERGAMO_WEB_HOST` en el `.env`
@@ -369,16 +413,16 @@ mano. Estos cuatro endpoints cubren ese hueco y son de solo lectura:
 
 | Endpoint | Quién | Qué devuelve |
 |---|---|---|
-| `GET /document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis —incluido `scan_engine`, que es lo que distingue un documento analizado de uno depositado sin análisis—. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status` (uno o varios separados por comas: `scan_status=infected,malicious`), `from` y `to` (franja inclusiva de fecha de depósito, instantes ISO), y orden (`sort` con `order=asc|desc`) por `creation_date`, `modification_date`, `name` —sin distinguir acentos— o `scan_status`, que ordena por gravedad del veredicto y no alfabéticamente. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
-| `GET /document/:id/scan` | Organización | `scan_status`, `scan_signature`, `scan_engine` y `scan_date` del documento. Va aparte de `GET /document/:id` porque el cuerpo de ese endpoint es el JSONB de metadatos tal cual, y añadirle claves rompería a quien ya lo consume. |
-| `GET /organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
-| `POST /search` | Autenticado | Búsqueda híbrida sobre los documentos de la organización del token. Devuelve el texto de cada fragmento y su procedencia, nunca el vector. |
-| `GET /document/:id/index` | Autenticado | Estado de la indexación semántica del documento. |
-| `GET /document/:id/chunks` | Organización | Los trozos del documento, paginados y en su orden: `{ total, limit, offset, chunks }`, con `content`, `position`, `page`, `section`, `heading_path`, `content_type` y `length`. Es lo que permite mirar dentro del índice —qué texto se extrajo y por dónde se cortó— sin entrar por SQL. `limit` va de 1 a 50 (8 por defecto), porque un trozo ronda los 1500 caracteres. **El vector no sale.** |
-| `GET /config` | Autenticado | Límites del despliegue: `enable_antivirus`, `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir —y no prometer un análisis que este despliegue no hace— en lugar de duplicar la configuración. |
+| `GET /api/document` | Organización | Listado paginado de sus documentos: `{ total, limit, offset, documents }`, con metadatos y estado de análisis —incluido `scan_engine`, que es lo que distingue un documento analizado de uno depositado sin análisis—. Filtros `name` (parcial, sin distinguir acentos), `tag` (exacta), `scan_status` (uno o varios separados por comas: `scan_status=infected,malicious`), `from` y `to` (franja inclusiva de fecha de depósito, instantes ISO), y orden (`sort` con `order=asc|desc`) por `creation_date`, `modification_date`, `name` —sin distinguir acentos— o `scan_status`, que ordena por gravedad del veredicto y no alfabéticamente. `limit` va de 1 a 100 (25 por defecto). Un parámetro inválido devuelve `400`, no se ignora. Con un token master devuelve `400`: no tiene organización sobre la que listar. |
+| `GET /api/document/:id/scan` | Organización | `scan_status`, `scan_signature`, `scan_engine` y `scan_date` del documento. Va aparte de `GET /api/document/:id` porque el cuerpo de ese endpoint es el JSONB de metadatos tal cual, y añadirle claves rompería a quien ya lo consume. |
+| `GET /api/organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
+| `POST /api/search` | Autenticado | Búsqueda híbrida sobre los documentos de la organización del token. Devuelve el texto de cada fragmento y su procedencia, nunca el vector. |
+| `GET /api/document/:id/index` | Autenticado | Estado de la indexación semántica del documento. |
+| `GET /api/document/:id/chunks` | Organización | Los trozos del documento, paginados y en su orden: `{ total, limit, offset, chunks }`, con `content`, `position`, `page`, `section`, `heading_path`, `content_type` y `length`. Es lo que permite mirar dentro del índice —qué texto se extrajo y por dónde se cortó— sin entrar por SQL. `limit` va de 1 a 50 (8 por defecto), porque un trozo ronda los 1500 caracteres. **El vector no sale.** |
+| `GET /api/config` | Autenticado | Límites del despliegue: `enable_antivirus`, `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir —y no prometer un análisis que este despliegue no hace— en lugar de duplicar la configuración. |
 
 El aislamiento por organización se aplica igual que en el resto: el `WHERE organization` de
-`GET /document` es incondicional, y `path` —la ruta en disco— no sale nunca al cliente.
+`GET /api/document` es incondicional, y `path` —la ruta en disco— no sale nunca al cliente.
 
 ## Migraciones de base de datos
 
@@ -416,7 +460,7 @@ Si no se hace, el contenedor se detiene en el arranque con un mensaje indicando 
 
 ### 3. Los tokens caducan
 
-Los JWT se emiten con `exp` (`JWT_EXPIRES_IN`, 8 horas por defecto). Los clientes deben tratar el `401` reautenticándose contra `/organization/login`.
+Los JWT se emiten con `exp` (`JWT_EXPIRES_IN`, 8 horas por defecto). Los clientes deben tratar el `401` reautenticándose contra `/api/organization/login`.
 
 Los tokens emitidos **antes** de esta versión no tienen `exp` y siguen siendo válidos indefinidamente. Para invalidarlos, una vez que los clientes hayan rotado, hay que rechazar en `verifyToken` los tokens sin ese claim; es un segundo paso pendiente y planificado aparte.
 
@@ -443,7 +487,7 @@ En una tabla `document` grande, añadir la restricción toma un bloqueo exclusiv
 
 ### 6. ClamAV pasa a ser un servicio propio (acción obligatoria)
 
-La imagen de la aplicación **ya no incluye ClamAV**, y el `docker-entrypoint.sh` ya no arranca clamd ni freshclam. El escáner es ahora el servicio `clamav` de `docker/docker-compose.yml`.
+La imagen de la aplicación **ya no incluye ClamAV**, y el `docker-entrypoint.sh` ya no arranca clamd ni freshclam. El escáner es un clamd externo: el `clamav-daemon` del host (ver [ClamAV](#clamav)).
 
 Antes de actualizar:
 
@@ -463,15 +507,15 @@ Añade `scan_status`, `scan_signature`, `scan_engine` y `scan_date` a `pergamo.d
 
 | Cambio | Efecto |
 |---|---|
-| `POST /organization/master/create` valida la robustez de la contraseña | Crear una organización con contraseña débil devuelve `400`. La contraseña maestra debe cumplir la política si se usa también para organizaciones. |
+| `POST /api/organization/master/create` valida la robustez de la contraseña | Crear una organización con contraseña débil devuelve `400`. La contraseña maestra debe cumplir la política si se usa también para organizaciones. |
 | Endpoints de credenciales con límite de intentos | Superar el límite devuelve `429`. Los entornos de prueba deben elevar `RATE_LIMIT_MAX`. |
 | Verificación del contenido del fichero | Un fichero cuyo contenido no corresponde al mimetype declarado devuelve `400`, aunque la cabecera `Content-Type` sea válida. |
 | Límite de tamaño de subida | Superar `MAX_FILE_SIZE` devuelve `413`. |
 | Valores de metadatos validados | Cadenas de más de 1024 caracteres, arrays de más de 64 elementos o estructuras anidadas devuelven `400`. |
 | `REMOVE_FILE_DISK` | Antes se ignoraba y los ficheros se borraban siempre. Ahora `false` los conserva de verdad: **revisa el valor en tu `.env` antes de desplegar**. |
-| Descarga de documentos no verificados | `GET /document/:id/file` devuelve `423` si el documento no está `clean`. `GET /document/:id` sigue devolviendo `200`. |
+| Descarga de documentos no verificados | `GET /api/document/:id/file` devuelve `423` si el documento no está `clean`. `GET /api/document/:id` sigue devolviendo `200`. |
 | Mimetype sin firma de contenido | Antes se aceptaba con un `log.warn`. Ahora devuelve `400`: **ampliar `VALID_MIMETYPE` exige añadir la firma en `src/infrastructure/files/filetype.ts`**. |
-| `PUT /document/:id/file` sobre un id ajeno | Antes se analizaba el fichero *antes* de comprobar la propiedad, así que un tenant podía forzar análisis de 50 MB contra ids ajenos. Ahora el `404` llega primero. |
+| `PUT /api/document/:id/file` sobre un id ajeno | Antes se analizaba el fichero *antes* de comprobar la propiedad, así que un tenant podía forzar análisis de 50 MB contra ids ajenos. Ahora el `404` llega primero. |
 | `Content-Disposition` | El nombre viaja entrecomillado y con escape, más `filename*` en UTF-8 (RFC 5987). Un cliente que parseara la cabecera sin comillas debe adaptarse. |
 | `X-Content-Type-Options: nosniff` | Presente en todas las respuestas. |
 
@@ -501,7 +545,7 @@ indexar.
 
 ### 9. Pendiente
 
-* Decidir sobre los índices de `init.sql` para hash y descripción: no los usa ninguna consulta. El de etiquetas (`idx_document_metadata_tags`) sí lo aprovecha ya el filtro `tag` de `GET /document`; la búsqueda por nombre, en cambio, es un `ILIKE '%…%'` que ningún índice B-tree puede servir.
+* Decidir sobre los índices de `init.sql` para hash y descripción: no los usa ninguna consulta. El de etiquetas (`idx_document_metadata_tags`) sí lo aprovecha ya el filtro `tag` de `GET /api/document`; la búsqueda por nombre, en cambio, es un `ILIKE '%…%'` que ningún índice B-tree puede servir.
 * Aviso `uuid <11.1.1` en `npm audit`: no afecta a este proyecto (requiere pasar `buf` a v3/v5/v6, y aquí solo se usa `v4()` sin ese argumento). Corregirlo exige un salto mayor de versión en `sequelize`.
 
 ## Pruebas
@@ -514,7 +558,7 @@ Las pruebas son de **integración**: levantan la aplicación real y necesitan
 
 * una instancia de PostgreSQL accesible, con pgvector instalado y ya inicializada con `npm run init`;
 * un Redis alcanzable en `REDIS_URL`, que usa la suite de la cola con el prefijo `pergamo-test` para no tocar nada más de esa instancia;
-* un demonio ClamAV alcanzable en `CLAMAV_HOST`/`CLAMAV_PORT` si `ENABLE_ANTIVIRUS` está activo;
+* un demonio ClamAV si `ENABLE_ANTIVIRUS` está activo: por defecto el del host, en `/run/clamav/clamd.ctl` (ver [ClamAV](#clamav));
 * `RATE_LIMIT_MAX` suficientemente alto para no toparse con el límite de intentos;
 * `USER_MASTER` distinto del nombre de la organización `pergamo`, y `PASSWORD_MASTER` **entrecomillado** en el `.env` si contiene `#` (dotenv trataría el resto de la línea como comentario).
 
@@ -563,11 +607,11 @@ Cada documento lleva `scan_status`, `scan_signature`, `scan_engine` y `scan_date
 
 **`clean` es un veredicto, y solo se escribe cuando alguien lo emitió.** Con `ENABLE_ANTIVIRUS` desactivado nadie mira el fichero, así que la subida se guarda `pending` con `scan_engine` nulo, no `clean`. La razón es que `scan_status` lo consume gente que no es esta interfaz: quien lee `clean` entiende «analizado y limpio», y afirmar eso de un fichero que nadie abrió es justo lo que un archivo no puede permitirse. No cuesta nada, porque `pending` **se entrega** igual que `clean`, y el reescaneo lo recoge en cuanto haya escáner —selecciona por `scan_engine` nulo—.
 
-`pending` cubre entonces dos situaciones que comparten estado y no explicación: **no hay antivirus** en este despliegue, o **lo hay y no respondió**. Las separa `enable_antivirus`, que `GET /config` publica, y la interfaz usa exactamente eso: sin antivirus lo llama «Sin analizar» —se entrega, pero nadie ha verificado su contenido—; con antivirus, «Análisis pendiente», que el próximo barrido resuelve. Cualquier otro consumidor debería mirar `scan_engine` por el mismo motivo: es la columna que separa lo aprobado por un motor de lo que nadie miró.
+`pending` cubre entonces dos situaciones que comparten estado y no explicación: **no hay antivirus** en este despliegue, o **lo hay y no respondió**. Las separa `enable_antivirus`, que `GET /api/config` publica, y la interfaz usa exactamente eso: sin antivirus lo llama «Sin analizar» —se entrega, pero nadie ha verificado su contenido—; con antivirus, «Análisis pendiente», que el próximo barrido resuelve. Cualquier otro consumidor debería mirar `scan_engine` por el mismo motivo: es la columna que separa lo aprobado por un motor de lo que nadie miró.
 
 Los depósitos anteriores a este cambio siguen en `clean` con `scan_engine` nulo, y la interfaz los sigue mostrando como «Sin analizar». No se reescriben en una migración: `npm run rescan` les da veredicto de verdad en cuanto haya escáner, que es mejor que cambiarles la etiqueta.
 
-El bloqueo se aplica en `GET /document/:id/file` y **no** en `GET /document/:id`: los metadatos de un documento en cuarentena siguen siendo consultables, porque es como el cliente descubre por qué está bloqueado.
+El bloqueo se aplica en `GET /api/document/:id/file` y **no** en `GET /api/document/:id`: los metadatos de un documento en cuarentena siguen siendo consultables, porque es como el cliente descubre por qué está bloqueado.
 
 **Qué retiene y qué no.** El `423` lo disparan `infected`, `malicious` y `error`, y solo esos tres: son los que exigen que alguien intervenga —revisar una firma, revisar contenido activo, buscar un fichero que falta— y ninguno se arregla esperando. `pending` **se entrega**.
 
@@ -645,7 +689,7 @@ npm run scan:release -- <id-documento>
 
 Pasa el documento a `clean` **conservando `scan_signature`**, de modo que el falso positivo queda trazado. El fichero no se modifica en ningún momento: los falsos positivos se **liberan** mediante revisión, no se "arreglan" alterando el documento.
 
-Si una misma firma reincide sobre documentos legítimos, se añade a `docker/clamav/local.ign2` y se reinicia el servicio `clamav`.
+Si una misma firma reincide sobre documentos legítimos, se añade al `local.ign2` del directorio de firmas de clamd —`/var/lib/clamav/local.ign2` en el host, con el formato y el procedimiento de `docker/clamav/local.ign2`— y se reinicia `clamav-daemon`.
 
 > **Por qué no hay saneado automático de PDF (CDR).** Se evaluó y se descartó. Reescribir un PDF para eliminar JavaScript, `/OpenAction`, `/Launch` o ficheros embebidos **rompe cualquier firma electrónica**, porque una firma PAdES/PKCS#7 cubre un `ByteRange` de bytes concretos. Además, los PDF firmados contienen legítimamente lo que un CDR elimina: PAdES-LTV embebe respuestas OCSP y CRLs *como ficheros embebidos*. Y el fallo sería silencioso: un rechazo por falso positivo devuelve 400 y el cliente reclama; una sanitización devuelve 200 y un fichero aparentemente correcto, cuyo daño se descubre meses después. Por último, rompería `metadata.hash`, que es la identidad de registro del documento.
 >
@@ -720,7 +764,7 @@ el primer trabajo.
 
 Esa comprobación es local y bloquea el arranque de la API y del worker por igual. Lo que
 **no** hace la API es esperar a que el proveedor responda: un tercero caído no puede
-impedir que arranque el archivo entero, y `/search` dirá lo que pasa cuando se le
+impedir que arranque el archivo entero, y `/api/search` dirá lo que pasa cuando se le
 pregunte. Quien sí espera es el worker, porque aceptar trabajos contra una máquina de
 inferencia muerta no sirve de nada.
 
@@ -758,36 +802,36 @@ faena—, así que no depende de que la máquina de inferencia responda en ese m
 
 ### El disparo
 
-`POST /document?index=true`, en la query string y **no** como campo del multipart: multer
+`POST /api/document?index=true`, en la query string y **no** como campo del multipart: multer
 solo puebla `req.body` con los campos que llegan *antes* del fichero, así que un cliente
 que lo mandara detrás pediría indexar y no lo obtendría, sin error. El esquema es
 `.strict()`, de modo que `?indexx=true` es un `400` y no una petición que se ignora.
 
 Pedir indexación con la funcionalidad desactivada también es un `400`: el cliente no debe
-creer que tiene vectores. Y reemplazar el fichero (`PUT /document/:id/file`) tira los
+creer que tiene vectores. Y reemplazar el fichero (`PUT /api/document/:id/file`) tira los
 vectores del contenido anterior y vuelve a `pending` conservando la intención, porque
 sustituir un fichero no debe poder desindexar un documento por omisión.
 
-`GET /document/:id/index` devuelve el estado, gemelo de `/scan` y por el mismo motivo: el
-cuerpo de `GET /document/:id` es el JSONB tal cual y añadirle claves cambiaría un contrato
+`GET /api/document/:id/index` devuelve el estado, gemelo de `/scan` y por el mismo motivo: el
+cuerpo de `GET /api/document/:id` es el JSONB tal cual y añadirle claves cambiaría un contrato
 que ya se consume.
 
 En la interfaz es una casilla del diálogo de subida, que **solo aparece si el despliegue
-indexa**: `GET /config` lleva `indexing_enabled` justamente para no ofrecer una casilla
+indexa**: `GET /api/config` lleva `indexing_enabled` justamente para no ofrecer una casilla
 que solo puede devolver un `400`. La ficha del documento muestra entonces el estado del
 índice, y mientras el trabajo está vivo (`pending`, `indexing`) se refresca sola —con
 tope, para que una pestaña olvidada no pregunte para siempre—.
 
 ### Búsqueda
 
-`POST /search`, con **la misma autenticación que todo lo demás**: se entra por
-`POST /organization/login`, y el token que devuelve sirve para buscar igual que para
+`POST /api/search`, con **la misma autenticación que todo lo demás**: se entra por
+`POST /api/organization/login`, y el token que devuelve sirve para buscar igual que para
 depositar un documento. El ámbito sale del token y de ningún otro sitio, así que no hay
 forma de pedir que se busque en el fondo de otra organización. El token maestro no lleva
 organización y recibe un `400`, como en el listado.
 
 ```http
-POST /search
+POST /api/search
 Authorization: <token>
 
 { "query": "condiciones de entrega", "limit": 10, "min_similarity": 0.35 }

@@ -1,0 +1,4 @@
+#!/bin/bash
+DIR_ACTUAL=`dirname $0`
+cd $DIR_ACTUAL
+docker compose up -d

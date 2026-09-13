@@ -37,7 +37,7 @@ describe('Document Tests', () => {
       validateStatus: () => { return true; }
     });
 
-    const response = await api.post(`/organization/login`, {
+    const response = await api.post(`/api/organization/login`, {
       name: 'pergamo',
       password: Config.password_master,
     });
@@ -59,7 +59,7 @@ describe('Document Tests', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(pathPdf));
 
-    const response = await api.post('/document', form, {
+    const response = await api.post('/api/document', form, {
       headers: {
         'authorization': token,
         ...form.getHeaders()
@@ -93,7 +93,7 @@ describe('Document Tests', () => {
       contentType: 'application/pdf',
     });
 
-    const response = await api.post('/document', form, {
+    const response = await api.post('/api/document', form, {
       headers: {
         'authorization': token,
         ...form.getHeaders()
@@ -108,7 +108,7 @@ describe('Document Tests', () => {
 
   itAntivirus('Should scan a file up to MAX_FILE_SIZE', async () => {
 
-    // Esta es la prueba que detecta que los limites de docker/clamav/clamd.conf
+    // Esta es la prueba que detecta que los limites del clamd.conf del host
     // (MaxFileSize, MaxScanSize, StreamMaxLength) se han quedado por debajo de
     // MAX_FILE_SIZE. Cuando eso ocurre, ClamAV deja de analizar el fichero por
     // completo y —con AlertExceedsMax desactivado— lo da por bueno: la subida
@@ -167,7 +167,7 @@ describe('Document Tests', () => {
         knownLength: size
       });
 
-      const response = await api.post('/document', form, {
+      const response = await api.post('/api/document', form, {
         headers: { 'authorization': token, ...form.getHeaders() },
         maxBodyLength: Infinity,
         maxContentLength: Infinity
@@ -194,7 +194,7 @@ describe('Document Tests', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(pathSigned));
 
-    const upload = await api.post('/document', form, {
+    const upload = await api.post('/api/document', form, {
       headers: { 'authorization': token, ...form.getHeaders() }
     });
 
@@ -210,7 +210,7 @@ describe('Document Tests', () => {
     //
     // Se libera como lo haria un operador porque lo que aqui se vigila es otra
     // cosa: que el fichero se devuelva byte a byte.
-    const scan = await api.get(`/document/${signedId}/scan`, { headers: { 'authorization': token } });
+    const scan = await api.get(`/api/document/${signedId}/scan`, { headers: { 'authorization': token } });
 
     if(scan.data.scan_status === 'malicious') {
 
@@ -223,7 +223,7 @@ describe('Document Tests', () => {
       });
     }
 
-    const download = await api.get(`/document/${signedId}/file`, {
+    const download = await api.get(`/api/document/${signedId}/file`, {
       headers: { 'authorization': token },
       responseType: 'arraybuffer'
     });
@@ -239,7 +239,7 @@ describe('Document Tests', () => {
     expect(downloaded.includes(Buffer.from('/EmbeddedFile'))).toBeTruthy();
     expect(downloaded.toString('latin1').split('%%EOF').length - 1).toBe(2);
 
-    await api.delete(`/document/${signedId}`, { headers: { 'authorization': token } });
+    await api.delete(`/api/document/${signedId}`, { headers: { 'authorization': token } });
   });
 
   it('Should upload an OpenDocument text file', async () => {
@@ -255,7 +255,7 @@ describe('Document Tests', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(pathOdt), { contentType: mimetypeOdt });
 
-    const response = await api.post('/document', form, {
+    const response = await api.post('/api/document', form, {
       headers: { 'authorization': token, ...form.getHeaders() }
     });
 
@@ -263,7 +263,7 @@ describe('Document Tests', () => {
     expect(response.data.mimetype).toBe(mimetypeOdt);
     expect(response.data.hash).toBe(await sha256File(pathOdt));
 
-    await api.delete(`/document/${response.data.uuid}`, { headers: { 'authorization': token } });
+    await api.delete(`/api/document/${response.data.uuid}`, { headers: { 'authorization': token } });
   });
 
   it('Should upload each format the deployment permits', async () => {
@@ -286,7 +286,7 @@ describe('Document Tests', () => {
       const form = new FormData();
       form.append('document', fs.createReadStream(source), { contentType: mimetype });
 
-      const response = await api.post('/document', form, {
+      const response = await api.post('/api/document', form, {
         headers: { 'authorization': token, ...form.getHeaders() }
       });
 
@@ -294,7 +294,7 @@ describe('Document Tests', () => {
       expect(response.data.mimetype).toBe(mimetype);
       expect(response.data.hash).toBe(await sha256File(source));
 
-      await api.delete(`/document/${response.data.uuid}`, { headers: { 'authorization': token } });
+      await api.delete(`/api/document/${response.data.uuid}`, { headers: { 'authorization': token } });
     }
   });
 
@@ -314,7 +314,7 @@ describe('Document Tests', () => {
       contentType: xlsx
     });
 
-    const response = await api.post('/document', form, {
+    const response = await api.post('/api/document', form, {
       headers: { 'authorization': token, ...form.getHeaders() }
     });
 
@@ -353,7 +353,7 @@ describe('Document Tests', () => {
       contentType: unverifiable
     });
 
-    const response = await api.post('/document', form, {
+    const response = await api.post('/api/document', form, {
       headers: { 'authorization': token, ...form.getHeaders() }
     });
 
@@ -363,7 +363,7 @@ describe('Document Tests', () => {
 
   it('Should get a metadata of document', async () => {
 
-    const response = await api.get(`/document/${id}`, {
+    const response = await api.get(`/api/document/${id}`, {
       headers: {
         'authorization': token
       }
@@ -379,7 +379,7 @@ describe('Document Tests', () => {
 
   it('Should get a file of document', async () => {
 
-    const response = await api.get(`/document/${id}/file`, {
+    const response = await api.get(`/api/document/${id}/file`, {
       headers: {
         'authorization': token
       }
@@ -392,7 +392,7 @@ describe('Document Tests', () => {
   it('Should modify a metadata of document', async () => {
 
     const tags = ['test'];
-    const response = await api.put(`/document/${id}`, { tags }, {
+    const response = await api.put(`/api/document/${id}`, { tags }, {
       headers: {
         'authorization': token,
         'Content-Type': mime.contentType('json')
@@ -410,7 +410,7 @@ describe('Document Tests', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(pathPdf));
 
-    const response = await api.put(`/document/${id}/file`, form, {
+    const response = await api.put(`/api/document/${id}/file`, form, {
       headers: {
         'authorization': token,
         ...form.getHeaders()
@@ -436,7 +436,7 @@ describe('Document Tests', () => {
       contentType: 'application/pdf'
     });
 
-    const response = await api.put(`/document/${id}/file`, form, {
+    const response = await api.put(`/api/document/${id}/file`, form, {
       headers: { 'authorization': token, ...form.getHeaders() }
     });
 
@@ -445,7 +445,7 @@ describe('Document Tests', () => {
 
     // El documento conserva el contenido anterior: un intento fallido no debe
     // dejarlo a medias.
-    const after = await api.get(`/document/${id}`, { headers: { 'authorization': token } });
+    const after = await api.get(`/api/document/${id}`, { headers: { 'authorization': token } });
 
     expect(after.status).toBe(200);
     expect(after.data.original_name).toBe('test2.pdf');
@@ -454,7 +454,7 @@ describe('Document Tests', () => {
   if(Config.max_version_file > 1) {
     it('Should return saved versions of a document', async () => {
 
-      let response = await api.get(`/document/${id}/versions`, {
+      let response = await api.get(`/api/document/${id}/versions`, {
         headers: {
           'authorization': token
         }
@@ -481,7 +481,7 @@ describe('Document Tests', () => {
 
     expect(fs.existsSync(filePath)).toBeTruthy();
 
-    const response = await api.delete(`/document/${id}`, {
+    const response = await api.delete(`/api/document/${id}`, {
       headers: {
         'authorization': token
       }

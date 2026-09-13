@@ -35,25 +35,25 @@ describe('Isolation and input validation', () => {
       validateStatus: () => true
     });
 
-    let response = await api.post('/organization/login', {
+    let response = await api.post('/api/organization/login', {
       name: 'pergamo',
       password: Config.password_master
     });
     tokenOwner = response.data.token;
 
-    response = await api.post('/organization/login', {
+    response = await api.post('/api/organization/login', {
       name: Config.user_master,
       password: Config.password_master
     });
     const tokenMaster = response.data.token;
 
-    response = await api.post('/organization/master/create', {
+    response = await api.post('/api/organization/master/create', {
       name: OTHER_ORGANIZATION,
       password: OTHER_PASSWORD
     }, { headers: { authorization: tokenMaster } });
     otherId = response.data.id;
 
-    response = await api.post('/organization/login', {
+    response = await api.post('/api/organization/login', {
       name: OTHER_ORGANIZATION,
       password: OTHER_PASSWORD
     });
@@ -61,7 +61,7 @@ describe('Isolation and input validation', () => {
 
     const form = new FormData();
     form.append('document', fs.createReadStream(path.join(__dirname, 'assets', 'test.pdf')));
-    response = await api.post('/document', form, {
+    response = await api.post('/api/document', form, {
       headers: { authorization: tokenOwner, ...form.getHeaders() }
     });
     documentId = response.data.uuid;
@@ -70,7 +70,7 @@ describe('Isolation and input validation', () => {
   afterAll(async () => {
 
     if(documentId) {
-      await api.delete(`/document/${documentId}`, { headers: { authorization: tokenOwner } });
+      await api.delete(`/api/document/${documentId}`, { headers: { authorization: tokenOwner } });
     }
 
     if(otherId) {
@@ -91,48 +91,48 @@ describe('Isolation and input validation', () => {
   });
 
   it('Should not expose metadata of a document from another organization', async () => {
-    const response = await api.get(`/document/${documentId}`, {
+    const response = await api.get(`/api/document/${documentId}`, {
       headers: { authorization: tokenOther }
     });
     expect(response.status).toBe(StatusCodes.NOT_FOUND);
   });
 
   it('Should not expose the file of a document from another organization', async () => {
-    const response = await api.get(`/document/${documentId}/file`, {
+    const response = await api.get(`/api/document/${documentId}/file`, {
       headers: { authorization: tokenOther }
     });
     expect(response.status).toBe(StatusCodes.NOT_FOUND);
   });
 
   it('Should not modify metadata of a document from another organization', async () => {
-    const response = await api.put(`/document/${documentId}`, { name: 'robado' }, {
+    const response = await api.put(`/api/document/${documentId}`, { name: 'robado' }, {
       headers: { authorization: tokenOther, 'Content-Type': 'application/json' }
     });
     expect(response.status).toBe(StatusCodes.NOT_FOUND);
   });
 
   it('Should not delete a document from another organization', async () => {
-    const response = await api.delete(`/document/${documentId}`, {
+    const response = await api.delete(`/api/document/${documentId}`, {
       headers: { authorization: tokenOther }
     });
     expect(response.status).toBe(StatusCodes.NOT_FOUND);
 
     // El documento sigue siendo accesible para su propietario.
-    const owner = await api.get(`/document/${documentId}`, {
+    const owner = await api.get(`/api/document/${documentId}`, {
       headers: { authorization: tokenOwner }
     });
     expect(owner.status).toBe(StatusCodes.OK);
   });
 
   it('Should reject a tampered token', async () => {
-    const response = await api.get(`/document/${documentId}`, {
+    const response = await api.get(`/api/document/${documentId}`, {
       headers: { authorization: `${tokenOwner}modificado` }
     });
     expect(response.status).toBe(StatusCodes.UNAUTHORIZED);
   });
 
   it('Should reject a request without token', async () => {
-    const response = await api.get(`/document/${documentId}`);
+    const response = await api.get(`/api/document/${documentId}`);
     expect(response.status).toBe(StatusCodes.UNAUTHORIZED);
   });
 
@@ -143,7 +143,7 @@ describe('Isolation and input validation', () => {
       contentType: 'application/pdf'
     });
 
-    const response = await api.post('/document', form, {
+    const response = await api.post('/api/document', form, {
       headers: { authorization: tokenOwner, ...form.getHeaders() }
     });
 
@@ -152,7 +152,7 @@ describe('Isolation and input validation', () => {
   });
 
   it('Should reject metadata values that are too large', async () => {
-    const response = await api.put(`/document/${documentId}`, { name: 'x'.repeat(5000) }, {
+    const response = await api.put(`/api/document/${documentId}`, { name: 'x'.repeat(5000) }, {
       headers: { authorization: tokenOwner, 'Content-Type': 'application/json' }
     });
     expect(response.status).toBe(StatusCodes.BAD_REQUEST);
@@ -191,7 +191,7 @@ describe('Isolation and input validation', () => {
 
     try {
 
-      const response = await api.post('/document', form, {
+      const response = await api.post('/api/document', form, {
         headers: { authorization: tokenOwner, ...form.getHeaders() },
         maxBodyLength: Infinity,
         maxContentLength: Infinity

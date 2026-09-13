@@ -26,13 +26,19 @@ describe('Organization Tests', () => {
   });
 
   it('Should return the version from package.json', async () => {
-    const response = await api.get(`/version`);
+    const response = await api.get(`/api/version`);
     expect(response.status).toBe(200);
     expect(response.data).toEqual({ version: packageJson.version });
   });
 
+  it('Should answer unknown API routes with a JSON 404', async () => {
+    const response = await api.get(`/api/unknown`);
+    expect(response.status).toBe(404);
+    expect(response.data.code).toBe('ROUTE_NOT_FOUND');
+  });
+
   it('Should log in and get an access token', async () => {
-    let response = await api.post(`/organization/login`, {
+    let response = await api.post(`/api/organization/login`, {
       name: 'pergamo',
       password: Config.password_master,
     });
@@ -45,7 +51,7 @@ describe('Organization Tests', () => {
 
   it('Should change password', async () => {
     
-    let response = await api.post(`/organization/changePassword`, { password: 'Test0123456#' }, {
+    let response = await api.post(`/api/organization/changePassword`, { password: 'Test0123456#' }, {
       headers: {
         'authorization': token
       }
@@ -54,7 +60,7 @@ describe('Organization Tests', () => {
     expect(response.status).toBe(StatusCodes.OK);
     expect(response.data.message).toBe('Password change successfully');
 
-    response = await api.post(`/organization/changePassword`, { password: Config.password_master }, {
+    response = await api.post(`/api/organization/changePassword`, { password: Config.password_master }, {
       headers: {
         'authorization': token
       }
@@ -63,7 +69,7 @@ describe('Organization Tests', () => {
     expect(response.status).toBe(StatusCodes.OK);
     expect(response.data.message).toBe('Password change successfully');
 
-    response = await api.post(`/organization/changePassword`, { password: Config.password_master }, {
+    response = await api.post(`/api/organization/changePassword`, { password: Config.password_master }, {
       headers: {
         'authorization': token
       }
@@ -75,7 +81,7 @@ describe('Organization Tests', () => {
 
   it('Should unchange password', async () => {
     
-    const response = await api.post(`/organization/changePassword`, { password: 'test' }, {
+    const response = await api.post(`/api/organization/changePassword`, { password: 'test' }, {
       headers: {
         'authorization': token
       }
@@ -87,14 +93,14 @@ describe('Organization Tests', () => {
 
   it('Should create organization from master', async () => {
 
-    let response = await api.post(`/organization/login`, {
+    let response = await api.post(`/api/organization/login`, {
       name: Config.user_master,
       password: Config.password_master,
     });
 
     const tokenMaster = response.data.token;
     
-    response = await api.post(`/organization/master/create`, 
+    response = await api.post(`/api/organization/master/create`, 
       { 
         name: 'test',
         password: Config.password_master
@@ -117,14 +123,14 @@ describe('Organization Tests', () => {
 
   it('Should change password from master', async () => {
 
-    let response = await api.post(`/organization/login`, {
+    let response = await api.post(`/api/organization/login`, {
       name: Config.user_master,
       password: Config.password_master,
     });
 
     const tokenMaster = response.data.token;
     
-    response = await api.post(`/organization/master/changePassword`, 
+    response = await api.post(`/api/organization/master/changePassword`, 
       { 
         organization: 'pergamo',
         password: 'Test0123456#' 
@@ -139,7 +145,7 @@ describe('Organization Tests', () => {
     expect(response.status).toBe(StatusCodes.OK);
     expect(response.data.message).toBe('Password change successfully');
 
-    response = await api.post(`/organization/master/changePassword`, 
+    response = await api.post(`/api/organization/master/changePassword`, 
       { 
         organization: 'pergamo',
         password: Config.password_master

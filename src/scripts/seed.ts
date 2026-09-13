@@ -215,7 +215,7 @@ const seed = async () => {
     const argument = process.argv.find((value) => value.startsWith('--org='));
     const organization = argument ? argument.slice('--org='.length) : (process.env.SEED_ORGANIZATION || 'pergamo');
 
-    const login = await call(server, 'POST', '/organization/login',
+    const login = await call(server, 'POST', '/api/organization/login',
       { 'content-type': 'application/json' },
       Buffer.from(JSON.stringify({ name: organization, password: Config.password_master })));
 
@@ -237,7 +237,7 @@ const seed = async () => {
 
       const { boundary, body } = multipart(`${item.name}.pdf`, await fs.promises.readFile(source));
 
-      const upload = await call(server, 'POST', '/document', {
+      const upload = await call(server, 'POST', '/api/document', {
         authorization: token,
         'content-type': `multipart/form-data; boundary=${boundary}`,
         'content-length': body.length
@@ -253,7 +253,7 @@ const seed = async () => {
 
       const id = upload.body.uuid;
 
-      await call(server, 'PUT', `/document/${id}`, {
+      await call(server, 'PUT', `/api/document/${id}`, {
         authorization: token,
         'content-type': 'application/json'
       }, Buffer.from(JSON.stringify({

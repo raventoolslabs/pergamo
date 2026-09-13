@@ -34,7 +34,7 @@ describe('Indexing queue', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(asset(file)), { contentType: mimetype });
 
-    return api.post(`/document${query}`, form, {
+    return api.post(`/api/document${query}`, form, {
       headers: { 'authorization': token, ...form.getHeaders() }
     });
   };
@@ -44,7 +44,7 @@ describe('Indexing queue', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(asset(file)), { contentType: mimetype });
 
-    return api.put(`/document/${id}/file${query}`, form, {
+    return api.put(`/api/document/${id}/file${query}`, form, {
       headers: { 'authorization': token, ...form.getHeaders() }
     });
   };
@@ -56,7 +56,7 @@ describe('Indexing queue', () => {
     return rows[0]?.index_status;
   };
 
-  const remove = (id:string) => api.delete(`/document/${id}`, { headers: { authorization: token } });
+  const remove = (id:string) => api.delete(`/api/document/${id}`, { headers: { authorization: token } });
 
   /**
    * El encolado ocurre despues del commit y NO se espera: Redis caido no puede
@@ -82,7 +82,7 @@ describe('Indexing queue', () => {
       validateStatus: () => true
     });
 
-    const response = await api.post('/organization/login', {
+    const response = await api.post('/api/organization/login', {
       name: 'pergamo',
       password: Config.password_master
     });
@@ -237,7 +237,7 @@ describe('Indexing queue', () => {
     const form = new FormData();
     form.append('document', fs.createReadStream(asset('multipage.pdf')), { contentType: 'application/pdf' });
 
-    const replaced = await api.put(`/document/${id}/file`, form, {
+    const replaced = await api.put(`/api/document/${id}/file`, form, {
       headers: { authorization: token, ...form.getHeaders() }
     });
 
@@ -339,7 +339,7 @@ describe('Indexing queue', () => {
 
     await waitForJob(id);
 
-    const info = await api.get(`/document/${id}/index`, { headers: { authorization: token } });
+    const info = await api.get(`/api/document/${id}/index`, { headers: { authorization: token } });
 
     expect(info.status).toBe(200);
     expect(info.data).toMatchObject({ index_status: 'pending' });
@@ -361,7 +361,7 @@ describe('Indexing queue', () => {
 
     await queue.obliterate({ force: true });
 
-    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+    const asked = await api.post(`/api/document/${id}/index`, null, { headers: { authorization: token } });
 
     expect(asked.status).toBe(StatusCodes.ACCEPTED);
     expect(asked.data).toMatchObject({ index_status: 'pending' });
@@ -384,7 +384,7 @@ describe('Indexing queue', () => {
       replacements: { id }, type: QueryTypes.UPDATE });
     await queue.obliterate({ force: true });
 
-    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+    const asked = await api.post(`/api/document/${id}/index`, null, { headers: { authorization: token } });
 
     expect(asked.status).toBe(StatusCodes.ACCEPTED);
     // El motivo anterior se va con el estado: describe una pasada que ya no es
@@ -406,7 +406,7 @@ describe('Indexing queue', () => {
       `UPDATE pergamo.document SET index_status = 'indexing' WHERE id = :id;`, {
       replacements: { id }, type: QueryTypes.UPDATE });
 
-    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+    const asked = await api.post(`/api/document/${id}/index`, null, { headers: { authorization: token } });
 
     // Una segunda pasada sobre lo que un worker ya tiene dentro duplica el
     // trabajo y no adelanta nada.
@@ -426,7 +426,7 @@ describe('Indexing queue', () => {
 
     Config.indexing.enabled = false;
 
-    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+    const asked = await api.post(`/api/document/${id}/index`, null, { headers: { authorization: token } });
 
     expect(asked.status).toBe(400);
     expect(asked.data.error).toContain('does not index');
@@ -446,7 +446,7 @@ describe('Indexing queue', () => {
 
     await queue.obliterate({ force: true });
 
-    const asked = await api.post(`/document/${id}/index`, null, { headers: { authorization: token } });
+    const asked = await api.post(`/api/document/${id}/index`, null, { headers: { authorization: token } });
 
     // Convertir es abrir el fichero con un parser, y eso es justo lo que la
     // cuarentena impide.
@@ -461,7 +461,7 @@ describe('Indexing queue', () => {
 
     Config.indexing.enabled = true;
 
-    const response = await api.get('/config', { headers: { authorization: token } });
+    const response = await api.get('/api/config', { headers: { authorization: token } });
 
     expect(response.data.indexing_enabled).toBe(true);
   });

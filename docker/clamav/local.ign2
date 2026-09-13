@@ -7,8 +7,10 @@
 # Procedimiento:
 #   1. Liberar el documento afectado:  npm run scan:release -- <id>
 #      (conserva scan_signature, de modo que el falso positivo queda trazado)
-#   2. Si la misma firma reincide sobre documentos legitimos, anadirla aqui y
-#      reiniciar el servicio clamav.
+#   2. Si la misma firma reincide sobre documentos legitimos, anadirla al
+#      local.ign2 del directorio de firmas de clamd (/var/lib/clamav en el
+#      host) y reiniciar clamav-daemon. Este fichero es la plantilla, y el que
+#      monta el ClamAV en Docker.
 #
 # Anota siempre por que se ignora y quien lo decidio: una linea sin contexto es
 # indistinguible de un hueco de seguridad abierto por descuido.

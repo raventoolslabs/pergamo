@@ -73,7 +73,7 @@ describe('Active-content PDF corpus', () => {
       contentType: 'application/pdf'
     });
 
-    const response = await api.post('/document', form, {
+    const response = await api.post('/api/document', form, {
       headers: { authorization: token, ...form.getHeaders() }
     });
 
@@ -102,7 +102,7 @@ describe('Active-content PDF corpus', () => {
       validateStatus: () => true
     });
 
-    const login = await api.post('/organization/login', {
+    const login = await api.post('/api/organization/login', {
       name: 'pergamo',
       password: Config.password_master
     });
@@ -115,7 +115,7 @@ describe('Active-content PDF corpus', () => {
     // El corpus no se queda en el fondo: estas pruebas corren contra la base
     // configurada, que en desarrollo es la misma que se mira por la interfaz.
     for(const id of deposited) {
-      await api.delete(`/document/${id}`, { headers: { authorization: token } });
+      await api.delete(`/api/document/${id}`, { headers: { authorization: token } });
     }
 
     server.close();
@@ -288,7 +288,7 @@ describe('Active-content PDF corpus', () => {
     expect(row.scan_status).toBe('malicious');
     expect(row.scan_signature).toContain('JavaScript');
 
-    const download = await api.get(`/document/${response.data.uuid}/file`, {
+    const download = await api.get(`/api/document/${response.data.uuid}/file`, {
       headers: { authorization: token }
     });
 
@@ -303,7 +303,7 @@ describe('Active-content PDF corpus', () => {
 
     const uploaded = await upload('payload5.pdf');
 
-    const response = await api.get(`/document/${uploaded.data.uuid}`, {
+    const response = await api.get(`/api/document/${uploaded.data.uuid}`, {
       headers: { authorization: token }
     });
 
@@ -312,7 +312,7 @@ describe('Active-content PDF corpus', () => {
     expect(response.status).toBe(StatusCodes.OK);
     expect(response.data.uuid).toBe(uploaded.data.uuid);
 
-    const scan = await api.get(`/document/${uploaded.data.uuid}/scan`, {
+    const scan = await api.get(`/api/document/${uploaded.data.uuid}/scan`, {
       headers: { authorization: token }
     });
 
@@ -347,7 +347,7 @@ describe('Active-content PDF corpus', () => {
       type: QueryTypes.UPDATE
     });
 
-    const download = await api.get(`/document/${id}/file`, { headers: { authorization: token } });
+    const download = await api.get(`/api/document/${id}/file`, { headers: { authorization: token } });
 
     expect(download.status).toBe(StatusCodes.OK);
     expect((await status(id)).scan_signature).toContain('ACTIVE_CONTENT');
@@ -367,7 +367,7 @@ describe('Active-content PDF corpus', () => {
     expect(row.scan_status).toBe('malicious');
     expect(row.scan_signature).toContain('FontMatrix');
 
-    const download = await api.get(`/document/${uploaded.data.uuid}/file`,
+    const download = await api.get(`/api/document/${uploaded.data.uuid}/file`,
       { headers: { authorization: token } });
 
     expect(download.status).toBe(StatusCodes.LOCKED);
@@ -403,7 +403,7 @@ describe('Active-content PDF corpus', () => {
       type: QueryTypes.UPDATE
     });
 
-    const download = await api.get(`/document/${uploaded.data.uuid}/file`, {
+    const download = await api.get(`/api/document/${uploaded.data.uuid}/file`, {
       headers: { authorization: token },
       responseType: 'arraybuffer'
     });
