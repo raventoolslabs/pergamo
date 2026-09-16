@@ -151,14 +151,17 @@ describe('Discharged documents', () => {
       await documentRepository.discharge('pergamo', [created.id]);
       expect(await documentRepository.findById('pergamo', created.id)).toBeNull();
 
-      const state = await documentRepository.listRemoteState('pergamo', folder, null, 10);
-      expect(state).toEqual([{ id: created.id, fileId: remote.fileId, revision: '1', indexStatus: 'none', discharged: true }]);
+      const state = await documentRepository.listRemoteState('pergamo', null, 1000);
+      expect(state).toContainEqual({ id: created.id, fileId: remote.fileId, folder, revision: '1', indexStatus: 'none', discharged: true });
 
       const revived = await documentRepository.updateRemote('pergamo', created.id,
-        { ...metadata, hash: 'drive:2' }, { ...remote, revision: '2' }, scan, 'pending');
+        { hash: 'drive:2' }, { ...remote, revision: '2' }, scan, 'pending');
       expect(revived.id).toBe(created.id);
       expect(revived.remote.revision).toBe('2');
       expect(revived.dischargeDate).toBeUndefined();
+      // La mezcla conserva lo que no llego en la revision.
+      expect(revived.metadata.name).toBe('a.pdf');
+      expect(revived.metadata.hash).toBe('drive:2');
       expect(await documentRepository.findById('pergamo', created.id)).not.toBeNull();
 
     } finally {

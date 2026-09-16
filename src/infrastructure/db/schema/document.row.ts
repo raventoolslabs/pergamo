@@ -44,6 +44,7 @@ export interface DocumentSummaryRow {
 export interface RemoteStateRow {
   id: string;
   drive_file_id: string;
+  drive_folder: string | null;
   drive_revision: string;
   index_status: IndexStatus;
   discharged: boolean;

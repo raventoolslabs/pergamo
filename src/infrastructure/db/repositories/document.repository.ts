@@ -212,16 +212,16 @@ export const documentRepository:DocumentRepository = {
     };
   },
 
-  async listRemoteState(organization, folder, afterId, limit) {
+  async listRemoteState(organization, afterId, limit) {
 
     const rows:RemoteStateRow[] = await sequelize.query(
-      `SELECT id, drive_file_id, drive_revision, index_status, discharge_date IS NOT NULL AS discharged
+      `SELECT id, drive_file_id, drive_folder, drive_revision, index_status, discharge_date IS NOT NULL AS discharged
       FROM pergamo.document
-      WHERE organization = :organization AND drive_folder = :folder
+      WHERE organization = :organization AND source = 'drive'
         AND (:afterId::varchar IS NULL OR id > :afterId)
       ORDER BY id
       LIMIT :limit;`, {
-      replacements: { organization, folder, afterId, limit },
+      replacements: { organization, afterId, limit },
       type: QueryTypes.SELECT
     });
 
@@ -232,11 +232,14 @@ export const documentRepository:DocumentRepository = {
 
     const result:any = await sequelize.query(
       `UPDATE pergamo.document
-      SET metadata = :metadata, modification_date = CURRENT_TIMESTAMP,
+      SET metadata = metadata || :metadata::jsonb, modification_date = CURRENT_TIMESTAMP,
           drive_folder = :drive_folder, drive_revision = :drive_revision, drive_view_link = :drive_view_link,
-          scan_status = :scan_status, scan_signature = :scan_signature,
-          scan_engine = :scan_engine, scan_date = :scan_date,
-          index_status = :index_status, index_error = NULL,
+          scan_status = CASE WHEN :rescan THEN :scan_status ELSE scan_status END,
+          scan_signature = CASE WHEN :rescan THEN :scan_signature ELSE scan_signature END,
+          scan_engine = CASE WHEN :rescan THEN :scan_engine ELSE scan_engine END,
+          scan_date = CASE WHEN :rescan THEN CAST(:scan_date AS timestamp) ELSE scan_date END,
+          index_status = COALESCE(:index_status, index_status),
+          index_error = CASE WHEN :index_status IS NULL THEN index_error END,
           discharge_date = NULL
       WHERE organization = :organization AND id = :id AND source = 'drive' RETURNING *;`, {
       replacements: {
@@ -244,8 +247,9 @@ export const documentRepository:DocumentRepository = {
         organization,
         id,
         index_status: indexStatus,
+        rescan: scan !== null,
         ...remoteReplacements(remote),
-        ...scanReplacements(scan)
+        ...scanReplacements(scan ?? { scanStatus: null, scanSignature: null, scanEngine: null, scanDate: null })
       },
       type: QueryTypes.INSERT,
       transaction: scope as any

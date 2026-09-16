@@ -40,6 +40,8 @@ export interface DocumentListFilter {
 export interface RemoteState {
   id: string;
   fileId: string;
+  // null si su carpeta se quito: la adopta la siguiente carpeta que lo vea.
+  folder: string | null;
   revision: string;
   indexStatus: IndexStatus;
   discharged: boolean;
@@ -63,15 +65,20 @@ export interface DocumentRepository {
   remove(organization:string, id:string): Promise<string | null>;
   list(filter:DocumentListFilter): Promise<DocumentPage>;
 
-  // Incluye las dadas de baja: un fichero que reaparece revive su documento.
-  // Paginado por keyset sobre id.
-  listRemoteState(organization:string, folder:string, afterId:string | null, limit:number): Promise<RemoteState[]>;
+  /**
+   * Todos los de Drive de la organizacion, dados de baja incluidos: un fichero
+   * que reaparece revive su documento, y uno que ya importo otra carpeta
+   * solapada no se duplica. Paginado por keyset sobre id.
+   */
+  listRemoteState(organization:string, afterId:string | null, limit:number): Promise<RemoteState[]>;
   /**
    * Nueva revision desde Drive. Tambien revive un documento dado de baja: es el
-   * mismo fichero, con su id y sus metadatos.
+   * mismo fichero, con su id. `metadata` se mezcla con la guardada, asi que las
+   * claves que edita el cliente y no llegan aqui se conservan. Sin `scan` ni
+   * `indexStatus` se conservan veredicto e indice.
    */
-  updateRemote(organization:string, id:string, metadata:DocumentMetadata, remote:RemoteSource,
-    scan:ScanRecord, indexStatus:IndexStatus, scope?:TransactionScope): Promise<Document>;
+  updateRemote(organization:string, id:string, metadata:Partial<DocumentMetadata>, remote:RemoteSource,
+    scan:ScanRecord | null, indexStatus:IndexStatus | null, scope?:TransactionScope): Promise<Document>;
   // Baja logica; los chunks los borra quien llama, en la misma transaccion.
   discharge(organization:string, ids:string[], scope?:TransactionScope): Promise<void>;
 

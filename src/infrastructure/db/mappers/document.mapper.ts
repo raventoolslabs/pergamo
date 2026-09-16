@@ -50,6 +50,7 @@ export const toDocumentSummary = (row:DocumentSummaryRow):DocumentSummary => ({
 export const toRemoteState = (row:RemoteStateRow):RemoteState => ({
   id: row.id,
   fileId: row.drive_file_id,
+  folder: row.drive_folder,
   revision: row.drive_revision,
   indexStatus: row.index_status,
   discharged: row.discharged
