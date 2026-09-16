@@ -56,6 +56,7 @@ export const driveDeps:DriveDeps = {
   chunks: documentChunkRepository,
   syncQueue: driveSyncQueue,
   indexQueue,
+  rescanQueue,
   unitOfWork: sequelizeUnitOfWork
 };
 

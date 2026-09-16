@@ -5,6 +5,7 @@ import { DriveFolderRepository } from '@/app/ports/repositories/drive-folder.rep
 import { DriveClient } from '@/app/ports/services/drive.service';
 import { DriveSyncQueue } from '@/app/ports/services/drive-sync-queue.service';
 import { IndexQueue } from '@/app/ports/services/index-queue.service';
+import { RescanQueue } from '@/app/ports/services/rescan-queue.service';
 import { UnitOfWork } from '@/app/ports/unit-of-work';
 
 export interface DriveDeps {
@@ -16,5 +17,7 @@ export interface DriveDeps {
   chunks: DocumentChunkRepository;
   syncQueue: DriveSyncQueue;
   indexQueue: IndexQueue;
+  // Lo importado entra sin veredicto: lo analiza el barrido de pendientes.
+  rescanQueue: RescanQueue;
   unitOfWork: UnitOfWork;
 }

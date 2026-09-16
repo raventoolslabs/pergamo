@@ -1,4 +1,5 @@
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import Config from '@/shared/config';
 import { documentRepository } from '@/infrastructure/db/repositories/document.repository';
 import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
 import { driveFolderRepository } from '@/infrastructure/db/repositories/drive-folder.repository';
@@ -32,6 +33,7 @@ describe('Drive sync', () => {
 
   let enqueued:string[];
   let deletedChunks:string[];
+  let sweeps:number;
   let folderA:string;
   let folderB:string;
 
@@ -43,6 +45,7 @@ describe('Drive sync', () => {
     chunks: { deleteByDocument: async (id:string) => { deletedChunks.push(id); } },
     syncQueue: null,
     indexQueue: { enqueue: async (id:string) => { enqueued.push(id); }, close: async () => {} },
+    rescanQueue: { enqueueSweep: async () => { sweeps++; return { status: 'queued' }; } },
     unitOfWork: sequelizeUnitOfWork
   }) as unknown as DriveDeps;
 
@@ -80,6 +83,7 @@ describe('Drive sync', () => {
   beforeEach(() => {
     enqueued = [];
     deletedChunks = [];
+    sweeps = 0;
   });
 
   afterAll(async () => {
@@ -97,6 +101,8 @@ describe('Drive sync', () => {
     expect(a).toMatchObject({ drive_folder: folderA, drive_revision: 'v1', index_status: 'pending', scan_status: 'pending' });
     expect(a.metadata).toMatchObject({ name: 'a', extension: 'pdf', hash: 'drive:v1' });
     expect(enqueued).toHaveLength(2);
+    // Lo importado entra sin veredicto: se pide el barrido, si hay antivirus.
+    expect(sweeps).toBe(Config.enable_antivirus ? 1 : 0);
     expect((await driveFolderRepository.findById(ORGANIZATION, folderA)).syncDate).toBeInstanceOf(Date);
   });
 
@@ -106,6 +112,7 @@ describe('Drive sync', () => {
 
     expect(progress).toMatchObject({ created: 0, updated: 0, restored: 0, discharged: 0 });
     expect(enqueued).toHaveLength(0);
+    expect(sweeps).toBe(0);
   });
 
   it('Should reindex a changed file that had an index and keep its tags', async () => {

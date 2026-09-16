@@ -167,6 +167,13 @@ export const syncDriveFolder = async (input:SyncDriveFolderInput, deps:DriveDeps
       .catch((error:any) => log.error(`${trace} | Document ${id} synced but not queued: ${error.message}`));
   }
 
+  // Con algo nuevo que analizar, se pide el barrido que ya existe; si ya hay uno
+  // en marcha, la cola devuelve ese.
+  if(Config.enable_antivirus && progress.created + progress.updated + progress.restored > 0) {
+    await deps.rescanQueue.enqueueSweep(organization)
+      .catch((error:any) => log.error(`${trace} | Drive sync done but the scan sweep was not queued: ${error.message}`));
+  }
+
   if(report) await report({ ...progress });
 
   log.info(`${trace} | Drive sync of folder ${folder.id}: ${JSON.stringify(progress)}`);
