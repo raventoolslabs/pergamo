@@ -76,6 +76,7 @@ export interface DocumentSummary {
   scanSignature?: string;
   scanEngine?: string;
   source: DocumentSource;
+  driveViewLink?: string;
 }
 
 export interface ScanInfo {

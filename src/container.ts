@@ -28,7 +28,12 @@ import { SearchIndexDescriptor } from '@/domain/entities/search-index';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
 import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
 import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
-import { connection, QUEUE_NAME, RESCAN_QUEUE_NAME } from '@/infrastructure/queue/connection';
+import { connection, DRIVE_SYNC_QUEUE_NAME, QUEUE_NAME, RESCAN_QUEUE_NAME } from '@/infrastructure/queue/connection';
+import { DriveDeps } from '@/app/use-cases/drive/dependencies';
+import { driveClient } from '@/infrastructure/google/drive.client';
+import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
+import { driveFolderRepository } from '@/infrastructure/db/repositories/drive-folder.repository';
+import { driveSyncQueue } from '@/infrastructure/queue/drive-sync.queue';
 
 export const documentDeps:DocumentDeps = {
   documents: documentRepository,
@@ -40,6 +45,17 @@ export const documentDeps:DocumentDeps = {
   scanner: antivirus,
   activeContent: activeContentDetector,
   fileType: fileTypeVerifier,
+  unitOfWork: sequelizeUnitOfWork
+};
+
+export const driveDeps:DriveDeps = {
+  drive: driveClient,
+  connections: driveConnectionRepository,
+  folders: driveFolderRepository,
+  documents: documentRepository,
+  chunks: documentChunkRepository,
+  syncQueue: driveSyncQueue,
+  indexQueue,
   unitOfWork: sequelizeUnitOfWork
 };
 
@@ -75,7 +91,7 @@ export const searchIndex = ():SearchIndexDescriptor => ({
   version: 1
 });
 
-export { QUEUE_NAME, RESCAN_QUEUE_NAME };
+export { DRIVE_SYNC_QUEUE_NAME, QUEUE_NAME, RESCAN_QUEUE_NAME };
 export const queueConnection = connection;
 
 /**

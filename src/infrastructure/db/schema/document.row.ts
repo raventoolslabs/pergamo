@@ -38,6 +38,7 @@ export interface DocumentSummaryRow {
   scan_signature: string | null;
   scan_engine: string | null;
   source: DocumentSource;
+  drive_view_link: string | null;
   total: string;
 }
 

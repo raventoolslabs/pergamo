@@ -14,6 +14,8 @@ export const toDocumentResponse = (document:DocumentSummary) => ({
   scan_status: document.scanStatus,
   scan_signature: document.scanSignature ?? null,
   scan_engine: document.scanEngine ?? null,
+  source: document.source,
+  drive_view_link: document.driveViewLink ?? null,
   metadata: document.metadata
 });
 

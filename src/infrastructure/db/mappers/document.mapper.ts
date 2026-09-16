@@ -44,7 +44,8 @@ export const toDocumentSummary = (row:DocumentSummaryRow):DocumentSummary => ({
   scanStatus: row.scan_status,
   scanSignature: optional(row.scan_signature),
   scanEngine: optional(row.scan_engine),
-  source: row.source
+  source: row.source,
+  driveViewLink: optional(row.drive_view_link)
 });
 
 export const toRemoteState = (row:RemoteStateRow):RemoteState => ({

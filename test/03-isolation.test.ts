@@ -8,6 +8,8 @@ import { app } from '@/server';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import Config from '@/shared/config';
 import { StatusCodes } from 'http-status-codes';
+import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
+import { driveFolderRepository } from '@/infrastructure/db/repositories/drive-folder.repository';
 
 /**
  * Cubre las garantias de seguridad que no verificaba ninguna prueba: que una
@@ -122,6 +124,43 @@ describe('Isolation and input validation', () => {
       headers: { authorization: tokenOwner }
     });
     expect(owner.status).toBe(StatusCodes.OK);
+  });
+
+  // Las carpetas y la conexion de Drive son de la organizacion igual que sus documentos.
+  it('Should not expose the Drive connection or folders of another organization', async () => {
+
+    const enabled = Config.drive.enabled;
+    Config.drive.enabled = true;
+
+    await driveConnectionRepository.save({ organization: 'pergamo', googleAccount: 'owner@example.com', sealedRefreshToken: 'sealed', scope: 'drive' });
+    const folder = await driveFolderRepository.create({ organization: 'pergamo', folderId: 'test-isolation', name: 'Owner', indexDocuments: false });
+
+    try {
+
+      const other = { headers: { authorization: tokenOther } };
+
+      const connection = await api.get('/api/drive', other);
+      expect(connection.status).toBe(StatusCodes.OK);
+      expect(connection.data.connected).toBe(false);
+      expect(JSON.stringify(connection.data)).not.toContain('owner@example.com');
+
+      const folders = await api.get('/api/drive/folders', other);
+      expect(folders.data).toEqual([]);
+
+      expect((await api.get(`/api/drive/folders/${folder.id}/sync`, other)).status).toBe(StatusCodes.NOT_FOUND);
+      expect((await api.post(`/api/drive/folders/${folder.id}/sync`, null, other)).status).toBe(StatusCodes.NOT_FOUND);
+      expect((await api.delete(`/api/drive/folders/${folder.id}`, other)).status).toBe(StatusCodes.NOT_FOUND);
+
+      // Desconectar la suya no toca la del otro.
+      expect((await api.delete('/api/drive', other)).status).toBe(StatusCodes.NO_CONTENT);
+      expect(await driveConnectionRepository.find('pergamo')).not.toBeNull();
+      expect(await driveFolderRepository.findById('pergamo', folder.id)).not.toBeNull();
+
+    } finally {
+      Config.drive.enabled = enabled;
+      await driveFolderRepository.remove('pergamo', folder.id);
+      await driveConnectionRepository.remove('pergamo');
+    }
   });
 
   it('Should reject a tampered token', async () => {

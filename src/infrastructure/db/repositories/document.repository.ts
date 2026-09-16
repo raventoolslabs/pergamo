@@ -196,7 +196,7 @@ export const documentRepository:DocumentRepository = {
     // scan_engine viaja aunque nadie lo muestre: es lo unico que distingue un
     // 'clean' analizado de uno que nunca paso por un escaner.
     const rows:DocumentSummaryRow[] = await sequelize.query(
-      `SELECT id, creation_date, modification_date, scan_status, scan_signature, scan_engine, metadata, source,
+      `SELECT id, creation_date, modification_date, scan_status, scan_signature, scan_engine, metadata, source, drive_view_link,
         COUNT(*) OVER() AS total
       FROM pergamo.document
       WHERE organization = :organization AND discharge_date IS NULL${where}

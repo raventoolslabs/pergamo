@@ -58,6 +58,7 @@
     "start": "node dist/index.js",
     "rescan": "node dist/scripts/rescan.js",
     "reindex": "node dist/scripts/reindex.js",
+    "sync": "node dist/scripts/sync.js",
     "worker": "node dist/worker.js",
     "scan:release": "node dist/scripts/release.js",
     "dev": "node dev.js",
