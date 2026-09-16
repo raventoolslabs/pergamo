@@ -72,6 +72,23 @@ describe('Drive adapters', () => {
     }
   });
 
+  // Rotar SECRET_KEY deja los tokens ilegibles: se piden de nuevo, no se rompe la sincronizacion.
+  it('Should mark a token sealed with another key as revoked', async () => {
+
+    const actual = jest.requireActual('@/infrastructure/google/oauth.client');
+
+    try {
+      await driveConnectionRepository.save({
+        organization: 'pergamo', googleAccount: 'a@example.com', sealedRefreshToken: 'not-sealed-with-this-key', scope: 'drive'
+      });
+
+      await expect(actual.accessToken('pergamo')).rejects.toMatchObject({ code: 'DRIVE_NOT_CONNECTED' });
+      expect((await driveConnectionRepository.find('pergamo')).revokedDate).toBeInstanceOf(Date);
+    } finally {
+      await driveConnectionRepository.remove('pergamo');
+    }
+  });
+
   it('Should store folders per organization', async () => {
 
     const folder = await driveFolderRepository.create({

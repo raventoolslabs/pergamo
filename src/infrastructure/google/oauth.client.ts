@@ -95,8 +95,18 @@ export const accessToken = async (organization:string):Promise<string> => {
   let cached = clients.get(organization);
 
   if(!cached || cached.sealed !== sealed) {
+
+    let refreshToken:string;
+    try {
+      refreshToken = open(sealed);
+    } catch {
+      // Sellado con otra SECRET_KEY: tras rotarla, la conexion se vuelve a autorizar.
+      await driveConnectionRepository.markRevoked(organization);
+      throw new DriveNotConnectedError(`Drive token of organization ${organization} was sealed with another SECRET_KEY`);
+    }
+
     const client = newClient();
-    client.setCredentials({ refresh_token: open(sealed) });
+    client.setCredentials({ refresh_token: refreshToken });
     cached = { sealed, client };
     clients.set(organization, cached);
   }
