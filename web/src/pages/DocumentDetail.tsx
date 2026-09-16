@@ -17,7 +17,7 @@ import { t } from '../i18n';
 /** Claves que fija el propio Pergamo al guardar: se muestran, no se editan. */
 const SYSTEM_FIELDS = [
   'uuid', 'uuid_sha256', 'organization', 'creation_date',
-  'hash', 'mimetype', 'extension', 'original_name', 'size'
+  'hash', 'mimetype', 'extension', 'original_name', 'size', 'source', 'drive_view_link'
 ];
 
 /** Procedencia del deposito: cuenta como entro el documento, no que es. */
@@ -338,6 +338,8 @@ export const DocumentDetail = () => {
   }
 
   const filename = `${metadata.name}.${metadata.extension}`;
+  // De Drive: no se reemplaza ni archiva versiones aqui, se cambia alli.
+  const fromDrive = metadata.source === 'drive';
 
   // Dos preguntas distintas. `downloadable` es la del backend —¿se entrega?— y
   // solo mira scan_status; `state` es lo que se le cuenta a quien esta delante,
@@ -422,7 +424,9 @@ export const DocumentDetail = () => {
     >
       {/* Lo que dice 'pending' —que el proximo analisis lo resuelve— no vale
           sobre un fichero que el escaner nunca va a leer: ahi lo sustituye. */}
-      {scanLimit ?? (state === 'pending' ? t('detail.pendingNotice') : VERDICT.unscanned.detail)}
+      {scanLimit ?? (state === 'pending'
+        ? (fromDrive ? t('drive.pendingNotice') : t('detail.pendingNotice'))
+        : VERDICT.unscanned.detail)}
       {signature}
     </Notice>
   ) : null;
@@ -444,8 +448,10 @@ export const DocumentDetail = () => {
 
         {/* La huella SHA-256 es lo unico que acredita que el contenido no ha
             cambiado desde el deposito, asi que se puede llevar de aqui. */}
+        {/* En Drive no hay sha256: el hash es la revision, y llamarlo huella
+            prometeria una integridad que Pergamo no ha calculado. */}
         <Card
-          term={t('detail.fingerprint')}
+          term={fromDrive ? t('drive.revision') : t('detail.fingerprint')}
           icon={<ShieldIcon />}
           action={
             <button
@@ -529,7 +535,7 @@ export const DocumentDetail = () => {
         <section>
           <h2>{t('detail.versions')}</h2>
           <p className="section__note">
-            {versions?.length
+            {fromDrive ? t('drive.versionsNote') : versions?.length
               ? t('detail.versionsKept')
               : config?.max_version_file
                 ? t('detail.versionsNoneLimited', { limit: config.max_version_file })
@@ -670,6 +676,7 @@ export const DocumentDetail = () => {
           {typeof metadata.size === 'number' ? (
             <span className="chip chip--plain"><SizeIcon />{formatSize(metadata.size)}</span>
           ) : null}
+          {fromDrive ? <span className="chip chip--plain chip--source">{t('source.drive')}</span> : null}
         </div>
 
         <div className="doc-actions">
@@ -682,16 +689,24 @@ export const DocumentDetail = () => {
                 : <><DownloadIcon size={16} /> {t('documents.download')}</>}
             </button>
           ) : null}
-          <button
-            type="button"
-            className="btn"
-            onClick={() => replacementInput.current?.click()}
-            disabled={busy === 'replace'}
-          >
-            {busy === 'replace'
-              ? <><span className="spinner" aria-hidden="true" /> {t('detail.replacing')}</>
-              : t('detail.replace')}
-          </button>
+          {fromDrive ? (
+            metadata.drive_view_link ? (
+              <a className="btn" href={metadata.drive_view_link} target="_blank" rel="noopener noreferrer">
+                {t('drive.openInDrive')}
+              </a>
+            ) : null
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => replacementInput.current?.click()}
+              disabled={busy === 'replace'}
+            >
+              {busy === 'replace'
+                ? <><span className="spinner" aria-hidden="true" /> {t('detail.replacing')}</>
+                : t('detail.replace')}
+            </button>
+          )}
           <button type="button" className="btn btn--danger" onClick={() => setConfirming(true)}>
             {t('common.delete')}
           </button>

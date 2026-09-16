@@ -19,6 +19,17 @@ export const toDocumentResponse = (document:DocumentSummary) => ({
   metadata: document.metadata
 });
 
+/**
+ * Los metadatos tal cual, mas el origen: la ficha los pide por aqui, y sin el
+ * origen no sabria que un documento no se reemplaza ni tiene versiones. Van al
+ * final para que ninguna clave editable se haga pasar por ellos.
+ */
+export const toMetadataResponse = (document:Document) => ({
+  ...document.metadata,
+  source: document.source,
+  drive_view_link: document.remote?.viewLink ?? null
+});
+
 export const toScanInfoResponse = (document:Document) => ({
   scan_status: document.scanStatus,
   scan_signature: document.scanSignature ?? null,

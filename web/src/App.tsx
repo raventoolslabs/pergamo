@@ -6,6 +6,7 @@ import { Layout } from './components/layout';
 import { Account } from './pages/Account';
 import { DocumentDetail } from './pages/DocumentDetail';
 import { Documents } from './pages/Documents';
+import { Drive } from './pages/Drive';
 import { Login } from './pages/Login';
 import { Organizations } from './pages/Organizations';
 
@@ -31,6 +32,7 @@ export const App = () => {
               <Route index element={<Documents />} />
               <Route path="/documents/:id" element={<DocumentDetail />} />
               <Route path="/account" element={<Account />} />
+              <Route path="/drive" element={<Drive />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
           )}

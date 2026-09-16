@@ -8,7 +8,7 @@ import {
   documentChunkQuerySchema, documentListQuerySchema, documentReplaceQuerySchema, documentUploadQuerySchema
 } from '@/api/http/dto/list-query.dto';
 import {
-  toChunkResponse, toDocumentResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
+  toChunkResponse, toDocumentResponse, toMetadataResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
 } from '@/api/http/dto/document.dto';
 import { documentVersionParamSchema } from '@/api/http/dto/document-param.dto';
 import { contentDisposition } from '@/api/http/content-disposition';
@@ -71,7 +71,7 @@ const upload = async (req, res, next) => {
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
-      .send(JSON.stringify(document.metadata));
+      .send(JSON.stringify(toMetadataResponse(document)));
 
   } catch (error) {
     // El temporal de multer no lo recoge nadie mas cuando el deposito falla.
@@ -88,7 +88,7 @@ const getMetadata = async (req, res, next) => {
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
-      .send(document.metadata);
+      .send(toMetadataResponse(document));
 
   } catch (error) {
     next(error);
@@ -135,7 +135,7 @@ const modifyFile = async (req, res, next) => {
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
-      .send(document.metadata);
+      .send(toMetadataResponse(document));
 
   } catch (error) {
     await deps.storage.removeTemp(req?.file?.path).catch(() => {});
@@ -154,7 +154,7 @@ const modifyMetadata = async (req, res, next) => {
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
-      .send(document.metadata);
+      .send(toMetadataResponse(document));
 
   } catch (error) {
     next(error);
