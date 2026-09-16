@@ -121,15 +121,15 @@ export const documentRepository:DocumentRepository = {
     return toDocument(result[0][0] as DocumentRow);
   },
 
-  async remove(organization, id):Promise<string | null> {
+  async remove(organization, id) {
 
     const result:any = await sequelize.query(
-      'DELETE FROM pergamo.document WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING path;', {
+      'DELETE FROM pergamo.document WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING path, source;', {
       replacements: { organization, id },
       type: QueryTypes.SELECT
     });
 
-    return result.length === 1 ? result[0].path : null;
+    return result.length === 1 ? { path: result[0].path, source: result[0].source } : null;
   },
 
   async list(filter:DocumentListFilter):Promise<DocumentPage> {

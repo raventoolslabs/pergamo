@@ -18,12 +18,13 @@ export const removeDocument = async (input:RemoveDocumentInput, deps:DocumentDep
   if(removed === null) throw new NotFoundError('NO_CONTENT',
     `Document with id ${id} not exists in organization ${organization}`);
 
-  if(!Config.remove_file_disk) return;
+  // Un documento de Drive no tiene nada en disco: el arbol que se recorreria no existe.
+  if(!Config.remove_file_disk || removed.source === 'drive') return;
 
   // La fila ya no esta: un fallo de disco no puede deshacer el borrado, asi
   // que se registra y se deja el fichero huerfano para el operador.
   try {
-    await deps.storage.removeDocument(organization, removed);
+    await deps.storage.removeDocument(organization, removed.path);
   } catch(error:any) {
     log.warn(`${trace} | Document ${id} removed from database, but file removal failed: ${error.message}`);
   }

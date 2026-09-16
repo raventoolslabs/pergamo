@@ -1,4 +1,4 @@
-import { Document, DocumentMetadata, DocumentSummary, RemoteSource } from '@/domain/entities/document';
+import { Document, DocumentMetadata, DocumentSource, DocumentSummary, RemoteSource } from '@/domain/entities/document';
 import { IndexStatus } from '@/domain/value-objects/index-status';
 import { ScanStatus } from '@/domain/value-objects/scan-status';
 import { TransactionScope } from '@/app/ports/unit-of-work';
@@ -61,8 +61,8 @@ export interface DocumentRepository {
   // Solo el veredicto: un reanalisis no toca el contenido, asi que tampoco
   // modification_date, que describe el documento y no lo que se sabe de el.
   recordScan(organization:string, id:string, scan:ScanRecord, scope?:TransactionScope): Promise<Document>;
-  // Devuelve la ruta de la fila borrada, o null si no existia.
-  remove(organization:string, id:string): Promise<string | null>;
+  // Devuelve la ruta y el origen de la fila borrada, o null si no existia.
+  remove(organization:string, id:string): Promise<{ path:string; source:DocumentSource } | null>;
   list(filter:DocumentListFilter): Promise<DocumentPage>;
 
   /**

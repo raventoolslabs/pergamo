@@ -99,7 +99,10 @@ const getFile = async (req, res, next) => {
 
   try {
 
-    const { document, filePath } = await getDocumentFile(req.user.organization, requireId(req), deps);
+    const { document, filePath, release } = await getDocumentFile(req.user.organization, requireId(req), deps);
+
+    // 'close' llega tanto al terminar como si el cliente corta la descarga.
+    res.on('close', () => release().catch(() => {}));
 
     res.setHeader('Content-Disposition',
       contentDisposition(`${document.metadata.name}.${document.metadata.extension}`));

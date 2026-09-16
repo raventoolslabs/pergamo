@@ -15,6 +15,7 @@ import { documentRepository } from '@/infrastructure/db/repositories/document.re
 import { organizationRepository } from '@/infrastructure/db/repositories/organization.repository';
 import { sequelizeUnitOfWork } from '@/infrastructure/db/unit-of-work';
 import { documentStorage } from '@/infrastructure/files/document-storage';
+import { documentContent } from '@/infrastructure/files/document-content';
 import { fileTypeVerifier } from '@/infrastructure/files/file-type.adapter';
 import { activeContentDetector } from '@/infrastructure/antivirus/active-content.adapter';
 import antivirus from '@/infrastructure/antivirus/clamav.service';
@@ -35,6 +36,7 @@ export const documentDeps:DocumentDeps = {
   queue: indexQueue,
   rescanQueue,
   storage: documentStorage,
+  content: documentContent,
   scanner: antivirus,
   activeContent: activeContentDetector,
   fileType: fileTypeVerifier,
@@ -52,7 +54,7 @@ export const indexingDeps:IndexingDeps = {
   converter: officeParserConverter,
   chunker,
   embedder: openAiCompatibleEmbedder,
-  storage: documentStorage,
+  content: documentContent,
   unitOfWork: sequelizeUnitOfWork
 };
 

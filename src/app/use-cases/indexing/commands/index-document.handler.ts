@@ -47,9 +47,9 @@ export const indexDocument = async (input:IndexDocumentInput, deps:IndexingDeps)
   // El hash de AHORA: si cambia mientras se convierte, lo indexado ya no
   // describe el fichero que hay en disco.
   const hash = document.metadata.hash;
-  const filePath = deps.storage.resolve(organization, document.path);
+  const content = await deps.content.fetch(document);
 
-  if(!await deps.storage.exists(filePath)) {
+  if(!content) {
     await deps.documents.setIndexStatus(id, 'error', 'FILE_MISSING');
     return 'error';
   }
@@ -60,7 +60,7 @@ export const indexDocument = async (input:IndexDocumentInput, deps:IndexingDeps)
 
   try {
 
-    const converted = await deps.converter.convert(filePath, document.metadata.mimetype);
+    const converted = await deps.converter.convert(content.filePath, document.metadata.mimetype);
     const chunks = deps.chunker.split(converted);
 
     // Un PDF escaneado sin capa de texto llega hasta aqui sin nada. Marcarlo
@@ -85,6 +85,9 @@ export const indexDocument = async (input:IndexDocumentInput, deps:IndexingDeps)
     // 'pending': se reintenta, y nunca se marca indexado sin vector.
     await deps.documents.setIndexStatus(id, 'pending', error.message?.slice(0, 256));
     throw error;
+
+  } finally {
+    await content.release();
   }
 
   const written = await deps.unitOfWork.run(async (scope) => {
