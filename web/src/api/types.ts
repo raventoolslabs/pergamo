@@ -22,9 +22,6 @@ export interface DocumentMetadata {
   organization?: string;
   creation_date?: string;
   tags?: string[];
-  /** Los fija la API al responder, no viven en el JSONB. */
-  source?: DocumentSource;
-  drive_view_link?: string | null;
   [key: string]: unknown;
 }
 
@@ -170,6 +167,11 @@ export interface DocumentQuery {
   to?: string;
   sort?: 'creation_date' | 'modification_date' | 'name' | 'scan_status';
   order?: 'asc' | 'desc';
+}
+
+export interface SourceInfo {
+  source: DocumentSource;
+  drive_view_link: string | null;
 }
 
 export interface DriveConnection {

@@ -73,6 +73,16 @@ describe('Drive content', () => {
     expect(await temporaries()).toEqual(before);
   });
 
+  it('Should report where the file lives apart from the metadata', async () => {
+
+    const source = await api.get(`/api/document/${documentId}/source`, { headers: { authorization: token } });
+    expect(source.data).toEqual({ source: 'drive', drive_view_link: null });
+
+    // El cuerpo de GET /:id es el JSONB tal cual: no gana claves.
+    const metadata = await api.get(`/api/document/${documentId}`, { headers: { authorization: token } });
+    expect(metadata.data).not.toHaveProperty('source');
+  });
+
   it('Should answer FILE_MISSING when the file was deleted in Drive', async () => {
 
     remoteFiles.delete('test-drive-content');

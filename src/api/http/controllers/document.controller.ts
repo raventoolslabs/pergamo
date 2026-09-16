@@ -8,7 +8,7 @@ import {
   documentChunkQuerySchema, documentListQuerySchema, documentReplaceQuerySchema, documentUploadQuerySchema
 } from '@/api/http/dto/list-query.dto';
 import {
-  toChunkResponse, toDocumentResponse, toMetadataResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
+  toChunkResponse, toDocumentResponse, toSourceInfoResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
 } from '@/api/http/dto/document.dto';
 import { documentVersionParamSchema } from '@/api/http/dto/document-param.dto';
 import { contentDisposition } from '@/api/http/content-disposition';
@@ -71,7 +71,7 @@ const upload = async (req, res, next) => {
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
-      .send(JSON.stringify(toMetadataResponse(document)));
+      .send(JSON.stringify(document.metadata));
 
   } catch (error) {
     // El temporal de multer no lo recoge nadie mas cuando el deposito falla.
@@ -88,7 +88,7 @@ const getMetadata = async (req, res, next) => {
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
-      .send(toMetadataResponse(document));
+      .send(document.metadata);
 
   } catch (error) {
     next(error);
@@ -135,7 +135,7 @@ const modifyFile = async (req, res, next) => {
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
-      .send(toMetadataResponse(document));
+      .send(document.metadata);
 
   } catch (error) {
     await deps.storage.removeTemp(req?.file?.path).catch(() => {});
@@ -154,7 +154,7 @@ const modifyMetadata = async (req, res, next) => {
 
     res.status(StatusCodes.OK)
       .set('Content-Type', 'application/json')
-      .send(toMetadataResponse(document));
+      .send(document.metadata);
 
   } catch (error) {
     next(error);
@@ -338,6 +338,20 @@ const sweepState = async (req, res, next) => {
 
 // Gemelo de scanInfo, y por el mismo motivo: el cuerpo de getMetadata es el
 // JSONB tal cual, y anadirle claves cambiaria un contrato que ya se consume.
+// Aparte de GET /:id por lo mismo que /scan: ese cuerpo es el JSONB tal cual.
+const sourceInfo = async (req, res, next) => {
+
+  try {
+
+    const document = await getDocument(req.user.organization, requireId(req), deps);
+
+    res.status(StatusCodes.OK).json(toSourceInfoResponse(document));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 const indexInfo = async (req, res, next) => {
 
   try {
@@ -404,6 +418,7 @@ const chunks = async (req, res, next) => {
 export {
   upload,
   indexInfo,
+  sourceInfo,
   reindex,
   chunks,
   list,

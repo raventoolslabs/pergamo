@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client';
 import { useConfig } from '../api/config';
-import type { DocumentMetadata, DocumentVersion, IndexInfo, IndexStatus, ScanInfo } from '../api/types';
+import type { DocumentMetadata, DocumentVersion, IndexInfo, IndexStatus, ScanInfo, SourceInfo } from '../api/types';
 import { useToast } from '../components/toast';
 import { ChunkList } from '../components/ChunkList';
 import {
@@ -17,7 +17,7 @@ import { t } from '../i18n';
 /** Claves que fija el propio Pergamo al guardar: se muestran, no se editan. */
 const SYSTEM_FIELDS = [
   'uuid', 'uuid_sha256', 'organization', 'creation_date',
-  'hash', 'mimetype', 'extension', 'original_name', 'size', 'source', 'drive_view_link'
+  'hash', 'mimetype', 'extension', 'original_name', 'size'
 ];
 
 /** Procedencia del deposito: cuenta como entro el documento, no que es. */
@@ -115,6 +115,7 @@ export const DocumentDetail = () => {
   const [metadata, setMetadata] = useState<DocumentMetadata | null>(null);
   const [scanInfo, setScanInfo] = useState<ScanInfo | null>(null);
   const [indexInfo, setIndexInfo] = useState<IndexInfo | null>(null);
+  const [sourceInfo, setSourceInfo] = useState<SourceInfo | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
@@ -138,17 +139,20 @@ export const DocumentDetail = () => {
       //
       // El del indice cae a null si falla, como las versiones: un servidor sin
       // esa ruta no puede dejar la ficha en blanco.
-      const [document, scan, index, versionList] = await Promise.all([
+      const [document, scan, index, versionList, source] = await Promise.all([
         api.document(id),
         api.scan(id),
         api.indexInfo(id).catch(() => null),
-        api.versions(id).catch(() => [] as DocumentVersion[])
+        api.versions(id).catch(() => [] as DocumentVersion[]),
+        // Un servidor sin esa ruta solo tiene disco.
+        api.source(id).catch(() => null)
       ]);
 
       setMetadata(document);
       setScanInfo(scan);
       setIndexInfo(index);
       setVersions(versionList);
+      setSourceInfo(source);
       setError(null);
     } catch (failure) {
       setError(failure);
@@ -339,7 +343,7 @@ export const DocumentDetail = () => {
 
   const filename = `${metadata.name}.${metadata.extension}`;
   // De Drive: no se reemplaza ni archiva versiones aqui, se cambia alli.
-  const fromDrive = metadata.source === 'drive';
+  const fromDrive = sourceInfo?.source === 'drive';
 
   // Dos preguntas distintas. `downloadable` es la del backend —¿se entrega?— y
   // solo mira scan_status; `state` es lo que se le cuenta a quien esta delante,
@@ -690,8 +694,8 @@ export const DocumentDetail = () => {
             </button>
           ) : null}
           {fromDrive ? (
-            metadata.drive_view_link ? (
-              <a className="btn" href={metadata.drive_view_link} target="_blank" rel="noopener noreferrer">
+            sourceInfo?.drive_view_link ? (
+              <a className="btn" href={sourceInfo.drive_view_link} target="_blank" rel="noopener noreferrer">
                 {t('drive.openInDrive')}
               </a>
             ) : null

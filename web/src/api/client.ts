@@ -1,5 +1,5 @@
 import type {
-  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, DriveConnection, DriveEntry, DriveFolder, DriveSyncState, IndexInfo, Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
+  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, DriveConnection, DriveEntry, DriveFolder, DriveSyncState, IndexInfo, SourceInfo, Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
 } from './types';
 
 const TOKEN_KEY = 'pergamo.token';
@@ -174,6 +174,8 @@ export const api = {
   document: (id: string) => request<DocumentMetadata>(`/document/${encodeURIComponent(id)}`),
 
   scan: (id: string) => request<ScanInfo>(`/document/${encodeURIComponent(id)}/scan`),
+
+  source: (id: string) => request<SourceInfo>(`/document/${encodeURIComponent(id)}/source`),
 
   indexInfo: (id: string) => request<IndexInfo>(`/document/${encodeURIComponent(id)}/index`),
 
