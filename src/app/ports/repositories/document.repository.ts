@@ -1,4 +1,4 @@
-import { Document, DocumentMetadata, DocumentSummary } from '@/domain/entities/document';
+import { Document, DocumentMetadata, DocumentSummary, RemoteSource } from '@/domain/entities/document';
 import { IndexStatus } from '@/domain/value-objects/index-status';
 import { ScanStatus } from '@/domain/value-objects/scan-status';
 import { TransactionScope } from '@/app/ports/unit-of-work';
@@ -36,13 +36,23 @@ export interface DocumentListFilter {
   order: 'asc' | 'desc';
 }
 
+// Lo minimo para decidir que cambio en Drive sin traer documentos enteros.
+export interface RemoteState {
+  id: string;
+  fileId: string;
+  revision: string;
+  indexStatus: IndexStatus;
+  discharged: boolean;
+}
+
 export interface DocumentPage {
   total: number;
   documents: DocumentSummary[];
 }
 
 export interface DocumentRepository {
-  create(organization:string, metadata:DocumentMetadata, scan:ScanRecord, indexStatus:IndexStatus, scope?:TransactionScope): Promise<Document>;
+  // Con `remote` el documento es de Drive; sin el, de disco.
+  create(organization:string, metadata:DocumentMetadata, scan:ScanRecord, indexStatus:IndexStatus, scope?:TransactionScope, remote?:RemoteSource): Promise<Document>;
   findById(organization:string, id:string): Promise<Document | null>;
   replaceFile(organization:string, id:string, metadata:DocumentMetadata, scan:ScanRecord, scope?:TransactionScope): Promise<Document>;
   updateMetadata(organization:string, id:string, metadata:DocumentMetadata): Promise<Document>;
@@ -52,6 +62,18 @@ export interface DocumentRepository {
   // Devuelve la ruta de la fila borrada, o null si no existia.
   remove(organization:string, id:string): Promise<string | null>;
   list(filter:DocumentListFilter): Promise<DocumentPage>;
+
+  // Incluye las dadas de baja: un fichero que reaparece revive su documento.
+  // Paginado por keyset sobre id.
+  listRemoteState(organization:string, folder:string, afterId:string | null, limit:number): Promise<RemoteState[]>;
+  /**
+   * Nueva revision desde Drive. Tambien revive un documento dado de baja: es el
+   * mismo fichero, con su id y sus metadatos.
+   */
+  updateRemote(organization:string, id:string, metadata:DocumentMetadata, remote:RemoteSource,
+    scan:ScanRecord, indexStatus:IndexStatus, scope?:TransactionScope): Promise<Document>;
+  // Baja logica; los chunks los borra quien llama, en la misma transaccion.
+  discharge(organization:string, ids:string[], scope?:TransactionScope): Promise<void>;
 
   setIndexStatus(document:string, status:IndexStatus, error?:string, scope?:TransactionScope): Promise<void>;
 

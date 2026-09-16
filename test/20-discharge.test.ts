@@ -129,4 +129,41 @@ describe('Discharged documents', () => {
     });
     expect(rows[0].index_status).toBe('error');
   });
+
+  // Una baja no borra: el mismo fichero de Drive revive el mismo documento.
+  it('Should discharge a Drive document and revive it with the same id', async () => {
+
+    const folders:any = await sequelize.query(
+      `INSERT INTO pergamo.drive_folder(organization, folder_id, name) VALUES ('pergamo', 'test-discharge', 'Test')
+      RETURNING id;`, { type: QueryTypes.SELECT });
+    const folder = folders[0].id;
+
+    try {
+
+      const metadata = { name: 'a.pdf', original_name: 'a.pdf', mimetype: 'application/pdf', extension: 'pdf', hash: 'drive:1', tags: [] };
+      const scan = { scanStatus: 'pending' as const, scanSignature: null, scanEngine: null, scanDate: null };
+      const remote = { fileId: 'test-discharge-file', folder, revision: '1' };
+
+      const created = await documentRepository.create('pergamo', metadata, scan, 'none', undefined, remote);
+      expect(created.source).toBe('drive');
+      expect(created.remote).toEqual(remote);
+
+      await documentRepository.discharge('pergamo', [created.id]);
+      expect(await documentRepository.findById('pergamo', created.id)).toBeNull();
+
+      const state = await documentRepository.listRemoteState('pergamo', folder, null, 10);
+      expect(state).toEqual([{ id: created.id, fileId: remote.fileId, revision: '1', indexStatus: 'none', discharged: true }]);
+
+      const revived = await documentRepository.updateRemote('pergamo', created.id,
+        { ...metadata, hash: 'drive:2' }, { ...remote, revision: '2' }, scan, 'pending');
+      expect(revived.id).toBe(created.id);
+      expect(revived.remote.revision).toBe('2');
+      expect(revived.dischargeDate).toBeUndefined();
+      expect(await documentRepository.findById('pergamo', created.id)).not.toBeNull();
+
+    } finally {
+      await sequelize.query(`DELETE FROM pergamo.document WHERE drive_file_id = 'test-discharge-file';`, { type: QueryTypes.DELETE });
+      await sequelize.query('DELETE FROM pergamo.drive_folder WHERE id = :folder;', { replacements: { folder }, type: QueryTypes.DELETE });
+    }
+  });
 });

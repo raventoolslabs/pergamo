@@ -1,5 +1,6 @@
 import { ScanStatus } from '@/domain/value-objects/scan-status';
 import { IndexStatus } from '@/domain/value-objects/index-status';
+import { DocumentSource } from '@/domain/entities/document';
 
 export interface DocumentRow {
   id: string;
@@ -19,6 +20,12 @@ export interface DocumentRow {
   index_chunks: number | null;
   index_error: string | null;
   index_date: Date | null;
+  source: DocumentSource;
+  drive_file_id: string | null;
+  drive_folder: string | null;
+  drive_revision: string | null;
+  drive_view_link: string | null;
+  discharge_date: Date | null;
 }
 
 // Lo que devuelve el listado: sin `path`, y con el total de la ventana.
@@ -30,5 +37,14 @@ export interface DocumentSummaryRow {
   scan_status: ScanStatus;
   scan_signature: string | null;
   scan_engine: string | null;
+  source: DocumentSource;
   total: string;
+}
+
+export interface RemoteStateRow {
+  id: string;
+  drive_file_id: string;
+  drive_revision: string;
+  index_status: IndexStatus;
+  discharged: boolean;
 }
