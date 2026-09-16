@@ -33,6 +33,7 @@ const pending = async (engine:string, offsetId:string|null):Promise<Row[]> =>
     FROM pergamo.document
     WHERE (scan_engine IS NULL OR scan_engine <> :engine)
       AND scan_status <> 'malicious'
+      AND discharge_date IS NULL
       AND (:offsetId::varchar IS NULL OR id > :offsetId)
     ORDER BY id
     LIMIT :limit;`, {

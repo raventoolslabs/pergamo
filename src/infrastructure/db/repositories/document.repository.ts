@@ -56,7 +56,7 @@ export const documentRepository:DocumentRepository = {
         scan_status, scan_signature, scan_engine, scan_date,
         index_status, index_model, index_converter, index_chunker_version,
         index_chunks, index_error, index_date
-      FROM pergamo.document WHERE organization = :organization AND id = :id;`, {
+      FROM pergamo.document WHERE organization = :organization AND id = :id AND discharge_date IS NULL;`, {
       replacements: { id, organization },
       type: QueryTypes.SELECT
     });
@@ -72,7 +72,7 @@ export const documentRepository:DocumentRepository = {
       SET metadata = :metadata, modification_date = CURRENT_TIMESTAMP,
           scan_status = :scan_status, scan_signature = :scan_signature,
           scan_engine = :scan_engine, scan_date = :scan_date
-      WHERE organization = :organization AND id = :id RETURNING *;`, {
+      WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING *;`, {
       replacements: { metadata: JSON.stringify(metadata), organization, id, ...scanReplacements(scan) },
       type: QueryTypes.INSERT,
       transaction: scope as any
@@ -86,7 +86,7 @@ export const documentRepository:DocumentRepository = {
     const result:any = await sequelize.query(
       `UPDATE pergamo.document
       SET metadata = :metadata, modification_date = CURRENT_TIMESTAMP
-      WHERE organization = :organization AND id = :id RETURNING *;`, {
+      WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING *;`, {
       replacements: { metadata: JSON.stringify(metadata), organization, id },
       type: QueryTypes.INSERT
     });
@@ -100,7 +100,7 @@ export const documentRepository:DocumentRepository = {
       `UPDATE pergamo.document
       SET scan_status = :scan_status, scan_signature = :scan_signature,
           scan_engine = :scan_engine, scan_date = :scan_date
-      WHERE organization = :organization AND id = :id RETURNING *;`, {
+      WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING *;`, {
       replacements: { organization, id, ...scanReplacements(scan) },
       type: QueryTypes.INSERT,
       transaction: scope as any
@@ -112,7 +112,7 @@ export const documentRepository:DocumentRepository = {
   async remove(organization, id):Promise<string | null> {
 
     const result:any = await sequelize.query(
-      'DELETE FROM pergamo.document WHERE organization = :organization AND id = :id RETURNING path;', {
+      'DELETE FROM pergamo.document WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING path;', {
       replacements: { organization, id },
       type: QueryTypes.SELECT
     });
@@ -187,7 +187,7 @@ export const documentRepository:DocumentRepository = {
       `SELECT id, creation_date, modification_date, scan_status, scan_signature, scan_engine, metadata,
         COUNT(*) OVER() AS total
       FROM pergamo.document
-      WHERE organization = :organization${where}
+      WHERE organization = :organization AND discharge_date IS NULL${where}
       ORDER BY ${SORT_COLUMN[sort]} ${direction}, id ${direction}
       LIMIT :limit OFFSET :offset;`, {
       replacements,
@@ -200,6 +200,8 @@ export const documentRepository:DocumentRepository = {
     };
   },
 
+  // Sin filtro de baja, igual que finishIndexing: sirven a un trabajo ya en
+  // curso, y con el filtro una baja a mitad dejaria el documento en 'indexing'.
   async setIndexStatus(document, status, error?, scope?:TransactionScope) {
 
     await sequelize.query(
