@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 
 import { api } from '../api/client';
 import type { DriveConnection, DriveFolder, DriveSettings as Settings, DriveSyncState } from '../api/types';
+import { DriveConnection as DriveConnectionSection } from '../components/DriveConnection';
 import { DriveFolderDialog } from '../components/DriveFolderDialog';
-import { DriveSettings } from '../components/DriveSettings';
 import { DriveSyncProgress } from '../components/DriveSyncProgress';
 import { useToast } from '../components/toast';
 import { Dialog, Empty, ErrorNotice, Loading, Notice, errorMessage, formatDate } from '../components/ui';
@@ -113,7 +113,6 @@ export const Drive = () => {
       <div className="pagehead">
         <div className="pagehead__text">
           <h1>{t('drive.title')}</h1>
-          <p>{t('drive.subtitle')}</p>
         </div>
         <div className="pagehead__actions">
           {connected ? (
@@ -136,9 +135,6 @@ export const Drive = () => {
 
       {folders && (folders.length || connected) ? (
         <section className="spaced">
-          <h2>{t('drive.folders')}</h2>
-          <p className="section__note">{t('drive.foldersNote')}</p>
-
           {folders.length ? (
             <ul className="versions">
               {folders.map((folder) => (
@@ -176,13 +172,12 @@ export const Drive = () => {
       ) : null}
 
       {settings ? (
-        <DriveSettings
+        <DriveConnectionSection
           settings={settings}
           connection={connection}
           busy={busy}
           onConnect={connect}
           onDisconnect={() => setDisconnecting(true)}
-          onChanged={load}
         />
       ) : null}
 

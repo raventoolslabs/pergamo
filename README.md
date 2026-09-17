@@ -927,14 +927,14 @@ Desactivado por defecto. Con `DRIVE_ENABLED=false` no aparece nada de esto.
 | `SECRET_KEY` | 32 bytes en base64 (`openssl rand -base64 32`). Cifra con AES-256-GCM los `client_secret` y los `refresh_token` guardados, y el `state` de OAuth. |
 | `DRIVE_SYNC_INTERVAL_MS` | Cada cuánto se sincroniza sola cada carpeta. `0`, el defecto, es solo a mano. |
 
-4. Registrar el cliente OAuth **de cada organización**, en «Cliente de Google», al pie de
-   la pantalla de Google Drive, o con `PUT /api/drive/settings`. Las credenciales no están
-   en el `.env`: cada organización usa su propio proyecto de Google Cloud, con su cuota y
-   su pantalla de consentimiento, y hasta que no lo registra sus llamadas a Drive
-   responden `400 DRIVE_NOT_CONFIGURED`.
+4. Pulsar «Conectar con Google Drive» en la pantalla de Google Drive. El diálogo pide el
+   `client_id` y el secreto **de esa organización** —cada una usa su propio proyecto de
+   Google Cloud, con su cuota y su pantalla de consentimiento— y «Siguiente» los guarda y
+   sale hacia Google. Las credenciales no están en el `.env`, y hasta que no se registran,
+   las llamadas a Drive responden `400 DRIVE_NOT_CONFIGURED`.
 
-   Ahí mismo se conecta la cuenta, se rota el secreto —dejando el campo en blanco se
-   mantiene el guardado— y se retira el cliente, que se lleva la conexión por delante.
+   Desde fuera, `PUT /api/drive/settings` hace lo mismo sin pasar por la pantalla, que es
+   como lo configura la administración de markbot.
 
 Solo se pide permiso de **lectura** (`drive.readonly`): Pergamo nunca escribe en Drive.
 
@@ -984,9 +984,9 @@ mismo worker que el índice y el barrido: embebido en la API o en `pergamo-worke
 | `GET /api/drive` | Estado de la conexión: `connected`, `google_account`, `revoked_date`. |
 | `GET /api/drive/settings` | Cliente OAuth de la organización: `configured`, `client_id`, `redirect_uri` y fechas. **Nunca el secreto**, ni cifrado. |
 | `PUT /api/drive/settings` | Registra o corrige el cliente con `{ client_id, client_secret }`. En `client_secret`, un texto lo guarda o lo rota, `null` lo quita y omitirlo lo deja como estaba. |
-| `DELETE /api/drive/settings` | Borra el cliente **y la conexión**: un `refresh_token` emitido por un cliente que ya no está no se puede renovar. |
+| `DELETE /api/drive/settings` | Borra el cliente **y la conexión**, sin tocar carpetas ni documentos: un `refresh_token` emitido por un cliente que ya no está no se puede renovar. Para desmontarlo todo está `DELETE /api/drive`. |
 | `POST /api/drive/connect` | `{ url }` de autorización de Google, con PKCE y acceso *offline*. |
-| `DELETE /api/drive` | Olvida el token. Carpetas y documentos se quedan. |
+| `DELETE /api/drive` | **Desconecta y desmonta**: cliente, permiso, carpetas y baja lógica de los documentos importados, con sus trozos del índice. El binario vive en Drive, así que una ficha que ya no se puede descargar no serviría de nada. Los identificadores se conservan: volver a conectar y sincronizar los revive. |
 | `GET /api/drive/browse?folder=` | Subcarpetas de una carpeta, o de «Mi unidad» sin `folder`. |
 | `GET` / `POST /api/drive/folders` | Carpetas sincronizadas; alta con `{ folder_id, index }`, que encola la primera pasada. |
 | `DELETE /api/drive/folders/:id` | Deja de sincronizar la carpeta. |

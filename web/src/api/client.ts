@@ -251,8 +251,6 @@ export const api = {
       body: JSON.stringify(body)
     }),
 
-  removeDriveSettings: () => request<void>('/drive/settings', { method: 'DELETE' }),
-
   driveBrowse: (folder?: string) => request<DriveEntry[]>(`/drive/browse${query({ folder })}`),
 
   driveFolders: () => request<DriveFolder[]>('/drive/folders'),

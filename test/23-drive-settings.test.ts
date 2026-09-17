@@ -4,10 +4,14 @@ import { StatusCodes } from 'http-status-codes';
 import { app } from '@/server';
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
 import Config from '@/shared/config';
+import { documentRepository } from '@/infrastructure/db/repositories/document.repository';
 import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
+import { driveFolderRepository } from '@/infrastructure/db/repositories/drive-folder.repository';
 import { driveSettingsRepository } from '@/infrastructure/db/repositories/drive-settings.repository';
 
 const SECRET = 'GOCSPX-super-secret';
+// Organizacion de usar y tirar: el desmontaje arrasa con la que lo sufre.
+const OTHER = 'drive-teardown';
 
 /** El cliente OAuth de cada organizacion: contrato de la API y sellado real. */
 describe('Drive settings', () => {
@@ -110,6 +114,62 @@ describe('Drive settings', () => {
     // El refresh_token lo emitio ese cliente: sin el no se puede renovar nunca.
     expect(await driveSettingsRepository.find('pergamo')).toBeNull();
     expect(await driveConnectionRepository.find('pergamo')).toBeNull();
+  });
+
+  /**
+   * Desconectar desmonta: el binario vive en Drive, asi que conservar la ficha
+   * de un documento que ya no se puede descargar no serviria de nada.
+   *
+   * En una organizacion aparte, y no en 'pergamo': el desmontaje se lleva TODAS
+   * sus carpetas y da de baja TODOS sus documentos de Drive, y esta bateria
+   * comparte base con lo que haya sembrado quien la ejecute.
+   */
+  it('Should tear Drive down on disconnect: folders, documents, connection and client', async () => {
+
+    await put({ client_id: 'id.apps.googleusercontent.com', client_secret: SECRET });
+
+    // Los documentos no caen con la organizacion, y el indice de drive_file_id
+    // rechazaria el de la pasada anterior.
+    await sequelize.query('DELETE FROM pergamo.document WHERE organization = :id;',
+      { replacements: { id: OTHER }, type: QueryTypes.DELETE });
+    await sequelize.query('DELETE FROM pergamo.organization WHERE id = :id;',
+      { replacements: { id: OTHER }, type: QueryTypes.DELETE });
+
+    await sequelize.query(
+      `INSERT INTO pergamo.organization(id, name, password)
+       VALUES (:id, :id, crypt('Pergamo0123#', gen_salt('bf')));`,
+      { replacements: { id: OTHER }, type: QueryTypes.INSERT });
+
+    const other = (await api.post('/api/organization/login', { name: OTHER, password: 'Pergamo0123#' })).data.token;
+    const headers = { headers: { authorization: other } };
+
+    await api.put('/api/drive/settings', { client_id: 'other.apps.googleusercontent.com', client_secret: SECRET }, headers);
+    await driveConnectionRepository.save({
+      organization: OTHER, googleAccount: 'a@example.com', sealedRefreshToken: 'sealed', scope: 'drive'
+    });
+
+    const folder = await driveFolderRepository.create({
+      organization: OTHER, folderId: 'teardown', name: 'Teardown', indexDocuments: false
+    });
+
+    const metadata = { name: 'a.pdf', original_name: 'a.pdf', mimetype: 'application/pdf', extension: 'pdf', hash: 'drive:1', tags: [] };
+    const scan = { scanStatus: 'pending' as const, scanSignature: null, scanEngine: null, scanDate: null };
+    const document = await documentRepository.create(OTHER, metadata, scan, 'none', undefined,
+      { fileId: 'teardown-file', folder: folder.id, revision: '1' });
+
+    expect((await api.delete('/api/drive', headers)).status).toBe(StatusCodes.NO_CONTENT);
+
+    expect(await driveFolderRepository.list(OTHER)).toEqual([]);
+    expect(await driveSettingsRepository.find(OTHER)).toBeNull();
+    expect(await driveConnectionRepository.find(OTHER)).toBeNull();
+
+    // Baja logica: fuera del listado, pero con su id, para que reviva si vuelve.
+    expect(await documentRepository.findById(OTHER, document.id)).toBeNull();
+    const state = await documentRepository.listRemoteState(OTHER, null, 1000);
+    expect(state.find((remote) => remote.id === document.id)).toMatchObject({ discharged: true });
+
+    // La organizacion vecina no se entera.
+    expect(await driveSettingsRepository.find('pergamo')).not.toBeNull();
   });
 
   it('Should reject an unknown field and a client of another organization', async () => {
