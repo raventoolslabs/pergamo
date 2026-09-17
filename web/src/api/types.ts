@@ -182,6 +182,21 @@ export interface DriveConnection {
   revoked_date: string | null;
 }
 
+/**
+ * Cliente OAuth de la organizacion. `configured` es tener secreto guardado, no
+ * tener ficha: el secreto no vuelve nunca, asi que es lo unico que dice si se
+ * puede pedir permiso a Google.
+ */
+export interface DriveSettings {
+  configured: boolean;
+  /** No es secreto: viaja en la URL de autorizacion de Google. */
+  client_id: string | null;
+  /** Del despliegue y de solo lectura: es lo que hay que registrar en Google Cloud. */
+  redirect_uri: string | null;
+  creation_date: string | null;
+  modification_date: string | null;
+}
+
 export interface DriveEntry {
   id: string;
   name: string;

@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { api } from '../api/client';
-import type { DriveConnection, DriveFolder, DriveSyncState } from '../api/types';
+import type { DriveConnection, DriveFolder, DriveSettings as Settings, DriveSyncState } from '../api/types';
 import { DriveFolderDialog } from '../components/DriveFolderDialog';
+import { DriveSettings } from '../components/DriveSettings';
 import { DriveSyncProgress } from '../components/DriveSyncProgress';
 import { useToast } from '../components/toast';
 import { Dialog, Empty, ErrorNotice, Loading, Notice, errorMessage, formatDate } from '../components/ui';
@@ -23,6 +24,7 @@ export const Drive = () => {
 
   const [connection, setConnection] = useState<DriveConnection | null>(null);
   const [folders, setFolders] = useState<DriveFolder[] | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -33,9 +35,10 @@ export const Drive = () => {
 
   const load = useCallback(async () => {
     try {
-      const [current, list] = await Promise.all([api.drive(), api.driveFolders()]);
+      const [current, list, client] = await Promise.all([api.drive(), api.driveFolders(), api.driveSettings()]);
       setConnection(current);
       setFolders(list);
+      setSettings(client);
       setError(null);
     } catch (failure) {
       setError(failure);
@@ -114,10 +117,7 @@ export const Drive = () => {
         </div>
         <div className="pagehead__actions">
           {connected ? (
-            <>
-              <button type="button" className="btn" onClick={() => setDisconnecting(true)}>{t('drive.disconnect')}</button>
-              <button type="button" className="btn btn--primary" onClick={() => setAdding(true)}>{t('drive.addFolder')}</button>
-            </>
+            <button type="button" className="btn btn--primary" onClick={() => setAdding(true)}>{t('drive.addFolder')}</button>
           ) : null}
         </div>
       </div>
@@ -129,23 +129,9 @@ export const Drive = () => {
           wide
           kind={revoked ? 'warn' : 'info'}
           title={revoked ? t('drive.revokedTitle') : t('drive.notConnectedTitle')}
-          action={
-            <button type="button" className="btn btn--primary btn--tiny" onClick={connect} disabled={busy === 'connect'}>
-              {busy === 'connect'
-                ? <><span className="spinner" aria-hidden="true" /> {t('drive.connecting')}</>
-                : revoked ? t('drive.reconnect') : t('drive.connect')}
-            </button>
-          }
         >
           {revoked ? t('drive.revokedBody') : t('drive.notConnectedBody')}
         </Notice>
-      ) : null}
-
-      {connected ? (
-        <p className="section__note">
-          {t('drive.connectedAs', { account: connection?.google_account ?? '' })}
-          {connection?.creation_date ? ` · ${t('drive.connectedSince', { date: formatDate(connection.creation_date, false) })}` : ''}
-        </p>
       ) : null}
 
       {folders && (folders.length || connected) ? (
@@ -187,6 +173,17 @@ export const Drive = () => {
             <Empty title={t('drive.emptyTitle')}>{t('drive.emptyBody')}</Empty>
           )}
         </section>
+      ) : null}
+
+      {settings ? (
+        <DriveSettings
+          settings={settings}
+          connection={connection}
+          busy={busy}
+          onConnect={connect}
+          onDisconnect={() => setDisconnecting(true)}
+          onChanged={load}
+        />
       ) : null}
 
       {adding ? (

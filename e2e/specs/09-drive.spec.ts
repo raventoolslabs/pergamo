@@ -13,17 +13,41 @@ test.describe('Google Drive', () => {
     await sql('DELETE FROM pergamo.document;');
     await sql('DELETE FROM pergamo.drive_folder;');
     await sql('DELETE FROM pergamo.drive_connection;');
+    await sql('DELETE FROM pergamo.drive_settings;');
   });
 
-  test('Should offer to connect when there is no connection', async ({ page }) => {
+  test('Should ask for the Google client before offering to connect', async ({ page }) => {
     await login(page);
 
     await page.getByRole('link', { name: /google drive/i }).click();
 
-    await expect(page.getByText(/sin conexión/i)).toBeVisible();
+    await expect(page.getByText(/sin conexión/i).first()).toBeVisible();
+    await expect(page.getByLabel(/id de cliente/i)).toBeVisible();
+    // Sin cliente registrado no hay con que pedirle permiso a Google.
+    await expect(page.getByRole('button', { name: /conectar con google drive/i })).toHaveCount(0);
+
+    await shot(page, 'drive-no-client');
+  });
+
+  test('Should register the OAuth client and keep the secret sealed', async ({ page }) => {
+    await login(page);
+    await page.goto('/drive');
+
+    await page.getByLabel(/id de cliente/i).fill('e2e.apps.googleusercontent.com');
+    await page.getByLabel(/secreto de cliente/i).fill('GOCSPX-e2e-secret');
+    await page.getByRole('button', { name: /registrar cliente/i }).click();
+
+    await expect(page.getByText('e2e.apps.googleusercontent.com')).toBeVisible();
     await expect(page.getByRole('button', { name: /conectar con google drive/i })).toBeVisible();
 
-    await shot(page, 'drive-disconnected');
+    // Ni en la pantalla ni en claro en la base: se guarda como iv:tag:data.
+    await expect(page.getByText(/GOCSPX-e2e-secret/)).toHaveCount(0);
+
+    const [row]:any = await sql(`SELECT client_secret FROM pergamo.drive_settings WHERE organization = 'pergamo';`);
+    expect(row.client_secret).not.toContain('GOCSPX-e2e-secret');
+    expect(row.client_secret.split(':')).toHaveLength(3);
+
+    await shot(page, 'drive-client');
   });
 
   test('Should list the synced folders with their last error', async ({ page }) => {
@@ -72,5 +96,20 @@ test.describe('Google Drive', () => {
     await expect(page.getByRole('button', { name: /reemplazar fichero/i })).toHaveCount(0);
 
     await shot(page, 'drive-document');
+  });
+
+  test('Should take the connection away when the client is removed', async ({ page }) => {
+    await login(page);
+    await page.goto('/drive');
+
+    await page.getByRole('button', { name: /quitar cliente/i }).click();
+    await page.getByRole('dialog').getByRole('button', { name: /quitar cliente/i }).click();
+
+    // Vuelve el formulario: sin cliente no hay nada que leer.
+    await expect(page.getByLabel(/id de cliente/i)).toBeVisible();
+
+    expect(await sql('SELECT organization FROM pergamo.drive_settings;')).toHaveLength(0);
+    // El refresh_token lo emitio ese cliente: sin el no se puede renovar.
+    expect(await sql('SELECT organization FROM pergamo.drive_connection;')).toHaveLength(0);
   });
 });

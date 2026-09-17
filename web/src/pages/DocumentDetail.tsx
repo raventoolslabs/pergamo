@@ -311,7 +311,7 @@ export const DocumentDetail = () => {
     } catch {
       // Sin permiso o sin contexto seguro no hay portapapeles: se dice, en
       // lugar de dejar un boton que no hace nada.
-      toast(t('detail.copyFailed'), 'error');
+      toast(t('common.copyFailed'), 'error');
     }
   };
 

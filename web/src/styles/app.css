@@ -1453,3 +1453,10 @@ a:hover { text-decoration-color: currentColor; }
 
 .drive-entry { width: 100%; border: 0; border-bottom: 1px solid var(--rule); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .drive-entry:hover { background: var(--hover); }
+
+/* Fila de botones de la seccion del cliente, y el campo de la URI con el suyo al lado. */
+.drive-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.drive-actions > input { flex: 1; min-width: 0; }
+
+/* A la anchura del formulario: el campo vive fuera de el, pero se lee con el. */
+.drive-client { max-width: 620px; }

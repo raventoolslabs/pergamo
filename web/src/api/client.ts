@@ -1,5 +1,5 @@
 import type {
-  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, DriveConnection, DriveEntry, DriveFolder, DriveSyncState, IndexInfo, SourceInfo, Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
+  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, DriveConnection, DriveEntry, DriveFolder, DriveSettings, DriveSyncState, IndexInfo, SourceInfo, Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
 } from './types';
 
 const TOKEN_KEY = 'pergamo.token';
@@ -239,6 +239,19 @@ export const api = {
   driveConnect: () => request<{ url: string }>('/drive/connect', { method: 'POST' }),
 
   driveDisconnect: () => request<void>('/drive', { method: 'DELETE' }),
+
+  driveSettings: () => request<DriveSettings>('/drive/settings'),
+
+  // A mano y no con json(): ese ayudante fuerza POST. Sin client_secret la
+  // clave no viaja, que es lo que el servidor lee como «deja el que hay».
+  saveDriveSettings: (body: { client_id: string; client_secret?: string }) =>
+    request<DriveSettings>('/drive/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }),
+
+  removeDriveSettings: () => request<void>('/drive/settings', { method: 'DELETE' }),
 
   driveBrowse: (folder?: string) => request<DriveEntry[]>(`/drive/browse${query({ folder })}`),
 
