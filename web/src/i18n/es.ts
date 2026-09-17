@@ -151,6 +151,7 @@ export const es = {
 
   'error.driveDisabled': 'Este servidor no tiene la integración con Google Drive activada.',
   'error.driveNotConnected': 'No hay conexión con Google Drive, o Google la ha retirado. Vuelve a conectar la cuenta.',
+  'error.driveNotConfigured': 'Esta organización todavía no tiene su cliente de Google registrado. Lo configura su administración.',
   'error.driveUnavailable': 'Google Drive no responde o ha limitado las peticiones. Prueba de nuevo en unos minutos.',
   'error.driveFolderExists': 'Esa carpeta ya se está sincronizando.',
   'error.driveFolderNotFound': 'La carpeta no existe o ya no se tiene acceso a ella.',

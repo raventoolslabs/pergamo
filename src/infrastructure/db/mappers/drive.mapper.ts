@@ -1,5 +1,5 @@
-import { DriveConnection, DriveFolder } from '@/domain/entities/drive';
-import { DriveConnectionRow, DriveFolderRow } from '@/infrastructure/db/schema/drive.row';
+import { DriveConnection, DriveFolder, DriveSettings } from '@/domain/entities/drive';
+import { DriveConnectionRow, DriveFolderRow, DriveSettingsRow } from '@/infrastructure/db/schema/drive.row';
 
 const optional = <T>(value:T | null) => value === null ? undefined : value;
 
@@ -9,6 +9,14 @@ export const toDriveConnection = (row:DriveConnectionRow):DriveConnection => ({
   scope: row.scope,
   creationDate: row.creation_date,
   revokedDate: optional(row.revoked_date)
+});
+
+export const toDriveSettings = (row:DriveSettingsRow):DriveSettings => ({
+  organization: row.organization,
+  clientId: row.client_id,
+  hasSecret: row.client_secret !== null,
+  creationDate: row.creation_date,
+  modificationDate: row.modification_date
 });
 
 export const toDriveFolder = (row:DriveFolderRow):DriveFolder => ({

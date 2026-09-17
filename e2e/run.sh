@@ -166,11 +166,10 @@ export MAX_FILE_SIZE=52428800
 export USER_MASTER="$MASTER_USER"
 export PASSWORD_MASTER="$MASTER_PASSWORD"
 
-# Google Drive activo con credenciales de mentira: la pantalla se revisa con
-# conexiones y carpetas sembradas por SQL, y a Google no se llega nunca.
+# Google Drive activo y sin credenciales: son de cada organizacion y viven en la
+# base. La pantalla se revisa con conexiones y carpetas sembradas por SQL, y a
+# Google no se llega nunca.
 export DRIVE_ENABLED=true
-export DRIVE_CLIENT_ID=e2e
-export DRIVE_CLIENT_SECRET=e2e
 export DRIVE_REDIRECT_URI="${APP_URL}/api/drive/callback"
 export DRIVE_SYNC_INTERVAL_MS=0
 export SECRET_KEY="$(head -c 32 /dev/urandom | base64)"

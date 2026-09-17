@@ -5,6 +5,7 @@ import { app } from '@/server';
 import sequelize from '@/infrastructure/db/client';
 import Config from '@/shared/config';
 import { seal } from '@/infrastructure/security/secret-box';
+import { driveSettingsRepository } from '@/infrastructure/db/repositories/drive-settings.repository';
 
 /**
  * Lo que la API de Drive hace sin llamar a Google: el callback publico y su
@@ -28,13 +29,15 @@ describe('Drive API', () => {
     token = (await api.post('/api/organization/login', { name: 'pergamo', password: Config.password_master })).data.token;
 
     // Despues de arrancar: con Drive activo el servidor levantaria el worker contra Redis.
-    Object.assign(Config.drive, {
-      enabled: true, client_id: 'client', client_secret: 'secret', redirect_uri: 'http://localhost/api/drive/callback'
-    });
+    Object.assign(Config.drive, { enabled: true, redirect_uri: 'http://localhost/api/drive/callback' });
     Config.secret_key = Buffer.alloc(32, 3).toString('base64');
+
+    // Despues de la clave: el repositorio sella el secreto con ella.
+    await driveSettingsRepository.save({ organization: 'pergamo', clientId: 'client', clientSecret: 'secret' });
   });
 
   afterAll(async () => {
+    await driveSettingsRepository.remove('pergamo');
     Object.assign(Config.drive, original.drive);
     Config.secret_key = original.secret_key;
     server.close();
@@ -126,6 +129,18 @@ describe('Drive API', () => {
     const disconnected = await api.post('/api/drive/folders', { folder_id: 'x' }, auth());
     expect(disconnected.status).toBe(StatusCodes.UNAUTHORIZED);
     expect(disconnected.data.code).toBe('DRIVE_NOT_CONNECTED');
+  });
+
+  it('Should answer DRIVE_NOT_CONFIGURED when the organization has no OAuth client', async () => {
+
+    await driveSettingsRepository.remove('pergamo');
+    try {
+      const response = await api.post('/api/drive/connect', null, auth());
+      expect(response.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(response.data.code).toBe('DRIVE_NOT_CONFIGURED');
+    } finally {
+      await driveSettingsRepository.save({ organization: 'pergamo', clientId: 'client', clientSecret: 'secret' });
+    }
   });
 
   it('Should answer 404 for a folder that does not exist', async () => {

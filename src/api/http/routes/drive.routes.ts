@@ -9,6 +9,12 @@ router.get('/callback', Controllers.callback);
 router.get('/', Middleware.auth, Controllers.connection);
 router.post('/connect', Middleware.auth, Controllers.connect);
 router.delete('/', Middleware.auth, Controllers.disconnect);
+// Cliente OAuth de la organizacion. Lo escribe su administracion, no la
+// interfaz de Pergamo.
+router.get('/settings', Middleware.auth, Controllers.settings);
+router.put('/settings', Middleware.auth, Controllers.saveSettings);
+router.delete('/settings', Middleware.auth, Controllers.removeSettings);
+
 router.get('/browse', Middleware.auth, Controllers.browse);
 router.get('/folders', Middleware.auth, Controllers.folders);
 router.post('/folders', Middleware.auth, Controllers.addFolder);

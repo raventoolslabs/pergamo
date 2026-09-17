@@ -2,10 +2,12 @@ import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
 
 import Config from '@/shared/config';
 import { UnauthorizedError } from '@/domain/exceptions/domain.exception';
-import { DriveNotConnectedError, DriveUnavailableError } from '@/domain/exceptions/drive.exception';
+import { DriveNotConfiguredError, DriveNotConnectedError, DriveUnavailableError } from '@/domain/exceptions/drive.exception';
 import { DRIVE_SCOPE } from '@/domain/entities/drive';
 import { DriveGrant } from '@/app/ports/services/drive.service';
+import { DriveCredentials } from '@/app/ports/repositories/drive-settings.repository';
 import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
+import { driveSettingsRepository } from '@/infrastructure/db/repositories/drive-settings.repository';
 import { open, seal } from '@/infrastructure/security/secret-box';
 
 // email identifica la cuenta conectada.
@@ -18,11 +20,23 @@ interface State {
   exp: number;
 }
 
-const newClient = () => new OAuth2Client({
-  clientId: Config.drive.client_id,
-  clientSecret: Config.drive.client_secret,
+// Las credenciales son de la organizacion; la URL de retorno es del despliegue,
+// la misma para todas, y cada una la registra en su proyecto de Google.
+const newClient = (credentials:DriveCredentials) => new OAuth2Client({
+  clientId: credentials.clientId,
+  clientSecret: credentials.clientSecret,
   redirectUri: Config.drive.redirect_uri
 });
+
+const credentialsOf = async (organization:string):Promise<DriveCredentials> => {
+
+  const credentials = await driveSettingsRepository.credentials(organization);
+
+  if(!credentials) throw new DriveNotConfiguredError(
+    `Organization ${organization} has no Google Drive OAuth client configured`);
+
+  return credentials;
+};
 
 /**
  * El state es un sobre sellado: infalsificable sin SECRET_KEY y con caducidad,
@@ -30,7 +44,7 @@ const newClient = () => new OAuth2Client({
  */
 export const authUrl = async (organization:string) => {
 
-  const client = newClient();
+  const client = newClient(await credentialsOf(organization));
   const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
   const state:State = { organization, verifier: codeVerifier, exp: Date.now() + STATE_TTL_MS };
 
@@ -60,7 +74,7 @@ const readState = (sealed:string):State => {
 export const exchange = async (sealedState:string, code:string):Promise<DriveGrant> => {
 
   const state = readState(sealedState);
-  const client = newClient();
+  const client = newClient(await credentialsOf(state.organization));
 
   let tokens;
   try {
@@ -83,9 +97,16 @@ export const exchange = async (sealedState:string, code:string):Promise<DriveGra
   };
 };
 
-// Un cliente por organizacion: cachea el access_token y lo renueva solo. Se
-// rehace si el token sellado cambia, que es lo que pasa al reconectar.
-const clients = new Map<string, { sealed:string; client:OAuth2Client }>();
+/**
+ * Un cliente por organizacion: cachea el access_token y lo renueva solo. La
+ * huella lleva el token sellado y la fecha de las credenciales, asi que
+ * reconectar o rotar el cliente OAuth lo rehacen sin que nadie avise.
+ *
+ * Se comprueba al leer y no con un aviso desde el caso de uso porque el worker
+ * puede vivir en otro proceso: no lo recibiria, y seguiria sincronizando con el
+ * secreto viejo hasta reiniciar.
+ */
+const clients = new Map<string, { fingerprint:string; client:OAuth2Client }>();
 
 export const accessToken = async (organization:string):Promise<string> => {
 
@@ -93,22 +114,26 @@ export const accessToken = async (organization:string):Promise<string> => {
 
   if(!sealed) throw new DriveNotConnectedError(`Organization ${organization} has no Drive connection`);
 
+  // Antes de mirar las credenciales: una SECRET_KEY rotada invalida la conexion
+  // pase lo que pase con ellas, y eso es lo que hay que contar.
+  let refreshToken:string;
+  try {
+    refreshToken = open(sealed);
+  } catch {
+    clients.delete(organization);
+    await driveConnectionRepository.markRevoked(organization);
+    throw new DriveNotConnectedError(`Drive token of organization ${organization} was sealed with another SECRET_KEY`);
+  }
+
+  const credentials = await credentialsOf(organization);
+  const fingerprint = `${sealed}|${credentials.modificationDate.getTime()}`;
+
   let cached = clients.get(organization);
 
-  if(!cached || cached.sealed !== sealed) {
-
-    let refreshToken:string;
-    try {
-      refreshToken = open(sealed);
-    } catch {
-      // Sellado con otra SECRET_KEY: tras rotarla, la conexion se vuelve a autorizar.
-      await driveConnectionRepository.markRevoked(organization);
-      throw new DriveNotConnectedError(`Drive token of organization ${organization} was sealed with another SECRET_KEY`);
-    }
-
-    const client = newClient();
+  if(!cached || cached.fingerprint !== fingerprint) {
+    const client = newClient(credentials);
     client.setCredentials({ refresh_token: refreshToken });
-    cached = { sealed, client };
+    cached = { fingerprint, client };
     clients.set(organization, cached);
   }
 

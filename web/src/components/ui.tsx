@@ -459,6 +459,7 @@ const ERROR_MESSAGE: Record<string, TranslationKey> = {
   QUEUE_UNAVAILABLE: 'error.queueUnavailable',
   DRIVE_DISABLED: 'error.driveDisabled',
   DRIVE_NOT_CONNECTED: 'error.driveNotConnected',
+  DRIVE_NOT_CONFIGURED: 'error.driveNotConfigured',
   DRIVE_UNAVAILABLE: 'error.driveUnavailable',
   DRIVE_FOLDER_EXISTS: 'error.driveFolderExists',
   DRIVE_FOLDER_NOT_FOUND: 'error.driveFolderNotFound',

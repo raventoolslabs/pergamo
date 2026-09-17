@@ -6,6 +6,15 @@ export interface DriveConnectionRow {
   revoked_date: Date | null;
 }
 
+export interface DriveSettingsRow {
+  organization: string;
+  creation_date: Date;
+  modification_date: Date;
+  client_id: string;
+  // Sellado. Solo lo abre el propio repositorio.
+  client_secret: string | null;
+}
+
 export interface DriveFolderRow {
   id: string;
   organization: string;

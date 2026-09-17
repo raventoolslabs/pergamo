@@ -14,6 +14,19 @@ export interface DriveConnection {
   revokedDate?: Date;
 }
 
+/**
+ * Cliente OAuth propio de la organizacion. El secreto no forma parte de la
+ * entidad: solo lo abre el repositorio, para el adaptador de Drive.
+ */
+export interface DriveSettings {
+  organization: string;
+  clientId: string;
+  // Hay secreto guardado. Sin el no se puede autorizar nada.
+  hasSecret: boolean;
+  creationDate: Date;
+  modificationDate: Date;
+}
+
 export interface DriveFolder {
   id: string;
   organization: string;

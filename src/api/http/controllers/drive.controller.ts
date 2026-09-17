@@ -5,16 +5,19 @@ import { DRIVE_SCOPE } from '@/domain/entities/drive';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { formatIssues } from '@/shared/validation';
 import {
-  driveBrowseQuerySchema, driveCallbackQuerySchema, driveFolderBodySchema,
-  toDriveConnectionResponse, toDriveEntryResponse, toDriveFolderResponse, toDriveSyncResponse
+  driveBrowseQuerySchema, driveCallbackQuerySchema, driveFolderBodySchema, driveSettingsBodySchema,
+  toDriveConnectionResponse, toDriveEntryResponse, toDriveFolderResponse, toDriveSettingsResponse, toDriveSyncResponse
 } from '@/api/http/dto/drive.dto';
 import { connectDrive } from '@/app/use-cases/drive/commands/connect-drive.handler';
 import { completeDriveConnection } from '@/app/use-cases/drive/commands/complete-drive-connection.handler';
 import { disconnectDrive } from '@/app/use-cases/drive/commands/disconnect-drive.handler';
+import { saveDriveSettings } from '@/app/use-cases/drive/commands/save-drive-settings.handler';
+import { removeDriveSettings } from '@/app/use-cases/drive/commands/remove-drive-settings.handler';
 import { addDriveFolder } from '@/app/use-cases/drive/commands/add-drive-folder.handler';
 import { removeDriveFolder } from '@/app/use-cases/drive/commands/remove-drive-folder.handler';
 import { startDriveSync } from '@/app/use-cases/drive/commands/start-drive-sync.handler';
 import { getDriveConnection } from '@/app/use-cases/drive/queries/get-drive-connection.handler';
+import { getDriveSettings } from '@/app/use-cases/drive/queries/get-drive-settings.handler';
 import { listDriveFolders } from '@/app/use-cases/drive/queries/list-drive-folders.handler';
 import { getDriveSync } from '@/app/use-cases/drive/queries/get-drive-sync.handler';
 import { browseDrive } from '@/app/use-cases/drive/queries/browse-drive.handler';
@@ -82,6 +85,40 @@ const disconnect = async (req, res, next) => {
   }
 };
 
+const settings = async (req, res, next) => {
+  try {
+    res.status(StatusCodes.OK).json(toDriveSettingsResponse(await getDriveSettings(req.user.organization, deps)));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const saveSettings = async (req, res, next) => {
+  try {
+    const body = parse<{ client_id:string; client_secret?:string | null }>(
+      driveSettingsBodySchema, req.body, 'INVALID_BODY');
+    const saved = await saveDriveSettings({
+      organization: req.user.organization,
+      clientId: body.client_id,
+      // Sin la comprobacion de la clave, «quitar» y «mantener» llegan aqui
+      // igual: zod deja los dos en undefined al desestructurar.
+      clientSecret: 'client_secret' in body ? body.client_secret : undefined
+    }, deps);
+    res.status(StatusCodes.OK).json(toDriveSettingsResponse(saved));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const removeSettings = async (req, res, next) => {
+  try {
+    await removeDriveSettings(req.user.organization, deps);
+    res.status(StatusCodes.NO_CONTENT).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
 const browse = async (req, res, next) => {
   try {
     const { folder } = parse<{ folder?:string }>(driveBrowseQuerySchema, req.query, 'INVALID_QUERY');
@@ -137,4 +174,7 @@ const syncState = async (req, res, next) => {
   }
 };
 
-export { addFolder, browse, callback, connect, connection, disconnect, folders, removeFolder, startSync, syncState };
+export {
+  addFolder, browse, callback, connect, connection, disconnect, folders,
+  removeFolder, removeSettings, saveSettings, settings, startSync, syncState
+};

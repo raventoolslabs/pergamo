@@ -33,6 +33,7 @@ import { DriveDeps } from '@/app/use-cases/drive/dependencies';
 import { driveClient } from '@/infrastructure/google/drive.client';
 import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
 import { driveFolderRepository } from '@/infrastructure/db/repositories/drive-folder.repository';
+import { driveSettingsRepository } from '@/infrastructure/db/repositories/drive-settings.repository';
 import { driveSyncQueue } from '@/infrastructure/queue/drive-sync.queue';
 
 export const documentDeps:DocumentDeps = {
@@ -51,6 +52,7 @@ export const documentDeps:DocumentDeps = {
 export const driveDeps:DriveDeps = {
   drive: driveClient,
   connections: driveConnectionRepository,
+  settings: driveSettingsRepository,
   folders: driveFolderRepository,
   documents: documentRepository,
   chunks: documentChunkRepository,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { DriveConnection, DriveEntry, DriveFolder } from '@/domain/entities/drive';
+import Config from '@/shared/config';
+import { DriveConnection, DriveEntry, DriveFolder, DriveSettings } from '@/domain/entities/drive';
 import { DriveSyncState } from '@/app/ports/services/drive-sync-queue.service';
 
 /**
@@ -17,6 +18,16 @@ export const driveFolderBodySchema = z.object({
   index: z.boolean().default(false)
 }).strict();
 
+/**
+ * client_secret entra en claro una sola vez y no vuelve a salir: string lo
+ * guarda o lo rota, null lo quita, y ausente lo deja como estaba, que es lo que
+ * permite corregir el client_id sin volver a escribirlo.
+ */
+export const driveSettingsBodySchema = z.object({
+  client_id: z.string().min(1).max(256),
+  client_secret: z.string().min(1).max(512).nullable().optional()
+}).strict();
+
 export const driveBrowseQuerySchema = z.object({
   folder: z.string().min(1).max(128).optional()
 }).strict();
@@ -26,6 +37,17 @@ export const toDriveConnectionResponse = (connection:DriveConnection | null) => 
   google_account: connection?.googleAccount ?? null,
   creation_date: connection?.creationDate ?? null,
   revoked_date: connection?.revokedDate ?? null
+});
+
+export const toDriveSettingsResponse = (settings:DriveSettings | null) => ({
+  configured: !!settings?.hasSecret,
+  // El client_id no es secreto: viaja en la URL de autorizacion de Google.
+  client_id: settings?.clientId ?? null,
+  // Del despliegue y no de la organizacion, pero es lo que hay que registrar en
+  // el proyecto de Google Cloud, asi que se publica aqui. De lectura.
+  redirect_uri: Config.drive.redirect_uri ?? null,
+  creation_date: settings?.creationDate ?? null,
+  modification_date: settings?.modificationDate ?? null
 });
 
 export const toDriveFolderResponse = (folder:DriveFolder) => ({

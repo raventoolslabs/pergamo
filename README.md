@@ -918,15 +918,19 @@ Desactivado por defecto. Con `DRIVE_ENABLED=false` no aparece nada de esto.
    *Aplicación web*.
 2. Registrar como URI de redirección exactamente la de `DRIVE_REDIRECT_URI`, que es
    `https://<host>/api/drive/callback`.
-3. Rellenar el `.env`:
+3. Rellenar el `.env` del despliegue:
 
 | Variable | Qué hace |
 |---|---|
-| `DRIVE_ENABLED` | Activa la integración. Exige las cuatro siguientes: el arranque falla si falta alguna. |
-| `DRIVE_CLIENT_ID` / `DRIVE_CLIENT_SECRET` | Credenciales del cliente OAuth. |
-| `DRIVE_REDIRECT_URI` | La misma URI registrada en Google. |
-| `SECRET_KEY` | 32 bytes en base64 (`openssl rand -base64 32`). Cifra con AES-256-GCM los `refresh_token` guardados y el `state` de OAuth. |
+| `DRIVE_ENABLED` | Activa la integración. Exige las dos siguientes: el arranque falla si falta alguna. |
+| `DRIVE_REDIRECT_URI` | La misma URI registrada en Google. Es del despliegue: la comparten todas las organizaciones. |
+| `SECRET_KEY` | 32 bytes en base64 (`openssl rand -base64 32`). Cifra con AES-256-GCM los `client_secret` y los `refresh_token` guardados, y el `state` de OAuth. |
 | `DRIVE_SYNC_INTERVAL_MS` | Cada cuánto se sincroniza sola cada carpeta. `0`, el defecto, es solo a mano. |
+
+4. Registrar el cliente OAuth **de cada organización** con `PUT /api/drive/settings`. Las
+   credenciales no están en el `.env`: cada organización usa su propio proyecto de Google
+   Cloud, con su cuota y su pantalla de consentimiento, y hasta que no lo registra sus
+   llamadas a Drive responden `400 DRIVE_NOT_CONFIGURED`.
 
 Solo se pide permiso de **lectura** (`drive.readonly`): Pergamo nunca escribe en Drive.
 
@@ -974,6 +978,9 @@ mismo worker que el índice y el barrido: embebido en la API o en `pergamo-worke
 |---|---|
 | `GET /api/drive/callback` | **Público**: vuelve de Google y redirige a `/drive`. La organización sale del `state` sellado —caduca a los 10 minutos— y de ningún otro sitio; uno falsificado, caducado o de otra clave es `401`. |
 | `GET /api/drive` | Estado de la conexión: `connected`, `google_account`, `revoked_date`. |
+| `GET /api/drive/settings` | Cliente OAuth de la organización: `configured`, `client_id`, `redirect_uri` y fechas. **Nunca el secreto**, ni cifrado. |
+| `PUT /api/drive/settings` | Registra o corrige el cliente con `{ client_id, client_secret }`. En `client_secret`, un texto lo guarda o lo rota, `null` lo quita y omitirlo lo deja como estaba. |
+| `DELETE /api/drive/settings` | Borra el cliente **y la conexión**: un `refresh_token` emitido por un cliente que ya no está no se puede renovar. |
 | `POST /api/drive/connect` | `{ url }` de autorización de Google, con PKCE y acceso *offline*. |
 | `DELETE /api/drive` | Olvida el token. Carpetas y documentos se quedan. |
 | `GET /api/drive/browse?folder=` | Subcarpetas de una carpeta, o de «Mi unidad» sin `folder`. |
@@ -981,7 +988,8 @@ mismo worker que el índice y el barrido: embebido en la API o en `pergamo-worke
 | `DELETE /api/drive/folders/:id` | Deja de sincronizar la carpeta. |
 | `POST` / `GET /api/drive/folders/:id/sync` | Encola una pasada —o devuelve la que ya corre— y su progreso. |
 
-Con Drive desactivado todos responden `400 DRIVE_DISABLED`. Un documento de Drive no admite
+Con Drive desactivado en el despliegue todos responden `400 DRIVE_DISABLED`, y sin cliente
+OAuth registrado los que hablan con Google responden `400 DRIVE_NOT_CONFIGURED`. Un documento de Drive no admite
 `PUT /api/document/:id/file` (`400 DRIVE_READ_ONLY`) ni tiene versiones archivadas.
 
 ### Antivirus de lo importado
@@ -997,18 +1005,21 @@ subida, así que un PDF de Drive con JavaScript o ficheros embebidos no entra en
 
 ### Rotar `SECRET_KEY`
 
-No hay rotación automática. Al cambiar la clave, los `refresh_token` guardados dejan de poder
-abrirse: la primera pasada de cada organización marca su conexión como **revocada** y la
-interfaz pide volver a conectar. Carpetas, documentos e índices se conservan.
+No hay rotación automática. Al cambiar la clave dejan de poder abrirse las dos cosas que
+sella: el `client_secret` de cada organización, que pasa a comportarse como si no estuviera
+registrado, y los `refresh_token`, cuya primera pasada marca la conexión como **revocada**.
+Carpetas, documentos e índices se conservan.
 
 Para hacerlo de una vez en lugar de esperar a esa primera pasada:
 
 ```sql
 DELETE FROM pergamo.drive_connection;
+DELETE FROM pergamo.drive_settings;
 ```
 
-Después, cada organización pulsa «Conectar con Google Drive». No hay otra forma: sin la clave
-anterior no se puede recuperar ningún token.
+Después, cada organización vuelve a registrar su cliente con `PUT /api/drive/settings` y
+pulsa «Conectar con Google Drive». No hay otra forma: sin la clave anterior no se puede
+recuperar nada de lo guardado.
 
 ## Licencia
 
