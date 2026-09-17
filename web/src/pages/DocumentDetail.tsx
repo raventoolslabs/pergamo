@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client';
 import { useConfig } from '../api/config';
-import type { DocumentMetadata, DocumentVersion, IndexInfo, IndexStatus, ScanInfo } from '../api/types';
+import type { DocumentMetadata, DocumentVersion, IndexInfo, IndexStatus, ScanInfo, SourceInfo } from '../api/types';
 import { useToast } from '../components/toast';
 import { ChunkList } from '../components/ChunkList';
 import {
@@ -115,6 +115,7 @@ export const DocumentDetail = () => {
   const [metadata, setMetadata] = useState<DocumentMetadata | null>(null);
   const [scanInfo, setScanInfo] = useState<ScanInfo | null>(null);
   const [indexInfo, setIndexInfo] = useState<IndexInfo | null>(null);
+  const [sourceInfo, setSourceInfo] = useState<SourceInfo | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
@@ -138,17 +139,20 @@ export const DocumentDetail = () => {
       //
       // El del indice cae a null si falla, como las versiones: un servidor sin
       // esa ruta no puede dejar la ficha en blanco.
-      const [document, scan, index, versionList] = await Promise.all([
+      const [document, scan, index, versionList, source] = await Promise.all([
         api.document(id),
         api.scan(id),
         api.indexInfo(id).catch(() => null),
-        api.versions(id).catch(() => [] as DocumentVersion[])
+        api.versions(id).catch(() => [] as DocumentVersion[]),
+        // Un servidor sin esa ruta solo tiene disco.
+        api.source(id).catch(() => null)
       ]);
 
       setMetadata(document);
       setScanInfo(scan);
       setIndexInfo(index);
       setVersions(versionList);
+      setSourceInfo(source);
       setError(null);
     } catch (failure) {
       setError(failure);
@@ -307,7 +311,7 @@ export const DocumentDetail = () => {
     } catch {
       // Sin permiso o sin contexto seguro no hay portapapeles: se dice, en
       // lugar de dejar un boton que no hace nada.
-      toast(t('detail.copyFailed'), 'error');
+      toast(t('common.copyFailed'), 'error');
     }
   };
 
@@ -338,6 +342,8 @@ export const DocumentDetail = () => {
   }
 
   const filename = `${metadata.name}.${metadata.extension}`;
+  // De Drive: no se reemplaza ni archiva versiones aqui, se cambia alli.
+  const fromDrive = sourceInfo?.source === 'drive';
 
   // Dos preguntas distintas. `downloadable` es la del backend —¿se entrega?— y
   // solo mira scan_status; `state` es lo que se le cuenta a quien esta delante,
@@ -422,7 +428,9 @@ export const DocumentDetail = () => {
     >
       {/* Lo que dice 'pending' —que el proximo analisis lo resuelve— no vale
           sobre un fichero que el escaner nunca va a leer: ahi lo sustituye. */}
-      {scanLimit ?? (state === 'pending' ? t('detail.pendingNotice') : VERDICT.unscanned.detail)}
+      {scanLimit ?? (state === 'pending'
+        ? (fromDrive ? t('drive.pendingNotice') : t('detail.pendingNotice'))
+        : VERDICT.unscanned.detail)}
       {signature}
     </Notice>
   ) : null;
@@ -444,8 +452,10 @@ export const DocumentDetail = () => {
 
         {/* La huella SHA-256 es lo unico que acredita que el contenido no ha
             cambiado desde el deposito, asi que se puede llevar de aqui. */}
+        {/* En Drive no hay sha256: el hash es la revision, y llamarlo huella
+            prometeria una integridad que Pergamo no ha calculado. */}
         <Card
-          term={t('detail.fingerprint')}
+          term={fromDrive ? t('drive.revision') : t('detail.fingerprint')}
           icon={<ShieldIcon />}
           action={
             <button
@@ -529,7 +539,7 @@ export const DocumentDetail = () => {
         <section>
           <h2>{t('detail.versions')}</h2>
           <p className="section__note">
-            {versions?.length
+            {fromDrive ? t('drive.versionsNote') : versions?.length
               ? t('detail.versionsKept')
               : config?.max_version_file
                 ? t('detail.versionsNoneLimited', { limit: config.max_version_file })
@@ -670,6 +680,7 @@ export const DocumentDetail = () => {
           {typeof metadata.size === 'number' ? (
             <span className="chip chip--plain"><SizeIcon />{formatSize(metadata.size)}</span>
           ) : null}
+          {fromDrive ? <span className="chip chip--plain chip--source">{t('source.drive')}</span> : null}
         </div>
 
         <div className="doc-actions">
@@ -682,16 +693,24 @@ export const DocumentDetail = () => {
                 : <><DownloadIcon size={16} /> {t('documents.download')}</>}
             </button>
           ) : null}
-          <button
-            type="button"
-            className="btn"
-            onClick={() => replacementInput.current?.click()}
-            disabled={busy === 'replace'}
-          >
-            {busy === 'replace'
-              ? <><span className="spinner" aria-hidden="true" /> {t('detail.replacing')}</>
-              : t('detail.replace')}
-          </button>
+          {fromDrive ? (
+            sourceInfo?.drive_view_link ? (
+              <a className="btn" href={sourceInfo.drive_view_link} target="_blank" rel="noopener noreferrer">
+                {t('drive.openInDrive')}
+              </a>
+            ) : null
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => replacementInput.current?.click()}
+              disabled={busy === 'replace'}
+            >
+              {busy === 'replace'
+                ? <><span className="spinner" aria-hidden="true" /> {t('detail.replacing')}</>
+                : t('detail.replace')}
+            </button>
+          )}
           <button type="button" className="btn btn--danger" onClick={() => setConfirming(true)}>
             {t('common.delete')}
           </button>

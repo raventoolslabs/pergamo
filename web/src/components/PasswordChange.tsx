@@ -64,7 +64,8 @@ const MATCH_MESSAGE = {
  * El indicador de coincidencia va dentro del campo, junto al ojo: con el borde
  * ya tenido, repetirlo en texto justo debajo era decir lo mismo dos veces.
  */
-const PasswordField = ({ id, label, placeholder, value, onChange, visible, onToggle, autoFocus, match, describedBy }: {
+export const PasswordField = ({ id, label, placeholder, value, onChange, visible, onToggle, autoFocus, match, describedBy,
+  maxLength = 128, autoComplete = 'new-password' }: {
   id: string;
   label: string;
   placeholder: string;
@@ -76,6 +77,9 @@ const PasswordField = ({ id, label, placeholder, value, onChange, visible, onTog
   /** Solo lo usa el campo de repeticion: tine el borde y activa el indicador. */
   match?: 'match' | 'mismatch';
   describedBy?: string;
+  /** Lo fija quien lo usa: 128 la contrasena, 512 el secreto de Google. */
+  maxLength?: number;
+  autoComplete?: string;
 }) => {
 
   const matchId = `${id}-match`;
@@ -87,9 +91,9 @@ const PasswordField = ({ id, label, placeholder, value, onChange, visible, onTog
         <input
           id={id}
           type={visible ? 'text' : 'password'}
-          autoComplete="new-password"
+          autoComplete={autoComplete}
           autoFocus={autoFocus}
-          maxLength={128}
+          maxLength={maxLength}
           placeholder={placeholder}
           value={value}
           aria-invalid={match === 'mismatch' || undefined}

@@ -24,6 +24,7 @@ router.put('/:id/file', Middleware.auth, upload.single('document'), Controllers.
 router.get('/:id/scan', Middleware.auth, Controllers.scanInfo);
 router.post('/:id/scan', Middleware.auth, Controllers.rescan);
 router.post('/:id/release', Middleware.auth, Controllers.release);
+router.get('/:id/source', Middleware.auth, Controllers.sourceInfo);
 router.get('/:id/index', Middleware.auth, Controllers.indexInfo);
 router.post('/:id/index', Middleware.auth, Controllers.reindex);
 router.get('/:id/chunks', Middleware.auth, Controllers.chunks);

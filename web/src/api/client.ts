@@ -1,6 +1,5 @@
 import type {
-  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, IndexInfo,
-  Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
+  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, DriveConnection, DriveEntry, DriveFolder, DriveSettings, DriveSyncState, IndexInfo, SourceInfo, Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
 } from './types';
 
 const TOKEN_KEY = 'pergamo.token';
@@ -72,12 +71,18 @@ const parseError = async (response: Response) => {
 };
 
 const handle = async (response: Response) => {
-  if (response.status === 401) {
+  if (response.ok) return response;
+
+  const error = await parseError(response);
+
+  // Un 401 de Drive es que falta la conexion con Google, no que la sesion de
+  // Pergamo haya caducado: cerrarla echaria a quien solo tiene que reconectar.
+  if (response.status === 401 && !error.code?.startsWith('DRIVE_')) {
     tokenStore.clear();
     unauthorizedListeners.forEach((listener) => listener());
   }
-  if (!response.ok) throw await parseError(response);
-  return response;
+
+  throw error;
 };
 
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
@@ -170,6 +175,8 @@ export const api = {
 
   scan: (id: string) => request<ScanInfo>(`/document/${encodeURIComponent(id)}/scan`),
 
+  source: (id: string) => request<SourceInfo>(`/document/${encodeURIComponent(id)}/source`),
+
   indexInfo: (id: string) => request<IndexInfo>(`/document/${encodeURIComponent(id)}/index`),
 
   reindex: (id: string) =>
@@ -224,5 +231,38 @@ export const api = {
 
   // Lo que baja es el ZIP que guarda el servidor, no el fichero original.
   downloadVersion: (id: string, version: number, fallbackName: string) =>
-    saveFile(`/document/${encodeURIComponent(id)}/versions/${version}/file`, fallbackName)
+    saveFile(`/document/${encodeURIComponent(id)}/versions/${version}/file`, fallbackName),
+
+  drive: () => request<DriveConnection>('/drive'),
+
+  // Devuelve la URL de Google: la conexion se completa en el navegador, fuera de la aplicacion.
+  driveConnect: () => request<{ url: string }>('/drive/connect', { method: 'POST' }),
+
+  driveDisconnect: () => request<void>('/drive', { method: 'DELETE' }),
+
+  driveSettings: () => request<DriveSettings>('/drive/settings'),
+
+  // A mano y no con json(): ese ayudante fuerza POST. Sin client_secret la
+  // clave no viaja, que es lo que el servidor lee como «deja el que hay».
+  saveDriveSettings: (body: { client_id: string; client_secret?: string }) =>
+    request<DriveSettings>('/drive/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }),
+
+  driveBrowse: (folder?: string) => request<DriveEntry[]>(`/drive/browse${query({ folder })}`),
+
+  driveFolders: () => request<DriveFolder[]>('/drive/folders'),
+
+  addDriveFolder: (folderId: string, index: boolean) =>
+    request<DriveFolder>('/drive/folders', json({ folder_id: folderId, index })),
+
+  removeDriveFolder: (id: string) =>
+    request<void>(`/drive/folders/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  startDriveSync: (id: string) =>
+    request<DriveSyncState>(`/drive/folders/${encodeURIComponent(id)}/sync`, { method: 'POST' }),
+
+  driveSync: (id: string) => request<DriveSyncState>(`/drive/folders/${encodeURIComponent(id)}/sync`)
 };

@@ -403,6 +403,7 @@ export const Documents = () => {
                       {/* Los documentos anteriores a que se guardara el tamano
                           no lo tienen: mejor sin el dato que con un cero. */}
                       {typeof metadata.size === 'number' ? <span>{formatSize(metadata.size)}</span> : null}
+                      {document.source === 'drive' ? <span className="source">{t('source.drive')}</span> : null}
                     </div>
                   </div>
 

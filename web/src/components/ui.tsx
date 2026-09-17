@@ -456,7 +456,14 @@ const ERROR_MESSAGE: Record<string, TranslationKey> = {
   VERSION_NOT_FOUND: 'error.versionNotFound',
   INDEXING_DISABLED: 'error.indexingDisabled',
   INDEXING_IN_PROGRESS: 'error.indexingInProgress',
-  QUEUE_UNAVAILABLE: 'error.queueUnavailable'
+  QUEUE_UNAVAILABLE: 'error.queueUnavailable',
+  DRIVE_DISABLED: 'error.driveDisabled',
+  DRIVE_NOT_CONNECTED: 'error.driveNotConnected',
+  DRIVE_NOT_CONFIGURED: 'error.driveNotConfigured',
+  DRIVE_UNAVAILABLE: 'error.driveUnavailable',
+  DRIVE_FOLDER_EXISTS: 'error.driveFolderExists',
+  DRIVE_FOLDER_NOT_FOUND: 'error.driveFolderNotFound',
+  DRIVE_READ_ONLY: 'error.driveReadOnly'
 };
 
 /**

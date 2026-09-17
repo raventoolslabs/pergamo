@@ -36,13 +36,13 @@ export const exceedsScanLimit = (document:Document) =>
 export const scanStoredFile = async (document:Document, deps:DocumentDeps, trace:string):Promise<ScanResult> => {
 
   const { organization, id } = document;
-  const filePath = deps.storage.resolve(organization, document.path);
+  const content = await deps.content.fetch(document);
 
   // Que el fichero falte no es un veredicto favorable: se marca 'error' y sale
   // de la cola del barrido, porque otro escaneo no lo devuelve a su sitio.
-  if(!await deps.storage.exists(filePath)) {
+  if(!content) {
 
-    log.warn(`${trace} | Document ${id}: file not found at ${filePath}`);
+    log.warn(`${trace} | Document ${id}: file not found in ${document.source}`);
 
     return {
       outcome: 'missing',
@@ -55,7 +55,12 @@ export const scanStoredFile = async (document:Document, deps:DocumentDeps, trace
     };
   }
 
-  const result = await deps.scanner.check(filePath);
+  let result;
+  try {
+    result = await deps.scanner.check(content.filePath);
+  } finally {
+    await content.release();
+  }
 
   if(result.infected) log.warn(`${trace} | Document ${id} QUARANTINED: ${result.signature}`);
 

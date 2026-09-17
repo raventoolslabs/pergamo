@@ -314,7 +314,7 @@ La API se va al 6230, detrás. El proxy de Vite le reenvía todo lo que empieza 
 hace falta, y `PERGAMO_DEV_WEB_PORT` mueve la interfaz para levantarla con el contenedor en marcha.
 
 Para llegar por un dominio y no por `localhost`, `PERGAMO_WEB_HOST` en el `.env`
-(`pergamo.raventools.labs` en este despliegue). Hacen falta las dos cosas que configura: Vite
+(`pergamo.dev.raventoolslabs.com` en este despliegue). Hacen falta las dos cosas que configura: Vite
 **bloquea** toda petición cuyo `Host` no sea `localhost` —y el proxy inverso conserva el original—,
 y el websocket del HMR hay que dirigirlo al 443 del proxy en lugar de al puerto de Vite, que el
 cortafuegos no deja pasar. Efecto lateral que conviene conocer: con la variable puesta, navegando
@@ -418,8 +418,9 @@ mano. Estos cuatro endpoints cubren ese hueco y son de solo lectura:
 | `GET /api/organization` | Master | Listado paginado de organizaciones con `id`, `name` y fechas. Filtros `name` e `include_discharged`. La columna `password` no entra siquiera en el `SELECT`. |
 | `POST /api/search` | Autenticado | Búsqueda híbrida sobre los documentos de la organización del token. Devuelve el texto de cada fragmento y su procedencia, nunca el vector. |
 | `GET /api/document/:id/index` | Autenticado | Estado de la indexación semántica del documento. |
+| `GET /api/document/:id/source` | Organización | De dónde sale el fichero: `source` (`disk` o `drive`) y `drive_view_link`. Va aparte por la misma razón que `/scan`. |
 | `GET /api/document/:id/chunks` | Organización | Los trozos del documento, paginados y en su orden: `{ total, limit, offset, chunks }`, con `content`, `position`, `page`, `section`, `heading_path`, `content_type` y `length`. Es lo que permite mirar dentro del índice —qué texto se extrajo y por dónde se cortó— sin entrar por SQL. `limit` va de 1 a 50 (8 por defecto), porque un trozo ronda los 1500 caracteres. **El vector no sale.** |
-| `GET /api/config` | Autenticado | Límites del despliegue: `enable_antivirus`, `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir —y no prometer un análisis que este despliegue no hace— en lugar de duplicar la configuración. |
+| `GET /api/config` | Autenticado | Límites del despliegue: `enable_antivirus`, `indexing_enabled`, `drive_enabled`, `valid_mimetype`, `valid_metadata_modify`, `max_file_size` y `max_version_file`. Permite a la interfaz validar antes de subir —y no prometer un análisis que este despliegue no hace— en lugar de duplicar la configuración. |
 
 El aislamiento por organización se aplica igual que en el resto: el `WHERE organization` de
 `GET /api/document` es incondicional, y `path` —la ruta en disco— no sale nunca al cliente.
@@ -578,6 +579,7 @@ comando es `npm test` y no `npx jest` a secas.
 * `test/04-quarantine.test.ts` — bloqueo de descarga con `423`, acceso a metadatos en cuarentena y cabeceras de respuesta.
 * `test/05-listing.test.ts` — listados de documentos y organizaciones: filtros, paginación, rechazo de parámetros inválidos, aislamiento entre organizaciones y que el hash de contraseña no se expone.
 * `test/06-payloads.test.ts` — corpus de PDF con contenido activo (`test/assets/payloads/`): dónde está el límite de cada capa, que la cuarentena por contenido activo retiene sin rechazar el depósito y solo se levanta a mano, y que lo que se almacena se entrega siempre como adjunto y byte a byte.
+* `test/17-drive-sync.test.ts` a `test/22-drive-adapters.test.ts` — Google Drive sin llamar a Google: el diff de la sincronización (altas, cambios, bajas con sus trozos, recuperación con el mismo `id`, carpetas solapadas y que un recorrido cortado no da de baja nada), la API y su `state` sellado, el contenido servido desde un temporal y los adaptadores.
 
 Las pruebas que necesitan un veredicto real del escáner usan `it.skip` cuando el antivirus está desactivado, de modo que Jest **las reporta como omitidas**. Antes iban envueltas en un `if`, que desaparecía del informe y daba la impresión de una cobertura inexistente.
 
@@ -899,6 +901,129 @@ explícito del proyecto. Se acota: solo sobre documentos que ya pasaron el antiv
 filtro de contenido activo, en el proceso del worker y con tope de tiempo por documento y
 límites de descompresión, que es lo que el propio `officeParser` pide hacer —su README
 declara mantenedor único y hardening «best-effort, not a guarantee»—.
+
+## Google Drive
+
+Una organización conecta su cuenta de Google, elige carpetas y Pergamo archiva lo que
+contienen **y sus subcarpetas**. El binario **se queda en Drive**: Pergamo guarda la ficha,
+el veredicto del antivirus y, si se pide, el índice semántico. Cuando hace falta el
+contenido —descargar, analizar, indexar— se baja a un temporal en `data/tmp` que se borra
+al terminar.
+
+Desactivado por defecto. Con `DRIVE_ENABLED=false` no aparece nada de esto.
+
+### Puesta en marcha
+
+1. En Google Cloud, habilitar la **Google Drive API** y crear un cliente OAuth de tipo
+   *Aplicación web*.
+2. Registrar como URI de redirección exactamente la de `DRIVE_REDIRECT_URI`, que es
+   `https://<host>/api/drive/callback`.
+3. Rellenar el `.env` del despliegue:
+
+| Variable | Qué hace |
+|---|---|
+| `DRIVE_ENABLED` | Activa la integración. Exige las dos siguientes: el arranque falla si falta alguna. |
+| `DRIVE_REDIRECT_URI` | La misma URI registrada en Google. Es del despliegue: la comparten todas las organizaciones. |
+| `SECRET_KEY` | 32 bytes en base64 (`openssl rand -base64 32`). Cifra con AES-256-GCM los `client_secret` y los `refresh_token` guardados, y el `state` de OAuth. |
+| `DRIVE_SYNC_INTERVAL_MS` | Cada cuánto se sincroniza sola cada carpeta. `0`, el defecto, es solo a mano. |
+
+4. Pulsar «Conectar con Google Drive» en la pantalla de Google Drive. El diálogo pide el
+   `client_id` y el secreto **de esa organización** —cada una usa su propio proyecto de
+   Google Cloud, con su cuota y su pantalla de consentimiento— y «Siguiente» los guarda y
+   sale hacia Google. Las credenciales no están en el `.env`, y hasta que no se registran,
+   las llamadas a Drive responden `400 DRIVE_NOT_CONFIGURED`.
+
+   Desde fuera, `PUT /api/drive/settings` hace lo mismo sin pasar por la pantalla, que es
+   como lo configura la administración de markbot.
+
+Solo se pide permiso de **lectura** (`drive.readonly`): Pergamo nunca escribe en Drive.
+
+### Qué hace una sincronización
+
+No hay un «importar» aparte: **importar es la primera sincronización**, un diff contra
+un lado vacío. Cada pasada recorre la carpeta en Drive y la compara con lo que ya hay:
+
+| En Drive | En Pergamo |
+|---|---|
+| Fichero nuevo con un formato de `VALID_MIMETYPE` | Documento nuevo, `scan_status='pending'` y con índice si la carpeta lo pide. |
+| Revisión distinta (`md5Checksum`, o `version` en Docs, Sheets y Slides) | Metadatos al día, análisis otra vez `pending` y reindexado si tenía índice. Las etiquetas y demás campos editados se conservan. |
+| Ya no está (borrado o en la papelera) | **Baja lógica**: deja de verse en la API y se borran sus trozos del índice. |
+| Vuelve a estar | Se recupera **el mismo documento, con su `id`**. |
+
+Docs, Sheets y Slides se exportan a DOCX, XLSX y PPTX, que el conversor sí lee. Los
+accesos directos a carpetas se siguen y los accesos directos a ficheros no: el fichero
+se sincroniza desde la carpeta donde vive.
+
+Tres garantías que conviene conocer:
+
+- **Un recorrido que se corta no da de baja nada.** Si Google limita la cuota, cae la red
+  o se retira el permiso a mitad, la pasada registra el error en la carpeta y no toca lo
+  archivado. La siguiente retoma: el diff es el punto de control. Una carpeta raíz que ya no
+  existe o que está en la papelera también cuenta como fallo, no como carpeta vacía.
+- **Dos carpetas solapadas no duplican.** Un fichero pertenece a la primera carpeta que lo
+  importó; la otra lo ve y lo deja estar.
+- **Quitar una carpeta no borra sus documentos.** Dejan de sincronizarse, y otra carpeta
+  que los contenga los adopta.
+
+Renombrar un fichero binario en Drive no cambia su revisión, así que el nombre nuevo no
+llega hasta que cambie el contenido.
+
+```bash
+npm run sync                     # sincroniza ahora todas las carpetas, sin cola
+npm run sync -- <organizacion>   # solo las de una organización
+```
+
+Desde la interfaz, «Sincronizar ahora» encola la pasada en `drive-sync`, que atiende el
+mismo worker que el índice y el barrido: embebido en la API o en `pergamo-worker`.
+
+### API
+
+| Endpoint | Qué hace |
+|---|---|
+| `GET /api/drive/callback` | **Público**: vuelve de Google y redirige a `/drive`. La organización sale del `state` sellado —caduca a los 10 minutos— y de ningún otro sitio; uno falsificado, caducado o de otra clave es `401`. |
+| `GET /api/drive` | Estado de la conexión: `connected`, `google_account`, `revoked_date`. |
+| `GET /api/drive/settings` | Cliente OAuth de la organización: `configured`, `client_id`, `redirect_uri` y fechas. **Nunca el secreto**, ni cifrado. |
+| `PUT /api/drive/settings` | Registra o corrige el cliente con `{ client_id, client_secret }`. En `client_secret`, un texto lo guarda o lo rota, `null` lo quita y omitirlo lo deja como estaba. |
+| `DELETE /api/drive/settings` | Borra el cliente **y la conexión**, sin tocar carpetas ni documentos: un `refresh_token` emitido por un cliente que ya no está no se puede renovar. Para desmontarlo todo está `DELETE /api/drive`. |
+| `POST /api/drive/connect` | `{ url }` de autorización de Google, con PKCE y acceso *offline*. |
+| `DELETE /api/drive` | **Desconecta y desmonta**: cliente, permiso, carpetas y baja lógica de los documentos importados, con sus trozos del índice. El binario vive en Drive, así que una ficha que ya no se puede descargar no serviría de nada. Los identificadores se conservan: volver a conectar y sincronizar los revive. |
+| `GET /api/drive/browse?folder=` | Subcarpetas de una carpeta, o de «Mi unidad» sin `folder`. |
+| `GET` / `POST /api/drive/folders` | Carpetas sincronizadas; alta con `{ folder_id, index }`, que encola la primera pasada. |
+| `DELETE /api/drive/folders/:id` | Deja de sincronizar la carpeta. |
+| `POST` / `GET /api/drive/folders/:id/sync` | Encola una pasada —o devuelve la que ya corre— y su progreso. |
+
+Con Drive desactivado en el despliegue todos responden `400 DRIVE_DISABLED`, y sin cliente
+OAuth registrado los que hablan con Google responden `400 DRIVE_NOT_CONFIGURED`. Un documento de Drive no admite
+`PUT /api/document/:id/file` (`400 DRIVE_READ_ONLY`) ni tiene versiones archivadas.
+
+### Antivirus de lo importado
+
+Lo que llega de Drive entra **sin veredicto** (`pending`) y se entrega igual, como un
+depósito hecho con clamd caído. Si el antivirus está activo, **al terminar una sincronización
+que trajo algo nuevo se encola el barrido de pendientes**, que baja cada fichero a temporal y
+lo analiza. `npm run rescan` los salta: trabaja sobre rutas de disco.
+
+**El filtro de contenido activo no se aplica a lo importado.** Ese filtro solo corre en la
+subida, así que un PDF de Drive con JavaScript o ficheros embebidos no entra en cuarentena
+`malicious`: solo lo retiene una firma de ClamAV.
+
+### Rotar `SECRET_KEY`
+
+No hay rotación automática. Al cambiar la clave dejan de poder abrirse las dos cosas que
+sella: el `client_secret` de cada organización, que pasa a comportarse como si no estuviera
+registrado, y los `refresh_token`, cuya primera pasada marca la conexión como **revocada**.
+Carpetas, documentos e índices se conservan.
+
+Para hacerlo de una vez en lugar de esperar a esa primera pasada:
+
+```sql
+DELETE FROM pergamo.drive_connection;
+DELETE FROM pergamo.drive_settings;
+```
+
+Después, cada organización vuelve a registrar su cliente con `PUT /api/drive/settings` y
+pulsa «Conectar con Google Drive». No hay otra forma: sin la clave anterior no se puede
+recuperar nada de lo guardado.
 
 ## Licencia
 

@@ -1,11 +1,11 @@
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
-import { Document, DocumentMetadata } from '@/domain/entities/document';
+import { Document, DocumentMetadata, RemoteSource } from '@/domain/entities/document';
 import { TransactionScope } from '@/app/ports/unit-of-work';
 import {
   DocumentListFilter, DocumentPage, DocumentRepository, IndexResult, ScanRecord
 } from '@/app/ports/repositories/document.repository';
-import { DocumentRow, DocumentSummaryRow } from '@/infrastructure/db/schema/document.row';
-import { toDocument, toDocumentSummary } from '@/infrastructure/db/mappers/document.mapper';
+import { DocumentRow, DocumentSummaryRow, RemoteStateRow } from '@/infrastructure/db/schema/document.row';
+import { toDocument, toDocumentSummary, toRemoteState } from '@/infrastructure/db/mappers/document.mapper';
 import { escapeLike } from '@/shared/validation';
 
 // El orden llega como concepto del dominio; la columna es cosa de aqui.
@@ -29,17 +29,28 @@ const scanReplacements = (scan:ScanRecord) => ({
   scan_date: scan.scanDate
 });
 
+const remoteReplacements = (remote?:RemoteSource) => ({
+  drive_file_id: remote?.fileId ?? null,
+  drive_folder: remote?.folder ?? null,
+  drive_revision: remote?.revision ?? null,
+  drive_view_link: remote?.viewLink ?? null
+});
+
 export const documentRepository:DocumentRepository = {
 
-  async create(organization, metadata, scan, indexStatus, scope?:TransactionScope):Promise<Document> {
+  async create(organization, metadata, scan, indexStatus, scope?:TransactionScope, remote?):Promise<Document> {
 
     const result:any = await sequelize.query(
-      `INSERT INTO pergamo.document(metadata, organization, scan_status, scan_signature, scan_engine, scan_date, index_status)
-      VALUES (:metadata::jsonb, :organization, :scan_status, :scan_signature, :scan_engine, :scan_date, :index_status) RETURNING *;`, {
+      `INSERT INTO pergamo.document(metadata, organization, scan_status, scan_signature, scan_engine, scan_date, index_status,
+        source, drive_file_id, drive_folder, drive_revision, drive_view_link)
+      VALUES (:metadata::jsonb, :organization, :scan_status, :scan_signature, :scan_engine, :scan_date, :index_status,
+        :source, :drive_file_id, :drive_folder, :drive_revision, :drive_view_link) RETURNING *;`, {
       replacements: {
         metadata: JSON.stringify(metadata),
         organization,
         index_status: indexStatus,
+        source: remote ? 'drive' : 'disk',
+        ...remoteReplacements(remote),
         ...scanReplacements(scan)
       },
       type: QueryTypes.INSERT,
@@ -55,8 +66,9 @@ export const documentRepository:DocumentRepository = {
       `SELECT id, creation_date, modification_date, path, organization, metadata,
         scan_status, scan_signature, scan_engine, scan_date,
         index_status, index_model, index_converter, index_chunker_version,
-        index_chunks, index_error, index_date
-      FROM pergamo.document WHERE organization = :organization AND id = :id;`, {
+        index_chunks, index_error, index_date,
+        source, drive_file_id, drive_folder, drive_revision, drive_view_link, discharge_date
+      FROM pergamo.document WHERE organization = :organization AND id = :id AND discharge_date IS NULL;`, {
       replacements: { id, organization },
       type: QueryTypes.SELECT
     });
@@ -72,7 +84,7 @@ export const documentRepository:DocumentRepository = {
       SET metadata = :metadata, modification_date = CURRENT_TIMESTAMP,
           scan_status = :scan_status, scan_signature = :scan_signature,
           scan_engine = :scan_engine, scan_date = :scan_date
-      WHERE organization = :organization AND id = :id RETURNING *;`, {
+      WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING *;`, {
       replacements: { metadata: JSON.stringify(metadata), organization, id, ...scanReplacements(scan) },
       type: QueryTypes.INSERT,
       transaction: scope as any
@@ -86,7 +98,7 @@ export const documentRepository:DocumentRepository = {
     const result:any = await sequelize.query(
       `UPDATE pergamo.document
       SET metadata = :metadata, modification_date = CURRENT_TIMESTAMP
-      WHERE organization = :organization AND id = :id RETURNING *;`, {
+      WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING *;`, {
       replacements: { metadata: JSON.stringify(metadata), organization, id },
       type: QueryTypes.INSERT
     });
@@ -100,7 +112,7 @@ export const documentRepository:DocumentRepository = {
       `UPDATE pergamo.document
       SET scan_status = :scan_status, scan_signature = :scan_signature,
           scan_engine = :scan_engine, scan_date = :scan_date
-      WHERE organization = :organization AND id = :id RETURNING *;`, {
+      WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING *;`, {
       replacements: { organization, id, ...scanReplacements(scan) },
       type: QueryTypes.INSERT,
       transaction: scope as any
@@ -109,15 +121,15 @@ export const documentRepository:DocumentRepository = {
     return toDocument(result[0][0] as DocumentRow);
   },
 
-  async remove(organization, id):Promise<string | null> {
+  async remove(organization, id) {
 
     const result:any = await sequelize.query(
-      'DELETE FROM pergamo.document WHERE organization = :organization AND id = :id RETURNING path;', {
+      'DELETE FROM pergamo.document WHERE organization = :organization AND id = :id AND discharge_date IS NULL RETURNING path, source;', {
       replacements: { organization, id },
       type: QueryTypes.SELECT
     });
 
-    return result.length === 1 ? result[0].path : null;
+    return result.length === 1 ? { path: result[0].path, source: result[0].source } : null;
   },
 
   async list(filter:DocumentListFilter):Promise<DocumentPage> {
@@ -184,10 +196,10 @@ export const documentRepository:DocumentRepository = {
     // scan_engine viaja aunque nadie lo muestre: es lo unico que distingue un
     // 'clean' analizado de uno que nunca paso por un escaner.
     const rows:DocumentSummaryRow[] = await sequelize.query(
-      `SELECT id, creation_date, modification_date, scan_status, scan_signature, scan_engine, metadata,
+      `SELECT id, creation_date, modification_date, scan_status, scan_signature, scan_engine, metadata, source, drive_view_link,
         COUNT(*) OVER() AS total
       FROM pergamo.document
-      WHERE organization = :organization${where}
+      WHERE organization = :organization AND discharge_date IS NULL${where}
       ORDER BY ${SORT_COLUMN[sort]} ${direction}, id ${direction}
       LIMIT :limit OFFSET :offset;`, {
       replacements,
@@ -200,6 +212,69 @@ export const documentRepository:DocumentRepository = {
     };
   },
 
+  async listRemoteState(organization, afterId, limit) {
+
+    const rows:RemoteStateRow[] = await sequelize.query(
+      `SELECT id, drive_file_id, drive_folder, drive_revision, index_status, discharge_date IS NOT NULL AS discharged
+      FROM pergamo.document
+      WHERE organization = :organization AND source = 'drive'
+        AND (:afterId::varchar IS NULL OR id > :afterId)
+      ORDER BY id
+      LIMIT :limit;`, {
+      replacements: { organization, afterId, limit },
+      type: QueryTypes.SELECT
+    });
+
+    return rows.map(toRemoteState);
+  },
+
+  async updateRemote(organization, id, metadata, remote, scan, indexStatus, scope?:TransactionScope) {
+
+    const result:any = await sequelize.query(
+      `UPDATE pergamo.document
+      SET metadata = metadata || :metadata::jsonb, modification_date = CURRENT_TIMESTAMP,
+          drive_folder = :drive_folder, drive_revision = :drive_revision, drive_view_link = :drive_view_link,
+          scan_status = CASE WHEN :rescan THEN :scan_status ELSE scan_status END,
+          scan_signature = CASE WHEN :rescan THEN :scan_signature ELSE scan_signature END,
+          scan_engine = CASE WHEN :rescan THEN :scan_engine ELSE scan_engine END,
+          scan_date = CASE WHEN :rescan THEN CAST(:scan_date AS timestamp) ELSE scan_date END,
+          index_status = COALESCE(:index_status, index_status),
+          index_error = CASE WHEN :index_status IS NULL THEN index_error END,
+          discharge_date = NULL
+      WHERE organization = :organization AND id = :id AND source = 'drive' RETURNING *;`, {
+      replacements: {
+        metadata: JSON.stringify(metadata),
+        organization,
+        id,
+        index_status: indexStatus,
+        rescan: scan !== null,
+        ...remoteReplacements(remote),
+        ...scanReplacements(scan ?? { scanStatus: null, scanSignature: null, scanEngine: null, scanDate: null })
+      },
+      type: QueryTypes.INSERT,
+      transaction: scope as any
+    });
+
+    return toDocument(result[0][0] as DocumentRow);
+  },
+
+  // index_status vuelve a 'none': sin chunks no hay indice, y al revivir decide la carpeta.
+  async discharge(organization, ids, scope?:TransactionScope) {
+
+    if(!ids.length) return;
+
+    await sequelize.query(
+      `UPDATE pergamo.document
+      SET discharge_date = CURRENT_TIMESTAMP, index_status = 'none', index_chunks = NULL
+      WHERE organization = :organization AND id IN (:ids) AND discharge_date IS NULL;`, {
+      replacements: { organization, ids },
+      type: QueryTypes.UPDATE,
+      transaction: scope as any
+    });
+  },
+
+  // Sin filtro de baja, igual que finishIndexing: sirven a un trabajo ya en
+  // curso, y con el filtro una baja a mitad dejaria el documento en 'indexing'.
   async setIndexStatus(document, status, error?, scope?:TransactionScope) {
 
     await sequelize.query(

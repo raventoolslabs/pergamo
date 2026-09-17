@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
+import { useConfig } from '../api/config';
 import { useSession } from '../auth/session';
 import { t } from '../i18n';
 
@@ -29,6 +30,7 @@ const LogoutIcon = () => (
 export const Layout = () => {
 
   const { session, logout } = useSession();
+  const config = useConfig();
   const [open, setOpen] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
 
@@ -67,7 +69,13 @@ export const Layout = () => {
           {session?.master ? (
             <NavLink to="/organizations" className={linkClass}>{t('masthead.organizations')}</NavLink>
           ) : (
-            <NavLink to="/" end className={linkClass}>{t('masthead.documents')}</NavLink>
+            <>
+              <NavLink to="/" end className={linkClass}>{t('masthead.documents')}</NavLink>
+              {/* Solo donde el despliegue lo tiene: la pagina entera seria un 400. */}
+              {config?.drive_enabled ? (
+                <NavLink to="/drive" className={linkClass}>{t('masthead.drive')}</NavLink>
+              ) : null}
+            </>
           )}
         </nav>
 

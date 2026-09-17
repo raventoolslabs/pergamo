@@ -2,6 +2,9 @@
     reanalisis, solo una liberacion manual en el servidor. */
 export type ScanStatus = 'pending' | 'clean' | 'infected' | 'error' | 'malicious';
 
+/** De donde sale el binario: disco del servidor o Google Drive. */
+export type DocumentSource = 'disk' | 'drive';
+
 /**
  * El backend guarda un JSONB libre y solo garantiza las claves que fija el
  * trigger de insercion; el resto depende de VALID_METADATA_MODIFY.
@@ -39,6 +42,8 @@ export interface DocumentSummary {
       paso por un escaner: es lo unico que separa analizado de guardado sin
       mirar. */
   scan_engine: string | null;
+  source: DocumentSource;
+  drive_view_link: string | null;
   metadata: DocumentMetadata;
 }
 
@@ -141,6 +146,8 @@ export interface ServerConfig {
   /** Ausente en servidores sin indexacion: la interfaz no ofrece entonces una
       casilla que solo puede devolver un 400. */
   indexing_enabled?: boolean;
+  /** Ausente en servidores sin integracion con Google Drive. */
+  drive_enabled?: boolean;
   valid_mimetype: string[];
   valid_metadata_modify: string[];
   max_file_size: number;
@@ -160,4 +167,62 @@ export interface DocumentQuery {
   to?: string;
   sort?: 'creation_date' | 'modification_date' | 'name' | 'scan_status';
   order?: 'asc' | 'desc';
+}
+
+export interface SourceInfo {
+  source: DocumentSource;
+  drive_view_link: string | null;
+}
+
+export interface DriveConnection {
+  connected: boolean;
+  google_account: string | null;
+  creation_date: string | null;
+  /** Google retiro el permiso: hay que volver a conectar. */
+  revoked_date: string | null;
+}
+
+/**
+ * Cliente OAuth de la organizacion. `configured` es tener secreto guardado, no
+ * tener ficha: el secreto no vuelve nunca, asi que es lo unico que dice si se
+ * puede pedir permiso a Google.
+ */
+export interface DriveSettings {
+  configured: boolean;
+  /** No es secreto: viaja en la URL de autorizacion de Google. */
+  client_id: string | null;
+  /** Del despliegue y de solo lectura: es lo que hay que registrar en Google Cloud. */
+  redirect_uri: string | null;
+  creation_date: string | null;
+  modification_date: string | null;
+}
+
+export interface DriveEntry {
+  id: string;
+  name: string;
+}
+
+export interface DriveFolder {
+  id: string;
+  folder_id: string;
+  name: string;
+  index_documents: boolean;
+  creation_date: string;
+  sync_date: string | null;
+  sync_error: string | null;
+}
+
+export interface SyncProgress {
+  seen: number;
+  created: number;
+  updated: number;
+  restored: number;
+  discharged: number;
+  skipped: number;
+}
+
+export interface DriveSyncState {
+  status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
+  progress: SyncProgress | null;
+  error: string | null;
 }
