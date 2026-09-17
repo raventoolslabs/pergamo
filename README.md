@@ -314,7 +314,7 @@ La API se va al 6230, detrás. El proxy de Vite le reenvía todo lo que empieza 
 hace falta, y `PERGAMO_DEV_WEB_PORT` mueve la interfaz para levantarla con el contenedor en marcha.
 
 Para llegar por un dominio y no por `localhost`, `PERGAMO_WEB_HOST` en el `.env`
-(`pergamo.raventools.labs` en este despliegue). Hacen falta las dos cosas que configura: Vite
+(`pergamo.dev.raventoolslabs.com` en este despliegue). Hacen falta las dos cosas que configura: Vite
 **bloquea** toda petición cuyo `Host` no sea `localhost` —y el proxy inverso conserva el original—,
 y el websocket del HMR hay que dirigirlo al 443 del proxy en lugar de al puerto de Vite, que el
 cortafuegos no deja pasar. Efecto lateral que conviene conocer: con la variable puesta, navegando
