@@ -47,7 +47,8 @@ export const Drive = () => {
   // Vuelta de Google: el resultado llega en la URL y se cuenta una vez.
   useEffect(() => {
     if (params.get('connected')) toast(t('drive.connected'));
-    if (params.get('error')) toast(t('drive.connectFailed', { reason: params.get('error') ?? '' }), 'error');
+    if (params.get('error') === 'scope_missing') toast(t('drive.scopeMissing'), 'error');
+    else if (params.get('error')) toast(t('drive.connectFailed', { reason: params.get('error') ?? '' }), 'error');
     if (params.has('connected') || params.has('error')) setParams({}, { replace: true });
   }, [params, setParams, toast]);
 

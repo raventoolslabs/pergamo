@@ -324,6 +324,7 @@ export const es = {
   'drive.connectedSince': 'Desde el {date}',
   'drive.connected': 'Google Drive conectado.',
   'drive.connectFailed': 'No se ha completado la conexión con Google Drive ({reason}).',
+  'drive.scopeMissing': 'Google no ha dado permiso para ver los ficheros de Drive. Vuelve a conectar y marca la casilla de Google Drive.',
   'drive.disconnect': 'Desconectar',
   'drive.disconnectTitle': 'Desconectar Google Drive',
   'drive.disconnectBody': 'Pergamo olvidará el permiso de la cuenta. Los documentos ya archivados se quedan, pero no se podrán descargar ni se sincronizarán hasta que vuelvas a conectar.',

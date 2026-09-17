@@ -1,6 +1,7 @@
 import { StatusCodes } from 'http-status-codes';
 
 import { driveDeps as deps } from '@/container';
+import { DRIVE_SCOPE } from '@/domain/entities/drive';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { formatIssues } from '@/shared/validation';
 import {
@@ -37,6 +38,12 @@ const callback = async (req, res, next) => {
     // Quien rechaza el permiso en Google vuelve sin code: no es un fallo nuestro.
     if(typeof req.query.error === 'string') {
       return res.redirect(`/drive?error=${encodeURIComponent(req.query.error)}`);
+    }
+
+    // La pantalla de Google deja desmarcar Drive y aun asi devuelve code: sin este
+    // permiso la conexion no sirve, asi que no se guarda.
+    if(typeof req.query.scope === 'string' && !req.query.scope.split(' ').includes(DRIVE_SCOPE)) {
+      return res.redirect('/drive?error=scope_missing');
     }
 
     const query = parse<{ code:string; state:string }>(driveCallbackQuerySchema, req.query, 'INVALID_QUERY');

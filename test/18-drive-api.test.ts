@@ -88,7 +88,7 @@ describe('Drive API', () => {
     Config.secret_key = key;
 
     for(const state of ['forged', expired, foreign]) {
-      const response = await api.get('/api/drive/callback', { params: { code: 'code', state, scope: 'x', authuser: '0' } });
+      const response = await api.get('/api/drive/callback', { params: { code: 'code', state, scope: 'openid https://www.googleapis.com/auth/drive.readonly', authuser: '0' } });
       expect(response.status).toBe(StatusCodes.UNAUTHORIZED);
       expect(response.data.code).toBe('DRIVE_STATE_INVALID');
     }
@@ -98,6 +98,13 @@ describe('Drive API', () => {
     const response = await api.get('/api/drive/callback', { params: { error: 'access_denied' } });
     expect(response.status).toBe(StatusCodes.MOVED_TEMPORARILY);
     expect(response.headers.location).toBe('/drive?error=access_denied');
+  });
+
+  it('Should not store a grant without the Drive scope', async () => {
+    const scope = 'openid https://www.googleapis.com/auth/userinfo.email';
+    const response = await api.get('/api/drive/callback', { params: { code: 'code', state: 'forged', scope } });
+    expect(response.status).toBe(StatusCodes.MOVED_TEMPORARILY);
+    expect(response.headers.location).toBe('/drive?error=scope_missing');
   });
 
   it('Should report no connection and no folders', async () => {

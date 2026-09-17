@@ -3,12 +3,13 @@ import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
 import Config from '@/shared/config';
 import { UnauthorizedError } from '@/domain/exceptions/domain.exception';
 import { DriveNotConnectedError, DriveUnavailableError } from '@/domain/exceptions/drive.exception';
+import { DRIVE_SCOPE } from '@/domain/entities/drive';
 import { DriveGrant } from '@/app/ports/services/drive.service';
 import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
 import { open, seal } from '@/infrastructure/security/secret-box';
 
-// Solo lectura: Pergamo nunca escribe en Drive. email identifica la cuenta conectada.
-const SCOPES = ['https://www.googleapis.com/auth/drive.readonly', 'openid', 'email'];
+// email identifica la cuenta conectada.
+const SCOPES = [DRIVE_SCOPE, 'openid', 'email'];
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 interface State {

@@ -1,3 +1,6 @@
+// Solo lectura: Pergamo nunca escribe en Drive.
+export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+
 /**
  * Conexion de una organizacion con su Google Drive. El refresh_token no forma
  * parte de la entidad: solo lo lee el adaptador de Drive, sellado.
