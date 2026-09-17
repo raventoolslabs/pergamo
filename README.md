@@ -927,10 +927,14 @@ Desactivado por defecto. Con `DRIVE_ENABLED=false` no aparece nada de esto.
 | `SECRET_KEY` | 32 bytes en base64 (`openssl rand -base64 32`). Cifra con AES-256-GCM los `client_secret` y los `refresh_token` guardados, y el `state` de OAuth. |
 | `DRIVE_SYNC_INTERVAL_MS` | Cada cuánto se sincroniza sola cada carpeta. `0`, el defecto, es solo a mano. |
 
-4. Registrar el cliente OAuth **de cada organización** con `PUT /api/drive/settings`. Las
-   credenciales no están en el `.env`: cada organización usa su propio proyecto de Google
-   Cloud, con su cuota y su pantalla de consentimiento, y hasta que no lo registra sus
-   llamadas a Drive responden `400 DRIVE_NOT_CONFIGURED`.
+4. Registrar el cliente OAuth **de cada organización**, en «Cliente de Google», al pie de
+   la pantalla de Google Drive, o con `PUT /api/drive/settings`. Las credenciales no están
+   en el `.env`: cada organización usa su propio proyecto de Google Cloud, con su cuota y
+   su pantalla de consentimiento, y hasta que no lo registra sus llamadas a Drive
+   responden `400 DRIVE_NOT_CONFIGURED`.
+
+   Ahí mismo se conecta la cuenta, se rota el secreto —dejando el campo en blanco se
+   mantiene el guardado— y se retira el cliente, que se lleva la conexión por delante.
 
 Solo se pide permiso de **lectura** (`drive.readonly`): Pergamo nunca escribe en Drive.
 
