@@ -22,6 +22,9 @@ export const getDocumentVersionFile = async (organization:string, id:string, ver
 
   assertNotQuarantined(document);
 
+  if(document.source === 'drive') throw new NotFoundError(
+    'VERSION_NOT_FOUND', `Document ${id} has no version ${version}`);
+
   const filePath = deps.storage.resolveVersion(
     deps.storage.resolve(organization, document.path), version);
 

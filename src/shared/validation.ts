@@ -100,6 +100,14 @@ export const configSchema = z.object({
       timeout: z.number().int().positive()
     })
   }),
+  secret_key: z.string()
+    .refine((key) => Buffer.from(key, 'base64').length === 32, 'SECRET_KEY must be 32 bytes in base64')
+    .optional(),
+  drive: z.object({
+    enabled: z.boolean(),
+    redirect_uri: z.string().url().optional(),
+    sync_interval_ms: z.number().int().min(0)
+  }),
   db: z.object({
     username: z.string().min(1),
     // Hay despliegues legitimos sin contrasena (trust, peer o IAM).
@@ -125,6 +133,18 @@ export const configSchema = z.object({
 .refine((config) => config.indexing.chunk_overlap < config.indexing.chunk_size, {
   message: 'INDEX_CHUNK_OVERLAP must be smaller than INDEX_CHUNK_SIZE',
   path: ['indexing', 'chunk_overlap']
+})
+// El cliente OAuth lo registra cada organizacion; del despliegue solo es la URL
+// a la que Google devuelve el navegador.
+.refine((config) => !config.drive.enabled || !!config.drive.redirect_uri, {
+  message: 'DRIVE_ENABLED requires DRIVE_REDIRECT_URI',
+  path: ['drive', 'redirect_uri']
+})
+// Sin clave no se pueden sellar ni leer el client_secret ni el refresh_token:
+// fallaria al configurar o al conectar, no en el arranque.
+.refine((config) => !config.drive.enabled || !!config.secret_key, {
+  message: 'DRIVE_ENABLED requires SECRET_KEY',
+  path: ['secret_key']
 });
 
 export const formatIssues = (error:any) =>

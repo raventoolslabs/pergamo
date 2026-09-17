@@ -18,3 +18,8 @@ export const RESCAN_JOB_NAME = 'sweep-pending-documents';
 export const connection = () => new Redis(Config.queue.redis_url, {
   maxRetriesPerRequest: null
 });
+
+// Cola propia: una sincronizacion recorre un arbol remoto a ritmo de la cuota
+// de Google, y no debe hacer esperar al barrido ni al indice.
+export const DRIVE_SYNC_QUEUE_NAME = 'drive-sync';
+export const DRIVE_SYNC_JOB_NAME = 'sync-drive-folder';

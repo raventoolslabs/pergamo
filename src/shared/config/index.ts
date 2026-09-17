@@ -119,6 +119,18 @@ const config = {
       timeout: process.env.EMBEDDING_TIMEOUT ? Number.parseInt(process.env.EMBEDDING_TIMEOUT) : 120000
     }
   },
+  // Clave de 32 bytes en base64 con la que se sellan los refresh_token de Drive
+  // y los client_secret de cada organizacion. Perderla deja ambos indescifrables:
+  // hay que volver a registrar el cliente OAuth y a conectar.
+  secret_key: optionalValue(process.env.SECRET_KEY),
+  drive: {
+    enabled: parseBoolean(process.env.DRIVE_ENABLED, false, 'DRIVE_ENABLED'),
+    // Las credenciales van por organizacion en la base. Esta URL es del
+    // despliegue: la misma para todas, y cada una la registra en su proyecto.
+    redirect_uri: optionalValue(process.env.DRIVE_REDIRECT_URI),
+    // 0 = sin job repetible: solo se sincroniza a mano.
+    sync_interval_ms: process.env.DRIVE_SYNC_INTERVAL_MS ? Number.parseInt(process.env.DRIVE_SYNC_INTERVAL_MS) : 0
+  },
   user_master: process.env.USER_MASTER,
   password_master: process.env.PASSWORD_MASTER,
   db: {

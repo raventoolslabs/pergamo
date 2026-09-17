@@ -9,6 +9,7 @@ import { documentRepository } from '@/infrastructure/db/repositories/document.re
 import { documentChunkRepository } from '@/infrastructure/db/repositories/document-chunk.repository';
 import { sequelizeUnitOfWork } from '@/infrastructure/db/unit-of-work';
 import { documentStorage } from '@/infrastructure/files/document-storage';
+import { documentContent } from '@/infrastructure/files/document-content';
 import { officeParserConverter } from '@/infrastructure/indexing/converters/officeparser.converter';
 import { chunker } from '@/infrastructure/indexing/chunker';
 import { ProviderUnavailableError } from '@/domain/exceptions/indexing.exception';
@@ -46,7 +47,7 @@ const deps = (overrides:Partial<IndexingDeps> = {}):IndexingDeps => ({
   converter: officeParserConverter,
   chunker,
   embedder: fakeEmbedder(),
-  storage: documentStorage,
+  content: documentContent,
   unitOfWork: sequelizeUnitOfWork,
   ...overrides
 });

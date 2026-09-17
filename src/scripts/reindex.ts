@@ -45,6 +45,7 @@ const pending = async (model:string, stale:Date, offsetId:string|null):Promise<R
         OR (index_status = 'indexing' AND index_date < :stale)
         OR (:all AND index_status = 'none')
       )
+      AND discharge_date IS NULL
       AND (:offsetId::varchar IS NULL OR id > :offsetId)
     ORDER BY id
     LIMIT :limit;`, {

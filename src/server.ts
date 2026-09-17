@@ -6,9 +6,11 @@ import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { activeContentRules } from '@/infrastructure/antivirus/active-content';
 import { startWorker, stopWorker } from '@/api/queue/index.worker';
 import { startRescanWorker, stopRescanWorker } from '@/api/queue/rescan.worker';
+import { startDriveSyncWorker, stopDriveSyncWorker } from '@/api/queue/drive-sync.worker';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
 import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
-import { assertIndexReady } from '@/container';
+import { driveSyncQueue } from '@/infrastructure/queue/drive-sync.queue';
+import { assertIndexReady, driveDeps } from '@/container';
 import FilesUtils from '@/infrastructure/files/storage';
 import { NotFoundError } from '@/domain/exceptions/domain.exception';
 import express from 'express';
@@ -53,6 +55,17 @@ const serveWeb = (app:express.Express) => {
   });
 }
 
+/**
+ * Los planificadores viven en Redis y sobreviven a un cambio de
+ * DRIVE_SYNC_INTERVAL_MS: se reescriben al arrancar, y con 0 se retiran. Sin
+ * esperar: Redis caido no impide servir la API.
+ */
+const scheduleDriveSyncs = () => {
+  driveDeps.folders.listAll()
+    .then((folders) => Promise.all(folders.map((folder) => driveSyncQueue.schedule(folder.organization, folder.id))))
+    .catch((error:any) => log.error(`Drive sync scheduling failed: ${error.message}`));
+};
+
 // El puerto es un parametro para que las pruebas puedan pedir uno libre (0) en
 // lugar de competir todas por el mismo puerto fijo.
 export const app = async (port:any = Config.port) => {
@@ -94,6 +107,11 @@ export const app = async (port:any = Config.port) => {
   // dos: donde el worker va aparte, el barrido lo atiende ese contenedor.
   if(Config.enable_antivirus && Config.indexing.worker_embedded) await startRescanWorker();
 
+  if(Config.drive.enabled) {
+    if(Config.indexing.worker_embedded) await startDriveSyncWorker();
+    scheduleDriveSyncs();
+  }
+
   const app = express();
 
   app.set('trust proxy', Config.trust_proxy);
@@ -122,13 +140,15 @@ export const app = async (port:any = Config.port) => {
       max_file_size: Config.max_file_size,
       max_version_file: Config.max_version_file,
       // La interfaz lo necesita para no ofrecer una casilla que solo da un 400.
-      indexing_enabled: Config.indexing.enabled
+      indexing_enabled: Config.indexing.enabled,
+      drive_enabled: Config.drive.enabled
     })
   });
 
   api.use('/organization', Routes.organization);
   api.use('/document', Routes.document);
   api.use('/search', Routes.search);
+  api.use('/drive', Routes.drive);
 
   // Una ruta desconocida bajo /api responde en JSON, nunca con la SPA.
   api.use((req, res, next) => next(new NotFoundError('ROUTE_NOT_FOUND', 'Route not found')));
@@ -179,6 +199,8 @@ export const app = async (port:any = Config.port) => {
     stopRescanWorker().catch((error:any) => log.warn(`Rescan worker shutdown failed: ${error.message}`));
     indexQueue.close().catch((error:any) => log.warn(`Queue shutdown failed: ${error.message}`));
     rescanQueue.close().catch((error:any) => log.warn(`Rescan queue shutdown failed: ${error.message}`));
+    stopDriveSyncWorker().catch((error:any) => log.warn(`Drive sync worker shutdown failed: ${error.message}`));
+    driveSyncQueue.close().catch((error:any) => log.warn(`Drive sync queue shutdown failed: ${error.message}`));
   });
 
   return server;

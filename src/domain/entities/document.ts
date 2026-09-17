@@ -19,6 +19,20 @@ export interface DocumentMetadata {
   [key: string]: unknown;
 }
 
+export type DocumentSource = 'disk' | 'drive';
+
+/**
+ * Donde vive el binario de un documento de Drive. `revision` es lo que decide si
+ * cambio: se compara, nunca se descarga para calcular un hash.
+ */
+export interface RemoteSource {
+  fileId: string;
+  // Ausente si la carpeta se quito: el documento sigue hasta que se de de baja.
+  folder?: string;
+  revision: string;
+  viewLink?: string;
+}
+
 export interface Document {
   id: string;
   creationDate: Date;
@@ -32,6 +46,9 @@ export interface Document {
   scanEngine?: string;
   scanDate?: Date;
   index: IndexState;
+  source: DocumentSource;
+  remote?: RemoteSource;
+  dischargeDate?: Date;
 }
 
 /**
@@ -58,6 +75,8 @@ export interface DocumentSummary {
   scanStatus: ScanStatus;
   scanSignature?: string;
   scanEngine?: string;
+  source: DocumentSource;
+  driveViewLink?: string;
 }
 
 export interface ScanInfo {

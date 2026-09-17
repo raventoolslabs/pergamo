@@ -8,7 +8,7 @@ import {
   documentChunkQuerySchema, documentListQuerySchema, documentReplaceQuerySchema, documentUploadQuerySchema
 } from '@/api/http/dto/list-query.dto';
 import {
-  toChunkResponse, toDocumentResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
+  toChunkResponse, toDocumentResponse, toSourceInfoResponse, toIndexInfoResponse, toScanInfoResponse, toVersionResponse
 } from '@/api/http/dto/document.dto';
 import { documentVersionParamSchema } from '@/api/http/dto/document-param.dto';
 import { contentDisposition } from '@/api/http/content-disposition';
@@ -99,7 +99,10 @@ const getFile = async (req, res, next) => {
 
   try {
 
-    const { document, filePath } = await getDocumentFile(req.user.organization, requireId(req), deps);
+    const { document, filePath, release } = await getDocumentFile(req.user.organization, requireId(req), deps);
+
+    // 'close' llega tanto al terminar como si el cliente corta la descarga.
+    res.on('close', () => release().catch(() => {}));
 
     res.setHeader('Content-Disposition',
       contentDisposition(`${document.metadata.name}.${document.metadata.extension}`));
@@ -335,6 +338,20 @@ const sweepState = async (req, res, next) => {
 
 // Gemelo de scanInfo, y por el mismo motivo: el cuerpo de getMetadata es el
 // JSONB tal cual, y anadirle claves cambiaria un contrato que ya se consume.
+// Aparte de GET /:id por lo mismo que /scan: ese cuerpo es el JSONB tal cual.
+const sourceInfo = async (req, res, next) => {
+
+  try {
+
+    const document = await getDocument(req.user.organization, requireId(req), deps);
+
+    res.status(StatusCodes.OK).json(toSourceInfoResponse(document));
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 const indexInfo = async (req, res, next) => {
 
   try {
@@ -401,6 +418,7 @@ const chunks = async (req, res, next) => {
 export {
   upload,
   indexInfo,
+  sourceInfo,
   reindex,
   chunks,
   list,

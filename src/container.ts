@@ -15,6 +15,7 @@ import { documentRepository } from '@/infrastructure/db/repositories/document.re
 import { organizationRepository } from '@/infrastructure/db/repositories/organization.repository';
 import { sequelizeUnitOfWork } from '@/infrastructure/db/unit-of-work';
 import { documentStorage } from '@/infrastructure/files/document-storage';
+import { documentContent } from '@/infrastructure/files/document-content';
 import { fileTypeVerifier } from '@/infrastructure/files/file-type.adapter';
 import { activeContentDetector } from '@/infrastructure/antivirus/active-content.adapter';
 import antivirus from '@/infrastructure/antivirus/clamav.service';
@@ -27,7 +28,13 @@ import { SearchIndexDescriptor } from '@/domain/entities/search-index';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
 import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
 import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
-import { connection, QUEUE_NAME, RESCAN_QUEUE_NAME } from '@/infrastructure/queue/connection';
+import { connection, DRIVE_SYNC_QUEUE_NAME, QUEUE_NAME, RESCAN_QUEUE_NAME } from '@/infrastructure/queue/connection';
+import { DriveDeps } from '@/app/use-cases/drive/dependencies';
+import { driveClient } from '@/infrastructure/google/drive.client';
+import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
+import { driveFolderRepository } from '@/infrastructure/db/repositories/drive-folder.repository';
+import { driveSettingsRepository } from '@/infrastructure/db/repositories/drive-settings.repository';
+import { driveSyncQueue } from '@/infrastructure/queue/drive-sync.queue';
 
 export const documentDeps:DocumentDeps = {
   documents: documentRepository,
@@ -35,9 +42,23 @@ export const documentDeps:DocumentDeps = {
   queue: indexQueue,
   rescanQueue,
   storage: documentStorage,
+  content: documentContent,
   scanner: antivirus,
   activeContent: activeContentDetector,
   fileType: fileTypeVerifier,
+  unitOfWork: sequelizeUnitOfWork
+};
+
+export const driveDeps:DriveDeps = {
+  drive: driveClient,
+  connections: driveConnectionRepository,
+  settings: driveSettingsRepository,
+  folders: driveFolderRepository,
+  documents: documentRepository,
+  chunks: documentChunkRepository,
+  syncQueue: driveSyncQueue,
+  indexQueue,
+  rescanQueue,
   unitOfWork: sequelizeUnitOfWork
 };
 
@@ -52,7 +73,7 @@ export const indexingDeps:IndexingDeps = {
   converter: officeParserConverter,
   chunker,
   embedder: openAiCompatibleEmbedder,
-  storage: documentStorage,
+  content: documentContent,
   unitOfWork: sequelizeUnitOfWork
 };
 
@@ -73,7 +94,7 @@ export const searchIndex = ():SearchIndexDescriptor => ({
   version: 1
 });
 
-export { QUEUE_NAME, RESCAN_QUEUE_NAME };
+export { DRIVE_SYNC_QUEUE_NAME, QUEUE_NAME, RESCAN_QUEUE_NAME };
 export const queueConnection = connection;
 
 /**

@@ -96,31 +96,31 @@ done
 docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 \
   || die 'La base de datos de prueba no ha llegado a estar lista.'
 
-# Solo con E2E_INDEXING: el recorrido corto no necesita cola, y levantar un
-# Redis que nadie usa alarga cada ejecucion sin comprobar nada.
-#
-# La maquina de inferencia NO se simula: si se pide indexar de verdad, hay que
-# decir contra que. Un proveedor de mentira probaria el cableado, y de eso ya se
-# ocupan test/10-indexing y test/12-queue.
+# Redis siempre: la sincronizacion de Google Drive encola aunque no se indexe, y
+# sin el la API esperaria a un Redis que no existe al programar las carpetas.
+say "Levantando Redis de prueba (${REDIS_CONTAINER})"
+docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+docker run -d --name "$REDIS_CONTAINER" \
+  -p "127.0.0.1:${REDIS_PORT}:6379" \
+  redis:7-alpine redis-server --save '' --appendonly no >/dev/null
+
+for _ in $(seq 1 30); do
+  docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1 && break
+  sleep 1
+done
+docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1 \
+  || die 'El Redis de prueba no ha llegado a estar listo.'
+
+export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}"
+
+# Solo con E2E_INDEXING, la maquina de inferencia. NO se simula: si se pide
+# indexar de verdad, hay que decir contra que. Un proveedor de mentira probaria
+# el cableado, y de eso ya se ocupan test/10-indexing y test/12-queue.
 if [ -n "${E2E_INDEXING:-}" ]; then
 
   [ -n "${EMBEDDING_BASE_URL:-}" ] || die \
     'E2E_INDEXING necesita EMBEDDING_BASE_URL: es la maquina de inferencia contra la que indexar. Ej.: EMBEDDING_BASE_URL=http://maquina-ia:11434/v1 E2E_INDEXING=1 npm run test:e2e'
 
-  say "Levantando Redis de prueba (${REDIS_CONTAINER})"
-  docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
-  docker run -d --name "$REDIS_CONTAINER" \
-    -p "127.0.0.1:${REDIS_PORT}:6379" \
-    redis:7-alpine redis-server --save '' --appendonly no >/dev/null
-
-  for _ in $(seq 1 30); do
-    docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1 && break
-    sleep 1
-  done
-  docker exec "$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1 \
-    || die 'El Redis de prueba no ha llegado a estar listo.'
-
-  export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}"
   # La pila de prueba es un solo proceso, asi que el worker va dentro. Se exporta
   # y no se deja al defecto porque el `.env` de quien lanza esto puede llevarlo a
   # 'false' —lo normal si tiene un worker suelto—, y entonces los documentos se
@@ -165,6 +165,14 @@ export MAX_VERSION_FILES=3
 export MAX_FILE_SIZE=52428800
 export USER_MASTER="$MASTER_USER"
 export PASSWORD_MASTER="$MASTER_PASSWORD"
+
+# Google Drive activo y sin credenciales: son de cada organizacion y viven en la
+# base. La pantalla se revisa con conexiones y carpetas sembradas por SQL, y a
+# Google no se llega nunca.
+export DRIVE_ENABLED=true
+export DRIVE_REDIRECT_URI="${APP_URL}/api/drive/callback"
+export DRIVE_SYNC_INTERVAL_MS=0
+export SECRET_KEY="$(head -c 32 /dev/urandom | base64)"
 
 say 'Compilando la API y la interfaz'
 npm run build >/dev/null
