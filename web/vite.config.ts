@@ -8,7 +8,7 @@ import react from '@vitejs/plugin-react';
 const API_TARGET = process.env.PERGAMO_API || 'http://127.0.0.1:6230';
 
 // Host publico por el que se llega a la interfaz a traves del proxy inverso
-// (en este despliegue, pergamo.raventools.labs). Vacio en local.
+// (en este despliegue, pergamo.dev.raventoolslabs.com). Vacio en local.
 const WEB_HOST = process.env.PERGAMO_WEB_HOST;
 
 const proxy = { '/api': { target: API_TARGET, changeOrigin: true } };
