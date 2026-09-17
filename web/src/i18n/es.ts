@@ -382,7 +382,7 @@ export const es = {
   'drive.removeClientBody': 'Se borran el ID y el secreto, y con ellos la conexión con Google: el permiso que dio la cuenta lo emitió este cliente, y sin él no se puede renovar. Las carpetas y los documentos ya archivados se quedan.',
   'drive.clientRemoved': 'Cliente de Google retirado.',
   'drive.redirectUri': 'URI de redirección autorizada',
-  'drive.redirectHint': 'Pégala tal cual en «URI de redirección autorizados» del cliente OAuth de Google Cloud. La fija este servidor.',
+  'drive.redirectHint': 'Pégala tal cual en «URI de redirección autorizados» del cliente OAuth de Google Cloud. La fija el servidor y es la misma para todas las organizaciones: no se guarda aquí.',
   'drive.copyRedirect': 'Copiar',
   'drive.redirectCopied': 'URI copiada al portapapeles.'
 } as const;

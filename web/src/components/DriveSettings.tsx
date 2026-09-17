@@ -183,16 +183,18 @@ export const DriveSettings = ({ settings, connection, busy, onConnect, onDisconn
         </>
       )}
 
-      {/* Dato del despliegue y no de la organizacion, pero es lo que hay que
-          pegar en Google Cloud para que la vuelta de Google encaje. */}
-      <div className="field drive-client spaced">
-        <label htmlFor="drive-redirect">{t('drive.redirectUri')}</label>
-        <div className="drive-actions">
-          <input id="drive-redirect" className="mono" type="text" readOnly value={settings.redirect_uri ?? ''} />
-          <button type="button" className="btn btn--tiny" onClick={copyRedirect}>{t('drive.copyRedirect')}</button>
-        </div>
-        <span className="field__hint">{t('drive.redirectHint')}</span>
-      </div>
+      {/* Dato y no campo: lo fija DRIVE_REDIRECT_URI en el entorno del
+          despliegue. Se ensena porque es lo que hay que pegar en Google Cloud
+          para que la vuelta de Google encaje. */}
+      <dl className="data drive-client">
+        <Datum term={t('drive.redirectUri')}>
+          <div className="drive-actions">
+            <span className="mono">{settings.redirect_uri ?? t('common.none')}</span>
+            <button type="button" className="btn btn--tiny" onClick={copyRedirect}>{t('drive.copyRedirect')}</button>
+          </div>
+          <span className="field__hint">{t('drive.redirectHint')}</span>
+        </Datum>
+      </dl>
 
       {removing ? (
         <Dialog

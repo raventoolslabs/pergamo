@@ -1456,7 +1456,7 @@ a:hover { text-decoration-color: currentColor; }
 
 /* Fila de botones de la seccion del cliente, y el campo de la URI con el suyo al lado. */
 .drive-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.drive-actions > input { flex: 1; min-width: 0; }
 
-/* A la anchura del formulario: el campo vive fuera de el, pero se lee con el. */
-.drive-client { max-width: 620px; }
+/* A la anchura del formulario: la URI se lee junto a el. El margen va aqui
+   porque el `margin: 0` de .data gana a .spaced por orden en la hoja. */
+.drive-client { max-width: 620px; margin-top: 24px; }
