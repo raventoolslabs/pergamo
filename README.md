@@ -925,6 +925,7 @@ Desactivado por defecto. Con `DRIVE_ENABLED=false` no aparece nada de esto.
 | `DRIVE_ENABLED` | Activa la integración. Exige las dos siguientes: el arranque falla si falta alguna. |
 | `DRIVE_REDIRECT_URI` | La misma URI registrada en Google. Es del despliegue: la comparten todas las organizaciones. |
 | `SECRET_KEY` | 32 bytes en base64 (`openssl rand -base64 32`). Cifra con AES-256-GCM los `client_secret` y los `refresh_token` guardados, y el `state` de OAuth. |
+| `DRIVE_RETURN_ORIGINS` | Orígenes de interfaces ajenas —la administración de markbot, por ejemplo— a las que se permite devolver el navegador tras autorizar, separados por coma. Vacío, el defecto: solo vuelve a la interfaz de Pergamo. |
 | `DRIVE_SYNC_INTERVAL_MS` | Cada cuánto se sincroniza sola cada carpeta. `0`, el defecto, es solo a mano. |
 
 4. Pulsar «Conectar con Google Drive» en la pantalla de Google Drive. El diálogo pide el
@@ -980,12 +981,12 @@ mismo worker que el índice y el barrido: embebido en la API o en `pergamo-worke
 
 | Endpoint | Qué hace |
 |---|---|
-| `GET /api/drive/callback` | **Público**: vuelve de Google y redirige a `/drive`. La organización sale del `state` sellado —caduca a los 10 minutos— y de ningún otro sitio; uno falsificado, caducado o de otra clave es `401`. |
+| `GET /api/drive/callback` | **Público**: vuelve de Google y redirige a `/drive`, o al `return_to` que se sellara al pedir la autorización. La organización sale del `state` sellado —caduca a los 10 minutos— y de ningún otro sitio; uno falsificado, caducado o de otra clave es `401`. |
 | `GET /api/drive` | Estado de la conexión: `connected`, `google_account`, `revoked_date`. |
 | `GET /api/drive/settings` | Cliente OAuth de la organización: `configured`, `client_id`, `redirect_uri` y fechas. **Nunca el secreto**, ni cifrado. |
 | `PUT /api/drive/settings` | Registra o corrige el cliente con `{ client_id, client_secret }`. En `client_secret`, un texto lo guarda o lo rota, `null` lo quita y omitirlo lo deja como estaba. |
 | `DELETE /api/drive/settings` | Borra el cliente **y la conexión**, sin tocar carpetas ni documentos: un `refresh_token` emitido por un cliente que ya no está no se puede renovar. Para desmontarlo todo está `DELETE /api/drive`. |
-| `POST /api/drive/connect` | `{ url }` de autorización de Google, con PKCE y acceso *offline*. |
+| `POST /api/drive/connect` | `{ url }` de autorización de Google, con PKCE y acceso *offline*. Admite `{ return_to }` para que el navegador vuelva a otra interfaz: tiene que ser de un origen de `DRIVE_RETURN_ORIGINS`, y si no es `400 DRIVE_RETURN_INVALID`. Viaja sellado en el `state`. |
 | `DELETE /api/drive` | **Desconecta y desmonta**: cliente, permiso, carpetas y baja lógica de los documentos importados, con sus trozos del índice. El binario vive en Drive, así que una ficha que ya no se puede descargar no serviría de nada. Los identificadores se conservan: volver a conectar y sincronizar los revive. |
 | `GET /api/drive/browse?folder=` | Subcarpetas de una carpeta, o de «Mi unidad» sin `folder`. |
 | `GET` / `POST /api/drive/folders` | Carpetas sincronizadas; alta con `{ folder_id, index }`, que encola la primera pasada. |

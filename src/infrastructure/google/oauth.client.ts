@@ -1,7 +1,7 @@
 import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
 
 import Config from '@/shared/config';
-import { UnauthorizedError } from '@/domain/exceptions/domain.exception';
+import { UnauthorizedError, ValidationError } from '@/domain/exceptions/domain.exception';
 import { DriveNotConfiguredError, DriveNotConnectedError, DriveUnavailableError } from '@/domain/exceptions/drive.exception';
 import { DRIVE_SCOPE } from '@/domain/entities/drive';
 import { DriveGrant } from '@/app/ports/services/drive.service';
@@ -18,6 +18,8 @@ interface State {
   organization: string;
   verifier: string;
   exp: number;
+  // Interfaz que arranco la autorizacion, si no fue la de Pergamo.
+  returnTo?: string;
 }
 
 // Las credenciales son de la organizacion; la URL de retorno es del despliegue,
@@ -42,11 +44,13 @@ const credentialsOf = async (organization:string):Promise<DriveCredentials> => {
  * El state es un sobre sellado: infalsificable sin SECRET_KEY y con caducidad,
  * asi que no hace falta guardar sesiones. El verificador PKCE viaja dentro.
  */
-export const authUrl = async (organization:string) => {
+export const authUrl = async (organization:string, returnTo?:string) => {
+
+  if(returnTo) assertReturnTo(returnTo);
 
   const client = newClient(await credentialsOf(organization));
   const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
-  const state:State = { organization, verifier: codeVerifier, exp: Date.now() + STATE_TTL_MS };
+  const state:State = { organization, verifier: codeVerifier, exp: Date.now() + STATE_TTL_MS, returnTo };
 
   return client.generateAuthUrl({
     scope: SCOPES,
@@ -57,6 +61,39 @@ export const authUrl = async (organization:string) => {
     code_challenge: codeChallenge,
     state: seal(JSON.stringify(state))
   });
+};
+
+/**
+ * Un destino ajeno solo vale si el despliegue lo declara: el state va sellado,
+ * pero quien pide la URL es la organizacion, y sin lista blanca cualquiera
+ * convertiria el callback en un redirector abierto. Se comprueba aqui y no en
+ * el callback para que el error salga donde alguien lo lee.
+ */
+export const assertReturnTo = (url:string) => {
+
+  let origin:string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    throw new ValidationError('DRIVE_RETURN_INVALID', `Invalid return URL: ${url}`);
+  }
+
+  if(!Config.drive.return_origins.includes(origin)) {
+    throw new ValidationError('DRIVE_RETURN_INVALID', `Return origin ${origin} is not allowed by this deployment`);
+  }
+};
+
+// Para la vuelta de Google: el destino sale del state, tambien cuando no hay
+// code que intercambiar porque el usuario rechazo el permiso.
+export const returnToOf = (sealed:unknown):string | undefined => {
+
+  if(typeof sealed !== 'string') return undefined;
+
+  try {
+    return JSON.parse(open(sealed)).returnTo;
+  } catch {
+    return undefined;
+  }
 };
 
 const readState = (sealed:string):State => {

@@ -13,6 +13,14 @@ export const driveCallbackQuerySchema = z.object({
   state: z.string().min(1).max(4096)
 });
 
+/**
+ * Sin body sigue valiendo: solo lo manda una interfaz ajena, que es la que
+ * necesita que Google devuelva el navegador a su casa y no a la de Pergamo.
+ */
+export const driveConnectBodySchema = z.object({
+  return_to: z.string().url().max(2048).optional()
+}).strict();
+
 export const driveFolderBodySchema = z.object({
   folder_id: z.string().min(1).max(128),
   index: z.boolean().default(false)
