@@ -7,7 +7,7 @@ import { NotFoundError, ValidationError } from '@/domain/exceptions/domain.excep
 import { DriveNotConnectedError, DriveUnavailableError } from '@/domain/exceptions/drive.exception';
 import { DriveEntry, DriveFile } from '@/domain/entities/drive';
 import { DriveClient } from '@/app/ports/services/drive.service';
-import { accessToken, authUrl, exchange, forget } from '@/infrastructure/google/oauth.client';
+import { accessToken, authUrl, exchange, forget, returnToOf } from '@/infrastructure/google/oauth.client';
 
 const API = 'https://www.googleapis.com/drive/v3';
 const REQUEST_TIMEOUT_MS = 60000;
@@ -129,6 +129,7 @@ export const driveClient:DriveClient = {
 
   authUrl,
   exchange,
+  returnTo: returnToOf,
 
   async folder(organization, folderId) {
 

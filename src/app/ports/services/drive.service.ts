@@ -17,9 +17,11 @@ export interface DriveGrant {
  */
 export interface DriveClient {
   // El state sellado lleva la organizacion y el verificador PKCE.
-  authUrl(organization:string): Promise<string>;
+  authUrl(organization:string, returnTo?:string): Promise<string>;
   // La organizacion sale del state, no de quien llama.
   exchange(state:string, code:string): Promise<DriveGrant>;
+  // El destino de vuelta que se sello al pedir la URL, si lo hubo.
+  returnTo(state:unknown): string | undefined;
   folder(organization:string, folderId:string): Promise<DriveEntry>;
   // Subcarpetas; sin carpeta, las de la raiz.
   children(organization:string, folderId?:string): Promise<DriveEntry[]>;

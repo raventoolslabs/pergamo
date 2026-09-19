@@ -106,6 +106,7 @@ export const configSchema = z.object({
   drive: z.object({
     enabled: z.boolean(),
     redirect_uri: z.string().url().optional(),
+    return_origins: z.array(z.string().url()),
     sync_interval_ms: z.number().int().min(0)
   }),
   db: z.object({
