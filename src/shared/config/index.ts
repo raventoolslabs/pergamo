@@ -128,6 +128,9 @@ const config = {
     // Las credenciales van por organizacion en la base. Esta URL es del
     // despliegue: la misma para todas, y cada una la registra en su proyecto.
     redirect_uri: optionalValue(process.env.DRIVE_REDIRECT_URI),
+    // Interfaces ajenas a las que se permite volver tras autorizar, separadas por
+    // coma. Vacio: solo la de Pergamo. Se compara el origen, no la ruta.
+    return_origins: (process.env.DRIVE_RETURN_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
     // 0 = sin job repetible: solo se sincroniza a mano.
     sync_interval_ms: process.env.DRIVE_SYNC_INTERVAL_MS ? Number.parseInt(process.env.DRIVE_SYNC_INTERVAL_MS) : 0
   },
