@@ -18,8 +18,12 @@ export const removeDocument = async (input:RemoveDocumentInput, deps:DocumentDep
   if(removed === null) throw new NotFoundError('NO_CONTENT',
     `Document with id ${id} not exists in organization ${organization}`);
 
-  // Un documento de Drive no tiene nada en disco: el arbol que se recorreria no existe.
-  if(!Config.remove_file_disk || removed.source === 'drive') return;
+  if(!Config.remove_file_disk) return;
+
+  // Un documento remoto solo tiene fichero si su origen pidio copia en Pergamo;
+  // sin ella el arbol que se recorreria no existe.
+  if(removed.source !== 'disk' &&
+    !await deps.storage.exists(deps.storage.resolve(organization, removed.path))) return;
 
   // La fila ya no esta: un fallo de disco no puede deshacer el borrado, asi
   // que se registra y se deja el fichero huerfano para el operador.

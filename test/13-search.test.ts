@@ -262,6 +262,34 @@ describe('Document search', () => {
       replacements: { id: withheld }, type: QueryTypes.DELETE });
   });
 
+  /**
+   * Lo que una sincronizacion excluye o pierde se da de baja y se lleva sus
+   * trozos en la misma transaccion. Aqui se deja a proposito sin borrarlos: la
+   * busqueda tiene que dejarlo fuera igual.
+   */
+  it('Should never return a chunk of a discharged document', async () => {
+
+    const discharged = await seedDocument('pergamo', [
+      'El acta de la reunion de diciembre recoge los acuerdos del comite.'
+    ]);
+
+    const query = { query: 'acta reunion acuerdos comite', limit: 50 };
+    const found = (response:any) => response.data.results.some((hit:any) => hit.document_id === discharged);
+
+    expect(found(await search(query))).toBe(true);
+
+    await sequelize.query('UPDATE pergamo.document SET discharge_date = CURRENT_TIMESTAMP WHERE id = :id;', {
+      replacements: { id: discharged }, type: QueryTypes.UPDATE });
+
+    const response = await search(query);
+
+    expect(response.status).toBe(200);
+    expect(found(response)).toBe(false);
+
+    await sequelize.query('DELETE FROM pergamo.document WHERE id = :id;', {
+      replacements: { id: discharged }, type: QueryTypes.DELETE });
+  });
+
   it('Should refuse a master token, which has no organization', async () => {
 
     const response = await search({ query: 'presupuesto' }, masterToken);

@@ -3,7 +3,7 @@
 export type ScanStatus = 'pending' | 'clean' | 'infected' | 'error' | 'malicious';
 
 /** De donde sale el binario: disco del servidor o Google Drive. */
-export type DocumentSource = 'disk' | 'drive';
+export type DocumentSource = 'disk' | 'drive' | 'github';
 
 /**
  * El backend guarda un JSONB libre y solo garantiza las claves que fija el
@@ -43,7 +43,7 @@ export interface DocumentSummary {
       mirar. */
   scan_engine: string | null;
   source: DocumentSource;
-  drive_view_link: string | null;
+  view_link: string | null;
   metadata: DocumentMetadata;
 }
 
@@ -148,6 +148,8 @@ export interface ServerConfig {
   indexing_enabled?: boolean;
   /** Ausente en servidores sin integracion con Google Drive. */
   drive_enabled?: boolean;
+  /** Ausente en servidores sin integracion con GitHub. */
+  github_enabled?: boolean;
   valid_mimetype: string[];
   valid_metadata_modify: string[];
   max_file_size: number;
@@ -171,7 +173,7 @@ export interface DocumentQuery {
 
 export interface SourceInfo {
   source: DocumentSource;
-  drive_view_link: string | null;
+  view_link: string | null;
 }
 
 export interface DriveConnection {
@@ -225,4 +227,43 @@ export interface DriveSyncState {
   status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
   progress: SyncProgress | null;
   error: string | null;
+}
+
+/**
+ * Credenciales de GitHub de la organizacion. `configured` es tener token
+ * guardado: el token no vuelve nunca, asi que es lo unico que dice si se puede
+ * leer de GitHub.
+ */
+export interface GitHubSettings {
+  configured: boolean;
+  /** Nulo es github.com; se rellena para GitHub Enterprise. */
+  api_url: string | null;
+  creation_date: string | null;
+  modification_date: string | null;
+}
+
+/** Repositorio al que alcanza el token, para el selector. */
+export interface GitHubEntry {
+  owner: string;
+  repository: string;
+  default_branch: string;
+  private: boolean;
+}
+
+export interface GitHubRepository {
+  id: string;
+  owner: string;
+  repository: string;
+  branch: string;
+  name: string;
+  index_documents: boolean;
+  /** Guarda el Markdown en Pergamo en vez de bajarlo de la API cada vez. */
+  store_content: boolean;
+  /** Patrones glob, relativos a la raiz de la rama, que no se archivan. */
+  excludes: string[];
+  /** Ultimo commit sincronizado: si la rama sigue ahi, no hay nada que hacer. */
+  last_commit: string | null;
+  creation_date: string;
+  sync_date: string | null;
+  sync_error: string | null;
 }

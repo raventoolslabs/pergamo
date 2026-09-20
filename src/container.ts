@@ -21,20 +21,25 @@ import { activeContentDetector } from '@/infrastructure/antivirus/active-content
 import antivirus from '@/infrastructure/antivirus/clamav.service';
 import { jwtService } from '@/infrastructure/security/jwt';
 import { documentChunkRepository } from '@/infrastructure/db/repositories/document-chunk.repository';
-import { officeParserConverter } from '@/infrastructure/indexing/converters/officeparser.converter';
+import { documentConverter } from '@/infrastructure/indexing/converters/document.converter';
 import { chunker } from '@/infrastructure/indexing/chunker';
 import { openAiCompatibleEmbedder } from '@/infrastructure/indexing/embedders/openai-compatible.embedder';
 import { SearchIndexDescriptor } from '@/domain/entities/search-index';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
 import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
 import { assertEmbeddingSchema } from '@/infrastructure/db/embedding-schema';
-import { connection, DRIVE_SYNC_QUEUE_NAME, QUEUE_NAME, RESCAN_QUEUE_NAME } from '@/infrastructure/queue/connection';
+import { connection, DRIVE_SYNC_QUEUE_NAME, GITHUB_SYNC_QUEUE_NAME, QUEUE_NAME, RESCAN_QUEUE_NAME } from '@/infrastructure/queue/connection';
 import { DriveDeps } from '@/app/use-cases/drive/dependencies';
 import { driveClient } from '@/infrastructure/google/drive.client';
 import { driveConnectionRepository } from '@/infrastructure/db/repositories/drive-connection.repository';
 import { driveFolderRepository } from '@/infrastructure/db/repositories/drive-folder.repository';
 import { driveSettingsRepository } from '@/infrastructure/db/repositories/drive-settings.repository';
 import { driveSyncQueue } from '@/infrastructure/queue/drive-sync.queue';
+import { GitHubDeps } from '@/app/use-cases/github/dependencies';
+import { githubClient } from '@/infrastructure/github/github.client';
+import { githubRepositoryRepository } from '@/infrastructure/db/repositories/github-repository.repository';
+import { githubSettingsRepository } from '@/infrastructure/db/repositories/github-settings.repository';
+import { githubSyncQueue } from '@/infrastructure/queue/github-sync.queue';
 
 export const documentDeps:DocumentDeps = {
   documents: documentRepository,
@@ -62,6 +67,19 @@ export const driveDeps:DriveDeps = {
   unitOfWork: sequelizeUnitOfWork
 };
 
+export const githubDeps:GitHubDeps = {
+  github: githubClient,
+  settings: githubSettingsRepository,
+  repositories: githubRepositoryRepository,
+  documents: documentRepository,
+  chunks: documentChunkRepository,
+  storage: documentStorage,
+  syncQueue: githubSyncQueue,
+  indexQueue,
+  rescanQueue,
+  unitOfWork: sequelizeUnitOfWork
+};
+
 export const organizationDeps:OrganizationDeps = {
   organizations: organizationRepository,
   tokens: jwtService
@@ -70,7 +88,7 @@ export const organizationDeps:OrganizationDeps = {
 export const indexingDeps:IndexingDeps = {
   documents: documentRepository,
   chunks: documentChunkRepository,
-  converter: officeParserConverter,
+  converter: documentConverter,
   chunker,
   embedder: openAiCompatibleEmbedder,
   content: documentContent,
@@ -94,7 +112,7 @@ export const searchIndex = ():SearchIndexDescriptor => ({
   version: 1
 });
 
-export { DRIVE_SYNC_QUEUE_NAME, QUEUE_NAME, RESCAN_QUEUE_NAME };
+export { DRIVE_SYNC_QUEUE_NAME, GITHUB_SYNC_QUEUE_NAME, QUEUE_NAME, RESCAN_QUEUE_NAME };
 export const queueConnection = connection;
 
 /**

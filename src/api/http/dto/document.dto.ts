@@ -15,13 +15,13 @@ export const toDocumentResponse = (document:DocumentSummary) => ({
   scan_signature: document.scanSignature ?? null,
   scan_engine: document.scanEngine ?? null,
   source: document.source,
-  drive_view_link: document.driveViewLink ?? null,
+  view_link: document.viewLink ?? null,
   metadata: document.metadata
 });
 
 export const toSourceInfoResponse = (document:Document) => ({
   source: document.source,
-  drive_view_link: document.remote?.viewLink ?? null
+  view_link: document.remote?.viewLink ?? null
 });
 
 export const toScanInfoResponse = (document:Document) => ({

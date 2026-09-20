@@ -81,6 +81,28 @@ describe('Drive API', () => {
     expect(url.searchParams.get('state')).not.toContain('pergamo');
   });
 
+  it('Should only accept a return URL the deployment declares', async () => {
+
+    const denied = await api.post('/api/drive/connect', { return_to: 'https://elsewhere.example/admin' }, auth());
+    expect(denied.status).toBe(StatusCodes.BAD_REQUEST);
+    expect(denied.data.code).toBe('DRIVE_RETURN_INVALID');
+
+    Config.drive.return_origins = ['https://markbot.example'];
+    try {
+      const response = await api.post('/api/drive/connect', { return_to: 'https://markbot.example/admin/drive/folders' }, auth());
+      expect(response.status).toBe(StatusCodes.OK);
+
+      // Sellado dentro del state: el callback lo saca de ahi y de ningun otro sitio.
+      const state = new URL(response.data.url).searchParams.get('state');
+      expect(state).not.toContain('markbot.example');
+
+      const back = await api.get('/api/drive/callback', { params: { error: 'access_denied', state } });
+      expect(back.headers.location).toBe('https://markbot.example/admin/drive/folders?error=access_denied');
+    } finally {
+      Config.drive.return_origins = original.drive.return_origins;
+    }
+  });
+
   it('Should reject a forged, expired or foreign state without a token', async () => {
 
     const expired = seal(JSON.stringify({ organization: 'pergamo', verifier: 'v', exp: Date.now() - 1 }));

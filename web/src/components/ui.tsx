@@ -463,7 +463,14 @@ const ERROR_MESSAGE: Record<string, TranslationKey> = {
   DRIVE_UNAVAILABLE: 'error.driveUnavailable',
   DRIVE_FOLDER_EXISTS: 'error.driveFolderExists',
   DRIVE_FOLDER_NOT_FOUND: 'error.driveFolderNotFound',
-  DRIVE_READ_ONLY: 'error.driveReadOnly'
+  REMOTE_READ_ONLY: 'error.remoteReadOnly',
+  GITHUB_DISABLED: 'error.githubDisabled',
+  GITHUB_NOT_CONFIGURED: 'error.githubNotConfigured',
+  GITHUB_NOT_CONNECTED: 'error.githubNotConnected',
+  GITHUB_UNAVAILABLE: 'error.githubUnavailable',
+  GITHUB_REPOSITORY_EXISTS: 'error.githubRepositoryExists',
+  GITHUB_REPOSITORY_NOT_FOUND: 'error.githubRepositoryNotFound',
+  GITHUB_BRANCH_NOT_FOUND: 'error.githubBranchNotFound'
 };
 
 /**

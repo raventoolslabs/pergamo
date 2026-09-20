@@ -1,5 +1,5 @@
 import type {
-  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, DriveConnection, DriveEntry, DriveFolder, DriveSettings, DriveSyncState, IndexInfo, SourceInfo, Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
+  ChunkList, DocumentList, DocumentMetadata, DocumentQuery, DocumentVersion, DriveConnection, DriveEntry, DriveFolder, DriveSettings, DriveSyncState, GitHubEntry, GitHubRepository, GitHubSettings, IndexInfo, SourceInfo, Organization, OrganizationList, ScanInfo, ServerConfig, SweepState
 } from './types';
 
 const TOKEN_KEY = 'pergamo.token';
@@ -77,7 +77,7 @@ const handle = async (response: Response) => {
 
   // Un 401 de Drive es que falta la conexion con Google, no que la sesion de
   // Pergamo haya caducado: cerrarla echaria a quien solo tiene que reconectar.
-  if (response.status === 401 && !error.code?.startsWith('DRIVE_')) {
+  if (response.status === 401 && !error.code?.startsWith('DRIVE_') && !error.code?.startsWith('GITHUB_')) {
     tokenStore.clear();
     unauthorizedListeners.forEach((listener) => listener());
   }
@@ -264,5 +264,38 @@ export const api = {
   startDriveSync: (id: string) =>
     request<DriveSyncState>(`/drive/folders/${encodeURIComponent(id)}/sync`, { method: 'POST' }),
 
-  driveSync: (id: string) => request<DriveSyncState>(`/drive/folders/${encodeURIComponent(id)}/sync`)
+  driveSync: (id: string) => request<DriveSyncState>(`/drive/folders/${encodeURIComponent(id)}/sync`),
+
+  githubSettings: () => request<GitHubSettings>('/github/settings'),
+
+  // El token se manda solo cuando se escribe: ausente lo mantiene, null lo quita.
+  saveGitHubSettings: (body: { api_url?: string | null; token?: string | null }) =>
+    request<GitHubSettings>('/github/settings', { ...json(body), method: 'PUT' }),
+
+  removeGitHubSettings: () => request<void>('/github/settings', { method: 'DELETE' }),
+
+  githubBrowse: () => request<GitHubEntry[]>('/github/browse'),
+
+  githubBranches: (owner: string, repository: string) =>
+    request<string[]>(`/github/branches${query({ owner, repository })}`),
+
+  githubRepositories: () => request<GitHubRepository[]>('/github/repositories'),
+
+  addGitHubRepository: (body: { owner: string; repository: string; branch: string; index: boolean; store_content: boolean; excludes: string[] }) =>
+    request<GitHubRepository>('/github/repositories', json(body)),
+
+  // A mano y no con json(): ese ayudante fuerza POST.
+  updateGitHubExcludes: (id: string, excludes: string[]) =>
+    request<GitHubRepository>(`/github/repositories/${encodeURIComponent(id)}`, {
+      ...json({ excludes }),
+      method: 'PATCH',
+    }),
+
+  removeGitHubRepository: (id: string) =>
+    request<void>(`/github/repositories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  startGitHubSync: (id: string) =>
+    request<DriveSyncState>(`/github/repositories/${encodeURIComponent(id)}/sync`, { method: 'POST' }),
+
+  githubSync: (id: string) => request<DriveSyncState>(`/github/repositories/${encodeURIComponent(id)}/sync`)
 };

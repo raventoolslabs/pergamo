@@ -5,7 +5,7 @@ import { DRIVE_SCOPE } from '@/domain/entities/drive';
 import { ValidationError } from '@/domain/exceptions/domain.exception';
 import { formatIssues } from '@/shared/validation';
 import {
-  driveBrowseQuerySchema, driveCallbackQuerySchema, driveFolderBodySchema, driveSettingsBodySchema,
+  driveBrowseQuerySchema, driveCallbackQuerySchema, driveConnectBodySchema, driveFolderBodySchema, driveSettingsBodySchema,
   toDriveConnectionResponse, toDriveEntryResponse, toDriveFolderResponse, toDriveSettingsResponse, toDriveSyncResponse
 } from '@/api/http/dto/drive.dto';
 import { connectDrive } from '@/app/use-cases/drive/commands/connect-drive.handler';
@@ -31,6 +31,18 @@ const parse = <T>(schema:{ safeParse:(value:unknown) => any }, value:unknown, co
 };
 
 /**
+ * A donde vuelve el navegador. El destino sale del state sellado, que es lo
+ * unico de la peticion en lo que se puede confiar, y se validaba al pedir la
+ * URL; sin el, la interfaz de Pergamo.
+ */
+const backTo = (state:unknown, query:string) => {
+
+  const target = deps.drive.returnTo(state) ?? '/drive';
+
+  return `${target}${target.includes('?') ? '&' : '?'}${query}`;
+};
+
+/**
  * Lo abre el navegador al volver de Google, no un cliente de API: el exito es
  * una redireccion a la interfaz. Un state falsificado o caducado sigue siendo 401.
  */
@@ -40,20 +52,20 @@ const callback = async (req, res, next) => {
 
     // Quien rechaza el permiso en Google vuelve sin code: no es un fallo nuestro.
     if(typeof req.query.error === 'string') {
-      return res.redirect(`/drive?error=${encodeURIComponent(req.query.error)}`);
+      return res.redirect(backTo(req.query.state, `error=${encodeURIComponent(req.query.error)}`));
     }
 
     // La pantalla de Google deja desmarcar Drive y aun asi devuelve code: sin este
     // permiso la conexion no sirve, asi que no se guarda.
     if(typeof req.query.scope === 'string' && !req.query.scope.split(' ').includes(DRIVE_SCOPE)) {
-      return res.redirect('/drive?error=scope_missing');
+      return res.redirect(backTo(req.query.state, 'error=scope_missing'));
     }
 
     const query = parse<{ code:string; state:string }>(driveCallbackQuerySchema, req.query, 'INVALID_QUERY');
 
     await completeDriveConnection(query, deps);
 
-    res.redirect('/drive?connected=1');
+    res.redirect(backTo(query.state, 'connected=1'));
 
   } catch (error) {
     next(error);
@@ -70,7 +82,8 @@ const connection = async (req, res, next) => {
 
 const connect = async (req, res, next) => {
   try {
-    res.status(StatusCodes.OK).json(await connectDrive(req.user.organization, deps));
+    const body = parse<{ return_to?:string }>(driveConnectBodySchema, req.body ?? {}, 'INVALID_BODY');
+    res.status(StatusCodes.OK).json(await connectDrive(req.user.organization, body.return_to, deps));
   } catch (error) {
     next(error);
   }

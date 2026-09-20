@@ -142,7 +142,7 @@ describe('Discharged documents', () => {
 
       const metadata = { name: 'a.pdf', original_name: 'a.pdf', mimetype: 'application/pdf', extension: 'pdf', hash: 'drive:1', tags: [] };
       const scan = { scanStatus: 'pending' as const, scanSignature: null, scanEngine: null, scanDate: null };
-      const remote = { fileId: 'test-discharge-file', folder, revision: '1' };
+      const remote = { source: 'drive' as const, fileId: 'test-discharge-file', folder, revision: '1' };
 
       const created = await documentRepository.create('pergamo', metadata, scan, 'none', undefined, remote);
       expect(created.source).toBe('drive');
@@ -151,7 +151,7 @@ describe('Discharged documents', () => {
       await documentRepository.discharge('pergamo', [created.id]);
       expect(await documentRepository.findById('pergamo', created.id)).toBeNull();
 
-      const state = await documentRepository.listRemoteState('pergamo', null, 1000);
+      const state = await documentRepository.listRemoteState('pergamo', 'drive', null, 1000);
       expect(state).toContainEqual({ id: created.id, fileId: remote.fileId, folder, revision: '1', indexStatus: 'none', discharged: true });
 
       const revived = await documentRepository.updateRemote('pergamo', created.id,
@@ -165,7 +165,7 @@ describe('Discharged documents', () => {
       expect(await documentRepository.findById('pergamo', created.id)).not.toBeNull();
 
     } finally {
-      await sequelize.query(`DELETE FROM pergamo.document WHERE drive_file_id = 'test-discharge-file';`, { type: QueryTypes.DELETE });
+      await sequelize.query(`DELETE FROM pergamo.document WHERE remote_file_id = 'test-discharge-file';`, { type: QueryTypes.DELETE });
       await sequelize.query('DELETE FROM pergamo.drive_folder WHERE id = :folder;', { replacements: { folder }, type: QueryTypes.DELETE });
     }
   });

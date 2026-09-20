@@ -21,10 +21,10 @@ export interface DocumentRow {
   index_error: string | null;
   index_date: Date | null;
   source: DocumentSource;
-  drive_file_id: string | null;
-  drive_folder: string | null;
-  drive_revision: string | null;
-  drive_view_link: string | null;
+  remote_file_id: string | null;
+  remote_folder: string | null;
+  remote_revision: string | null;
+  remote_view_link: string | null;
   discharge_date: Date | null;
 }
 
@@ -38,15 +38,15 @@ export interface DocumentSummaryRow {
   scan_signature: string | null;
   scan_engine: string | null;
   source: DocumentSource;
-  drive_view_link: string | null;
+  remote_view_link: string | null;
   total: string;
 }
 
 export interface RemoteStateRow {
   id: string;
-  drive_file_id: string;
-  drive_folder: string | null;
-  drive_revision: string;
+  remote_file_id: string;
+  remote_folder: string | null;
+  remote_revision: string;
   index_status: IndexStatus;
   discharged: boolean;
 }

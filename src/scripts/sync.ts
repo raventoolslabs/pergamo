@@ -2,23 +2,27 @@ import Config from '@/shared/config';
 import log from '@/shared/logger';
 import sequelize from '@/infrastructure/db/client';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
-import { driveDeps } from '@/container';
+import { driveDeps, githubDeps } from '@/container';
 import { syncDriveFolder } from '@/app/use-cases/drive/commands/sync-drive-folder.handler';
+import { syncGitHubRepository } from '@/app/use-cases/github/commands/sync-github-repository.handler';
 
 /**
- * Sincroniza ahora las carpetas de Drive, en este proceso y sin cola: sirve sin
- * worker y para ver en consola que pasa. `npm run sync -- <organizacion>` limita
- * a una organizacion.
+ * Sincroniza ahora las carpetas de Drive y los repositorios de GitHub, en este
+ * proceso y sin cola: sirve sin worker y para ver en consola que pasa.
+ * `npm run sync -- <organizacion>` limita a una organizacion.
  *
- * Una carpeta que falla no para las demas: su error queda en la carpeta.
+ * Un origen que falla no para los demas: su error queda apuntado en el.
  */
 const sync = async () => {
 
-  if(!Config.drive.enabled) throw new Error('DRIVE_ENABLED is not enabled: there is nothing to sync');
+  if(!Config.drive.enabled && !Config.github.enabled) throw new Error(
+    'Neither DRIVE_ENABLED nor GITHUB_ENABLED is enabled: there is nothing to sync');
 
   const organization = process.argv[2];
-  const folders = (await driveDeps.folders.listAll())
-    .filter((folder) => !organization || folder.organization === organization);
+  const mine = (source:{ organization:string }) => !organization || source.organization === organization;
+
+  const folders = Config.drive.enabled ? (await driveDeps.folders.listAll()).filter(mine) : [];
+  const repositories = Config.github.enabled ? (await githubDeps.repositories.listAll()).filter(mine) : [];
 
   let failed = 0;
 
@@ -32,7 +36,18 @@ const sync = async () => {
     }
   }
 
-  log.info(`Sync finished: ${folders.length} folder(s), ${failed} failed`);
+  for(const repository of repositories) {
+    try {
+      const progress = await syncGitHubRepository(
+        { organization: repository.organization, repository: repository.id, trace: 'sync' }, githubDeps);
+      log.info(`Repository "${repository.name}@${repository.branch}" (${repository.organization}): ${JSON.stringify(progress)}`);
+    } catch(error:any) {
+      failed++;
+      log.error(`Repository "${repository.name}@${repository.branch}" (${repository.organization}) failed: ${error.message}`);
+    }
+  }
+
+  log.info(`Sync finished: ${folders.length} folder(s), ${repositories.length} repository(ies), ${failed} failed`);
 
   return failed;
 };

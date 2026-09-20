@@ -49,7 +49,7 @@ const loadRemoteState = async (organization:string, deps:DriveDeps) => {
   const known = new Map<string, RemoteState>();
 
   for(let afterId:string = null; ;) {
-    const page = await deps.documents.listRemoteState(organization, afterId, PAGE_SIZE);
+    const page = await deps.documents.listRemoteState(organization, 'drive', afterId, PAGE_SIZE);
     page.forEach((state) => known.set(state.fileId, state));
     if(page.length < PAGE_SIZE) return known;
     afterId = page[page.length - 1].id;
@@ -98,7 +98,7 @@ export const syncDriveFolder = async (input:SyncDriveFolderInput, deps:DriveDeps
       // De otra carpeta sincronizada que tambien lo contiene: es suyo.
       if(state && state.folder !== null && state.folder !== folder.id) continue;
 
-      const remote:RemoteSource = { fileId: file.id, folder: folder.id, revision, viewLink: file.viewLink };
+      const remote:RemoteSource = { source: 'drive', fileId: file.id, folder: folder.id, revision, viewLink: file.viewLink };
       const metadata = metadataOf(file, revision);
       // En una revision nueva se mezcla con lo guardado: sin `tags`, el cliente
       // no pierde sus etiquetas porque cambie el fichero.

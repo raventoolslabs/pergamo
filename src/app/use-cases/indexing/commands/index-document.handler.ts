@@ -57,10 +57,13 @@ export const indexDocument = async (input:IndexDocumentInput, deps:IndexingDeps)
   await deps.documents.setIndexStatus(id, 'indexing');
 
   let embedded:EmbeddedChunk[];
+  // El que convirtio de verdad: el de la indexacion reparte por mimetype.
+  let converter:string;
 
   try {
 
     const converted = await deps.converter.convert(content.filePath, document.metadata.mimetype);
+    converter = converted.converter;
     const chunks = deps.chunker.split(converted);
 
     // Un PDF escaneado sin capa de texto llega hasta aqui sin nada. Marcarlo
@@ -96,7 +99,7 @@ export const indexDocument = async (input:IndexDocumentInput, deps:IndexingDeps)
 
     const closed = await deps.documents.finishIndexing(id, hash, {
       model: deps.embedder.model,
-      converter: deps.converter.name,
+      converter,
       chunkerVersion: deps.chunker.version,
       chunks: embedded.length
     }, scope);

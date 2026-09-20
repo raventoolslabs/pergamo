@@ -1,13 +1,15 @@
 #!/bin/bash
 
 URL_VERSION=http://localhost:6231/api/version
+CONTAINER=pergamo
 
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 version() {
     local body
-    body=$(curl -sf -m 5 "$@" "$URL_VERSION") || { echo 'N/A'; return 0; }
+    # El puerto no esta publicado en el host: se consulta desde dentro del contenedor
+    body=$(docker exec "$CONTAINER" wget -qO- -T 5 "$URL_VERSION" 2>/dev/null) || { echo 'N/A'; return 0; }
     if [[ $body =~ \"version\":\"([^\"]+)\" ]]; then
         echo "${BASH_REMATCH[1]}"
     else
@@ -18,7 +20,11 @@ version() {
 before=$(version)
 docker compose pull
 docker compose up -d
-after=$(version --retry 30 --retry-delay 2 --retry-connrefused)
+for _ in {1..30}; do
+    after=$(version)
+    [[ $after != 'N/A' ]] && break
+    sleep 2
+done
 echo "before: $before  after: $after"
 
 if [[ $after == 'N/A' ]] || [[ $after == "$before" ]]; then
