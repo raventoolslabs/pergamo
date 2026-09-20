@@ -36,7 +36,7 @@ export interface DocumentListFilter {
   order: 'asc' | 'desc';
 }
 
-// Lo minimo para decidir que cambio en Drive sin traer documentos enteros.
+// Lo minimo para decidir que cambio en el origen sin traer documentos enteros.
 export interface RemoteState {
   id: string;
   fileId: string;
@@ -53,7 +53,7 @@ export interface DocumentPage {
 }
 
 export interface DocumentRepository {
-  // Con `remote` el documento es de Drive; sin el, de disco.
+  // Con `remote` el documento es de un origen remoto; sin el, de disco.
   create(organization:string, metadata:DocumentMetadata, scan:ScanRecord, indexStatus:IndexStatus, scope?:TransactionScope, remote?:RemoteSource): Promise<Document>;
   findById(organization:string, id:string): Promise<Document | null>;
   replaceFile(organization:string, id:string, metadata:DocumentMetadata, scan:ScanRecord, scope?:TransactionScope): Promise<Document>;
@@ -66,13 +66,13 @@ export interface DocumentRepository {
   list(filter:DocumentListFilter): Promise<DocumentPage>;
 
   /**
-   * Todos los de Drive de la organizacion, dados de baja incluidos: un fichero
+   * Todos los de ese origen de la organizacion, dados de baja incluidos: un fichero
    * que reaparece revive su documento, y uno que ya importo otra carpeta
    * solapada no se duplica. Paginado por keyset sobre id.
    */
-  listRemoteState(organization:string, afterId:string | null, limit:number): Promise<RemoteState[]>;
+  listRemoteState(organization:string, source:Exclude<DocumentSource, 'disk'>, afterId:string | null, limit:number): Promise<RemoteState[]>;
   /**
-   * Nueva revision desde Drive. Tambien revive un documento dado de baja: es el
+   * Nueva revision desde el origen. Tambien revive un documento dado de baja: es el
    * mismo fichero, con su id. `metadata` se mezcla con la guardada, asi que las
    * claves que edita el cliente y no llegan aqui se conservan. Sin `scan` ni
    * `indexStatus` se conservan veredicto e indice.

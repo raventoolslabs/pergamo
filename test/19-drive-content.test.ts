@@ -45,7 +45,7 @@ describe('Drive content', () => {
     const document = await documentRepository.create('pergamo',
       { name: 'remote', original_name: 'remote.pdf', mimetype: 'application/pdf', extension: 'pdf', hash: 'drive:1', tags: [] },
       { scanStatus: 'pending', scanSignature: null, scanEngine: null, scanDate: null }, 'none',
-      undefined, { fileId: 'test-drive-content', revision: '1' });
+      undefined, { source: 'drive', fileId: 'test-drive-content', revision: '1' });
 
     documentId = document.id;
   });
@@ -76,7 +76,7 @@ describe('Drive content', () => {
   it('Should report where the file lives apart from the metadata', async () => {
 
     const source = await api.get(`/api/document/${documentId}/source`, { headers: { authorization: token } });
-    expect(source.data).toEqual({ source: 'drive', drive_view_link: null });
+    expect(source.data).toEqual({ source: 'drive', view_link: null });
 
     // El cuerpo de GET /:id es el JSONB tal cual: no gana claves.
     const metadata = await api.get(`/api/document/${documentId}`, { headers: { authorization: token } });
@@ -110,6 +110,6 @@ describe('Drive content', () => {
       headers: { authorization: token, ...form.getHeaders() }
     });
     expect(replaced.status).toBe(StatusCodes.BAD_REQUEST);
-    expect(replaced.data.code).toBe('DRIVE_READ_ONLY');
+    expect(replaced.data.code).toBe('REMOTE_READ_ONLY');
   });
 });

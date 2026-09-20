@@ -109,6 +109,10 @@ export const configSchema = z.object({
     return_origins: z.array(z.string().url()),
     sync_interval_ms: z.number().int().min(0)
   }),
+  github: z.object({
+    enabled: z.boolean(),
+    sync_interval_ms: z.number().int().min(0)
+  }),
   db: z.object({
     username: z.string().min(1),
     // Hay despliegues legitimos sin contrasena (trust, peer o IAM).
@@ -145,6 +149,11 @@ export const configSchema = z.object({
 // fallaria al configurar o al conectar, no en el arranque.
 .refine((config) => !config.drive.enabled || !!config.secret_key, {
   message: 'DRIVE_ENABLED requires SECRET_KEY',
+  path: ['secret_key']
+})
+// Lo mismo para el token de GitHub: se guarda sellado con esta clave.
+.refine((config) => !config.github.enabled || !!config.secret_key, {
+  message: 'GITHUB_ENABLED requires SECRET_KEY',
   path: ['secret_key']
 });
 

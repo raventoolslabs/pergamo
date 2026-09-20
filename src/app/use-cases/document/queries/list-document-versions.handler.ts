@@ -6,8 +6,8 @@ export const listDocumentVersions = async (organization:string, id:string, deps:
 
   const document = await getDocument(organization, id, deps);
 
-  // Drive guarda su propio historial; aqui no se archiva nada.
-  if(document.source === 'drive') return [];
+  // El origen guarda su propio historial; aqui no se archiva nada.
+  if(document.source !== 'disk') return [];
 
   return deps.storage.listVersions(deps.storage.resolve(organization, document.path));
 }

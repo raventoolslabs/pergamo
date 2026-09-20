@@ -134,6 +134,12 @@ const config = {
     // 0 = sin job repetible: solo se sincroniza a mano.
     sync_interval_ms: process.env.DRIVE_SYNC_INTERVAL_MS ? Number.parseInt(process.env.DRIVE_SYNC_INTERVAL_MS) : 0
   },
+  github: {
+    enabled: parseBoolean(process.env.GITHUB_ENABLED, false, 'GITHUB_ENABLED'),
+    // El token va por organizacion en la base, como el cliente OAuth de Drive.
+    // 0 = sin job repetible: solo se sincroniza a mano.
+    sync_interval_ms: process.env.GITHUB_SYNC_INTERVAL_MS ? Number.parseInt(process.env.GITHUB_SYNC_INTERVAL_MS) : 0
+  },
   user_master: process.env.USER_MASTER,
   password_master: process.env.PASSWORD_MASTER,
   db: {

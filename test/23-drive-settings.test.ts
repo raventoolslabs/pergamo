@@ -128,7 +128,7 @@ describe('Drive settings', () => {
 
     await put({ client_id: 'id.apps.googleusercontent.com', client_secret: SECRET });
 
-    // Los documentos no caen con la organizacion, y el indice de drive_file_id
+    // Los documentos no caen con la organizacion, y el indice de remote_file_id
     // rechazaria el de la pasada anterior.
     await sequelize.query('DELETE FROM pergamo.document WHERE organization = :id;',
       { replacements: { id: OTHER }, type: QueryTypes.DELETE });
@@ -155,7 +155,7 @@ describe('Drive settings', () => {
     const metadata = { name: 'a.pdf', original_name: 'a.pdf', mimetype: 'application/pdf', extension: 'pdf', hash: 'drive:1', tags: [] };
     const scan = { scanStatus: 'pending' as const, scanSignature: null, scanEngine: null, scanDate: null };
     const document = await documentRepository.create(OTHER, metadata, scan, 'none', undefined,
-      { fileId: 'teardown-file', folder: folder.id, revision: '1' });
+      { source: 'drive', fileId: 'teardown-file', folder: folder.id, revision: '1' });
 
     expect((await api.delete('/api/drive', headers)).status).toBe(StatusCodes.NO_CONTENT);
 
@@ -165,7 +165,7 @@ describe('Drive settings', () => {
 
     // Baja logica: fuera del listado, pero con su id, para que reviva si vuelve.
     expect(await documentRepository.findById(OTHER, document.id)).toBeNull();
-    const state = await documentRepository.listRemoteState(OTHER, null, 1000);
+    const state = await documentRepository.listRemoteState(OTHER, 'drive', null, 1000);
     expect(state.find((remote) => remote.id === document.id)).toMatchObject({ discharged: true });
 
     // La organizacion vecina no se entera.

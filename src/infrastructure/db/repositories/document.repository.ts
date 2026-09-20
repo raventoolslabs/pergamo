@@ -30,10 +30,10 @@ const scanReplacements = (scan:ScanRecord) => ({
 });
 
 const remoteReplacements = (remote?:RemoteSource) => ({
-  drive_file_id: remote?.fileId ?? null,
-  drive_folder: remote?.folder ?? null,
-  drive_revision: remote?.revision ?? null,
-  drive_view_link: remote?.viewLink ?? null
+  remote_file_id: remote?.fileId ?? null,
+  remote_folder: remote?.folder ?? null,
+  remote_revision: remote?.revision ?? null,
+  remote_view_link: remote?.viewLink ?? null
 });
 
 export const documentRepository:DocumentRepository = {
@@ -42,14 +42,14 @@ export const documentRepository:DocumentRepository = {
 
     const result:any = await sequelize.query(
       `INSERT INTO pergamo.document(metadata, organization, scan_status, scan_signature, scan_engine, scan_date, index_status,
-        source, drive_file_id, drive_folder, drive_revision, drive_view_link)
+        source, remote_file_id, remote_folder, remote_revision, remote_view_link)
       VALUES (:metadata::jsonb, :organization, :scan_status, :scan_signature, :scan_engine, :scan_date, :index_status,
-        :source, :drive_file_id, :drive_folder, :drive_revision, :drive_view_link) RETURNING *;`, {
+        :source, :remote_file_id, :remote_folder, :remote_revision, :remote_view_link) RETURNING *;`, {
       replacements: {
         metadata: JSON.stringify(metadata),
         organization,
         index_status: indexStatus,
-        source: remote ? 'drive' : 'disk',
+        source: remote?.source ?? 'disk',
         ...remoteReplacements(remote),
         ...scanReplacements(scan)
       },
@@ -67,7 +67,7 @@ export const documentRepository:DocumentRepository = {
         scan_status, scan_signature, scan_engine, scan_date,
         index_status, index_model, index_converter, index_chunker_version,
         index_chunks, index_error, index_date,
-        source, drive_file_id, drive_folder, drive_revision, drive_view_link, discharge_date
+        source, remote_file_id, remote_folder, remote_revision, remote_view_link, discharge_date
       FROM pergamo.document WHERE organization = :organization AND id = :id AND discharge_date IS NULL;`, {
       replacements: { id, organization },
       type: QueryTypes.SELECT
@@ -196,7 +196,7 @@ export const documentRepository:DocumentRepository = {
     // scan_engine viaja aunque nadie lo muestre: es lo unico que distingue un
     // 'clean' analizado de uno que nunca paso por un escaner.
     const rows:DocumentSummaryRow[] = await sequelize.query(
-      `SELECT id, creation_date, modification_date, scan_status, scan_signature, scan_engine, metadata, source, drive_view_link,
+      `SELECT id, creation_date, modification_date, scan_status, scan_signature, scan_engine, metadata, source, remote_view_link,
         COUNT(*) OVER() AS total
       FROM pergamo.document
       WHERE organization = :organization AND discharge_date IS NULL${where}
@@ -212,16 +212,16 @@ export const documentRepository:DocumentRepository = {
     };
   },
 
-  async listRemoteState(organization, afterId, limit) {
+  async listRemoteState(organization, source, afterId, limit) {
 
     const rows:RemoteStateRow[] = await sequelize.query(
-      `SELECT id, drive_file_id, drive_folder, drive_revision, index_status, discharge_date IS NOT NULL AS discharged
+      `SELECT id, remote_file_id, remote_folder, remote_revision, index_status, discharge_date IS NOT NULL AS discharged
       FROM pergamo.document
-      WHERE organization = :organization AND source = 'drive'
+      WHERE organization = :organization AND source = :source
         AND (:afterId::varchar IS NULL OR id > :afterId)
       ORDER BY id
       LIMIT :limit;`, {
-      replacements: { organization, afterId, limit },
+      replacements: { organization, source, afterId, limit },
       type: QueryTypes.SELECT
     });
 
@@ -233,7 +233,7 @@ export const documentRepository:DocumentRepository = {
     const result:any = await sequelize.query(
       `UPDATE pergamo.document
       SET metadata = metadata || :metadata::jsonb, modification_date = CURRENT_TIMESTAMP,
-          drive_folder = :drive_folder, drive_revision = :drive_revision, drive_view_link = :drive_view_link,
+          remote_folder = :remote_folder, remote_revision = :remote_revision, remote_view_link = :remote_view_link,
           scan_status = CASE WHEN :rescan THEN :scan_status ELSE scan_status END,
           scan_signature = CASE WHEN :rescan THEN :scan_signature ELSE scan_signature END,
           scan_engine = CASE WHEN :rescan THEN :scan_engine ELSE scan_engine END,
@@ -241,11 +241,12 @@ export const documentRepository:DocumentRepository = {
           index_status = COALESCE(:index_status, index_status),
           index_error = CASE WHEN :index_status IS NULL THEN index_error END,
           discharge_date = NULL
-      WHERE organization = :organization AND id = :id AND source = 'drive' RETURNING *;`, {
+      WHERE organization = :organization AND id = :id AND source = :source RETURNING *;`, {
       replacements: {
         metadata: JSON.stringify(metadata),
         organization,
         id,
+        source: remote.source,
         index_status: indexStatus,
         rescan: scan !== null,
         ...remoteReplacements(remote),

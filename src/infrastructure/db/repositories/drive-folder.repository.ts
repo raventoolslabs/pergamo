@@ -59,6 +59,15 @@ export const driveFolderRepository:DriveFolderRepository = {
 
   async remove(organization, id) {
 
+    // A mano desde 010: la clave ajena que lo hacia se cayo al compartir la
+    // columna con GitHub. Sin carpeta, el documento sigue hasta que la
+    // sincronizacion de otra que lo contenga lo adopte, o lo de de baja.
+    await sequelize.query(
+      'UPDATE pergamo.document SET remote_folder = NULL WHERE organization = :organization AND remote_folder = :id;', {
+      replacements: { organization, id },
+      type: QueryTypes.UPDATE
+    });
+
     const rows:any = await sequelize.query(
       'DELETE FROM pergamo.drive_folder WHERE organization = :organization AND id = :id RETURNING id;', {
       replacements: { organization, id },

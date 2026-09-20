@@ -27,11 +27,12 @@ export const toDocument = (row:DocumentRow):Document => ({
     date: optional(row.index_date)
   },
   source: row.source,
-  remote: row.drive_file_id === null ? undefined : {
-    fileId: row.drive_file_id,
-    folder: optional(row.drive_folder),
-    revision: row.drive_revision,
-    viewLink: optional(row.drive_view_link)
+  remote: row.remote_file_id === null ? undefined : {
+    source: row.source as 'drive' | 'github',
+    fileId: row.remote_file_id,
+    folder: optional(row.remote_folder),
+    revision: row.remote_revision,
+    viewLink: optional(row.remote_view_link)
   },
   dischargeDate: optional(row.discharge_date)
 });
@@ -45,14 +46,14 @@ export const toDocumentSummary = (row:DocumentSummaryRow):DocumentSummary => ({
   scanSignature: optional(row.scan_signature),
   scanEngine: optional(row.scan_engine),
   source: row.source,
-  driveViewLink: optional(row.drive_view_link)
+  viewLink: optional(row.remote_view_link)
 });
 
 export const toRemoteState = (row:RemoteStateRow):RemoteState => ({
   id: row.id,
-  fileId: row.drive_file_id,
-  folder: row.drive_folder,
-  revision: row.drive_revision,
+  fileId: row.remote_file_id,
+  folder: row.remote_folder,
+  revision: row.remote_revision,
   indexStatus: row.index_status,
   discharged: row.discharged
 });

@@ -1,5 +1,8 @@
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
+import { markdownConverter } from '@/infrastructure/indexing/converters/markdown.converter';
 import { officeParserConverter } from '@/infrastructure/indexing/converters/officeparser.converter';
 import { ConversionUnsupportedError } from '@/domain/exceptions/indexing.exception';
 
@@ -101,5 +104,46 @@ describe('Document converter', () => {
 
     await expect(convert('test.odt', 'application/vnd.oasis.opendocument.text'))
       .resolves.toMatchObject({ converter: 'officeparser' });
+  });
+});
+
+describe('Markdown converter', () => {
+
+  const markdown = [
+    '---', 'title: front matter', '---',
+    '# Guia', 'Primer parrafo.', '',
+    '## Instalacion', '- uno', '- dos', '',
+    '```bash', '# esto no es un encabezado', 'npm install', '```', '',
+    '| a | b |', '| - | - |', '| 1 | 2 |'
+  ].join('\n');
+
+  const file = path.join(os.tmpdir(), `pergamo-markdown-${process.pid}.md`);
+
+  beforeAll(async () => { await fs.promises.writeFile(file, markdown); });
+  afterAll(async () => { await fs.promises.rm(file, { force: true }); });
+
+  it('Should support markdown and nothing else', () => {
+
+    expect(markdownConverter.supports('text/markdown')).toBe(true);
+    expect(markdownConverter.supports('application/pdf')).toBe(false);
+  });
+
+  it('Should keep the heading path of every block and not read the fence as markup', async () => {
+
+    const { converter, blocks } = await markdownConverter.convert(file, 'text/markdown');
+
+    expect(converter).toBe('markdown');
+    // El front matter es metadatos del fichero y no entra.
+    expect(blocks.some((block) => block.markdown.includes('front matter'))).toBe(false);
+
+    expect(blocks[0]).toMatchObject({ markdown: 'Primer parrafo.', kind: 'text', headingPath: ['Guia'] });
+    expect(blocks[1]).toMatchObject({ kind: 'list', headingPath: ['Guia', 'Instalacion'] });
+
+    const code = blocks.find((block) => block.kind === 'code');
+    expect(code.markdown).toContain('# esto no es un encabezado');
+    expect(code.headingPath).toEqual(['Guia', 'Instalacion']);
+
+    const table = blocks.find((block) => block.kind === 'table');
+    expect(table.markdown.split('\n')).toHaveLength(3);
   });
 });

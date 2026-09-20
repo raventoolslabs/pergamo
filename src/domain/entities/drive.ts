@@ -56,12 +56,5 @@ export interface DriveFile {
   viewLink?: string;
 }
 
-/** Lo que una sincronizacion lleva hecho. Se publica mientras corre. */
-export interface SyncProgress {
-  seen: number;
-  created: number;
-  updated: number;
-  restored: number;
-  discharged: number;
-  skipped: number;
-}
+// Vive en `remote`: el progreso es el mismo venga de Drive o de GitHub.
+export type { SyncProgress } from '@/domain/entities/remote';

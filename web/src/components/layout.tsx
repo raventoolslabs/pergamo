@@ -75,6 +75,9 @@ export const Layout = () => {
               {config?.drive_enabled ? (
                 <NavLink to="/drive" className={linkClass}>{t('masthead.drive')}</NavLink>
               ) : null}
+              {config?.github_enabled ? (
+                <NavLink to="/github" className={linkClass}>{t('masthead.github')}</NavLink>
+              ) : null}
             </>
           )}
         </nav>

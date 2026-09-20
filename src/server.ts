@@ -7,10 +7,12 @@ import { activeContentRules } from '@/infrastructure/antivirus/active-content';
 import { startWorker, stopWorker } from '@/api/queue/index.worker';
 import { startRescanWorker, stopRescanWorker } from '@/api/queue/rescan.worker';
 import { startDriveSyncWorker, stopDriveSyncWorker } from '@/api/queue/drive-sync.worker';
+import { startGitHubSyncWorker, stopGitHubSyncWorker } from '@/api/queue/github-sync.worker';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
 import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
 import { driveSyncQueue } from '@/infrastructure/queue/drive-sync.queue';
-import { assertIndexReady, driveDeps } from '@/container';
+import { githubSyncQueue } from '@/infrastructure/queue/github-sync.queue';
+import { assertIndexReady, driveDeps, githubDeps } from '@/container';
 import FilesUtils from '@/infrastructure/files/storage';
 import { NotFoundError } from '@/domain/exceptions/domain.exception';
 import express from 'express';
@@ -66,6 +68,14 @@ const scheduleDriveSyncs = () => {
     .catch((error:any) => log.error(`Drive sync scheduling failed: ${error.message}`));
 };
 
+// Lo mismo para GitHub, con GITHUB_SYNC_INTERVAL_MS.
+const scheduleGitHubSyncs = () => {
+  githubDeps.repositories.listAll()
+    .then((repositories) => Promise.all(repositories.map((repository) =>
+      githubSyncQueue.schedule(repository.organization, repository.id))))
+    .catch((error:any) => log.error(`GitHub sync scheduling failed: ${error.message}`));
+};
+
 // El puerto es un parametro para que las pruebas puedan pedir uno libre (0) en
 // lugar de competir todas por el mismo puerto fijo.
 export const app = async (port:any = Config.port) => {
@@ -112,6 +122,11 @@ export const app = async (port:any = Config.port) => {
     scheduleDriveSyncs();
   }
 
+  if(Config.github.enabled) {
+    if(Config.indexing.worker_embedded) await startGitHubSyncWorker();
+    scheduleGitHubSyncs();
+  }
+
   const app = express();
 
   app.set('trust proxy', Config.trust_proxy);
@@ -141,7 +156,8 @@ export const app = async (port:any = Config.port) => {
       max_version_file: Config.max_version_file,
       // La interfaz lo necesita para no ofrecer una casilla que solo da un 400.
       indexing_enabled: Config.indexing.enabled,
-      drive_enabled: Config.drive.enabled
+      drive_enabled: Config.drive.enabled,
+      github_enabled: Config.github.enabled
     })
   });
 
@@ -149,6 +165,7 @@ export const app = async (port:any = Config.port) => {
   api.use('/document', Routes.document);
   api.use('/search', Routes.search);
   api.use('/drive', Routes.drive);
+  api.use('/github', Routes.github);
 
   // Una ruta desconocida bajo /api responde en JSON, nunca con la SPA.
   api.use((req, res, next) => next(new NotFoundError('ROUTE_NOT_FOUND', 'Route not found')));
@@ -201,6 +218,8 @@ export const app = async (port:any = Config.port) => {
     rescanQueue.close().catch((error:any) => log.warn(`Rescan queue shutdown failed: ${error.message}`));
     stopDriveSyncWorker().catch((error:any) => log.warn(`Drive sync worker shutdown failed: ${error.message}`));
     driveSyncQueue.close().catch((error:any) => log.warn(`Drive sync queue shutdown failed: ${error.message}`));
+    stopGitHubSyncWorker().catch((error:any) => log.warn(`GitHub sync worker shutdown failed: ${error.message}`));
+    githubSyncQueue.close().catch((error:any) => log.warn(`GitHub sync queue shutdown failed: ${error.message}`));
   });
 
   return server;
