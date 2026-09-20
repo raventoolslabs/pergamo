@@ -35,9 +35,9 @@ export const modifyDocumentFile = async (input:ModifyDocumentFileInput, deps:Doc
   // 404 despues.
   const current = await getDocument(organization, id, deps);
 
-  // Pergamo no escribe en Drive, y la siguiente sincronizacion pisaria el cambio.
-  if(current.source === 'drive') throw new ValidationError(
-    'DRIVE_READ_ONLY', 'Documents synced from Google Drive are replaced from Drive');
+  // Pergamo no escribe en el origen, y la siguiente sincronizacion pisaria el cambio.
+  if(current.source !== 'disk') throw new ValidationError(
+    'REMOTE_READ_ONLY', `Documents synced from ${current.source} are replaced at the source`);
 
   if(file.mimetype !== current.metadata.mimetype) throw new ValidationError(
     'INVALID_MIMETYPE', 'Invalid mimetype');

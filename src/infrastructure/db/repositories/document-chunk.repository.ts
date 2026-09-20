@@ -1,4 +1,5 @@
 import sequelize, { QueryTypes } from '@/infrastructure/db/client';
+import { toTextArray } from '@/infrastructure/db/text-array';
 import { EmbeddedChunk } from '@/domain/entities/chunk';
 import { QUARANTINED_STATUS } from '@/domain/value-objects/scan-status';
 import { TransactionScope } from '@/app/ports/unit-of-work';
@@ -17,12 +18,6 @@ const RRF_K = 60;
 // pgvector acepta la representacion textual, asi que no hay que ensenarle el
 // tipo a Sequelize.
 const toVector = (embedding:number[]) => `[${embedding.join(',')}]`;
-
-// Un array enlazado como replacement lo expande Sequelize a una lista separada
-// por comas, que es lo que necesita un IN (...) y no un text[]: aqui viaja como
-// literal de array y se castea en la sentencia.
-const toTextArray = (values:string[]) =>
-  `{${values.map((value) => `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',')}}`;
 
 const toStoredChunk = (row:any):StoredChunk => ({
   id: Number(row.id),
@@ -153,9 +148,14 @@ export const documentChunkRepository:DocumentChunkRepository = {
    * `embedding` no se selecciona nunca: un vector es parcialmente reversible y
    * hereda la confidencialidad del documento.
    *
-   * Lo retenido se descarta al final y no dentro de las dos mitades: asi la
-   * condicion vive en un sitio y no compite con el indice ANN. Lo que el filtro
-   * quite sale del colchon de SEARCH_CANDIDATES_FACTOR, que ya pide de mas.
+   * Lo retenido y lo dado de baja se descartan al final y no dentro de las dos
+   * mitades: asi la condicion vive en un sitio y no compite con el indice ANN.
+   * Lo que el filtro quite sale del colchon de SEARCH_CANDIDATES_FACTOR, que ya
+   * pide de mas.
+   *
+   * La baja borra los trozos en la misma transaccion, asi que esta condicion es
+   * la red: lo excluido de una sincronizacion no puede salir en una busqueda
+   * porque un borrado se quedara a medias.
    */
   async search(query:SearchQuery):Promise<SearchHit[]> {
 
@@ -182,7 +182,7 @@ export const documentChunkRepository:DocumentChunkRepository = {
       FROM fused
       JOIN pergamo.document_chunk_v1 c ON c.id = fused.id
       JOIN pergamo.document d ON d.id = c.document
-      WHERE d.scan_status NOT IN (:quarantined)
+      WHERE d.scan_status NOT IN (:quarantined) AND d.discharge_date IS NULL
       ORDER BY fused.score DESC, similarity DESC
       LIMIT :limit;`, {
       replacements: {

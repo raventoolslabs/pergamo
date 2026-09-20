@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { api } from '../api/client';
 import type { DriveSyncState } from '../api/types';
 import { t } from '../i18n';
 
@@ -11,14 +10,17 @@ const POLL_LIMIT = 200;
 const live = (state: DriveSyncState | null) => state?.status === 'queued' || state?.status === 'running';
 
 /**
- * Estado de la sincronizacion de una carpeta. Pregunta al montarse —una
- * sincronizacion sobrevive a recargar— y sigue preguntando mientras vive.
- * `started` es el estado que devolvio pedirla, para no esperar al primer sondeo.
+ * Estado de la sincronizacion de una carpeta de Drive o de un repositorio de
+ * GitHub. Pregunta al montarse —una sincronizacion sobrevive a recargar— y sigue
+ * preguntando mientras vive. `started` es el estado que devolvio pedirla, para
+ * no esperar al primer sondeo.
  */
-export const DriveSyncProgress = ({ folder, started, onSettled }: {
-  folder: string;
+export const SyncProgress = ({ source, load, started, onSettled }: {
+  source: string;
+  /** Quien sabe preguntar por ese origen: api.driveSync o api.githubSync. */
+  load: (id: string) => Promise<DriveSyncState>;
   started?: DriveSyncState | null;
-  /** Al terminar: la fecha y el error de la carpeta ya no dicen la verdad. */
+  /** Al terminar: la fecha y el error del origen ya no dicen la verdad. */
   onSettled: () => void;
 }) => {
 
@@ -28,9 +30,9 @@ export const DriveSyncProgress = ({ folder, started, onSettled }: {
 
   useEffect(() => {
     let alive = true;
-    api.driveSync(folder).then((value) => { if (alive) setState(value); }).catch(() => {});
+    load(source).then((value) => { if (alive) setState(value); }).catch(() => {});
     return () => { alive = false; };
-  }, [folder]);
+  }, [source, load]);
 
   useEffect(() => {
     if (!started) return;
@@ -46,7 +48,7 @@ export const DriveSyncProgress = ({ folder, started, onSettled }: {
 
     const timer = setTimeout(() => {
       polls.current += 1;
-      api.driveSync(folder)
+      load(source)
         .then((next) => {
           setState(next);
           if (!live(next)) onSettled();
@@ -55,22 +57,22 @@ export const DriveSyncProgress = ({ folder, started, onSettled }: {
     }, POLL_MS);
 
     return () => clearTimeout(timer);
-  }, [state, folder, onSettled]);
+  }, [state, source, load, onSettled]);
 
   if (live(state)) {
     return (
       <span className="drive-sync">
         <span className="spinner" aria-hidden="true" />
         {state?.progress
-          ? t('drive.syncProgress', { count: state.progress.seen })
-          : state?.status === 'queued' ? t('drive.syncQueued') : t('drive.syncing')}
+          ? t('sync.progress', { count: state.progress.seen })
+          : state?.status === 'queued' ? t('sync.queued') : t('sync.running')}
       </span>
     );
   }
 
   // El resumen solo a quien lo vio correr: al volver otro dia ya no es noticia.
   if (state?.status === 'done' && state.progress && watched.current) {
-    return <span className="drive-sync">{t('drive.syncDone', { ...state.progress })}</span>;
+    return <span className="drive-sync">{t('sync.done', { ...state.progress })}</span>;
   }
 
   return null;

@@ -13,7 +13,7 @@ La API sigue una arquitectura por capas, con la regla de dependencias descrita e
 * `src/api` — transporte HTTP: controladores, rutas, middleware y DTO de entrada y salida. Aquí, y solo aquí, una excepción de dominio se traduce a código HTTP.
 * `src/app` — casos de uso (`use-cases`, separados en commands y queries) y los puertos (`ports`) que declaran lo que necesitan del exterior.
 * `src/domain` — entidades, value objects y excepciones. No conoce ni la base de datos ni HTTP.
-* `src/infrastructure` — implementaciones de esos puertos: repositorios, cliente y migraciones de base de datos, almacenamiento de ficheros, ClamAV, JWT e indexación.
+* `src/infrastructure` — implementaciones de esos puertos: repositorios, cliente y migraciones de base de datos, almacenamiento de ficheros, ClamAV, JWT, indexación y los clientes de Google Drive (`google`) y GitHub (`github`).
 * `src/shared` — configuración por variables de entorno, logger, hashing y utilidades transversales.
 * `src/container.ts` — punto de composición: enchufa las implementaciones a los puertos, y es el único camino por el que la capa `api` alcanza una.
 * `src/scripts` — tareas de operación: reescaneo del corpus y liberación de falsos positivos.
@@ -579,6 +579,7 @@ comando es `npm test` y no `npx jest` a secas.
 * `test/04-quarantine.test.ts` — bloqueo de descarga con `423`, acceso a metadatos en cuarentena y cabeceras de respuesta.
 * `test/05-listing.test.ts` — listados de documentos y organizaciones: filtros, paginación, rechazo de parámetros inválidos, aislamiento entre organizaciones y que el hash de contraseña no se expone.
 * `test/06-payloads.test.ts` — corpus de PDF con contenido activo (`test/assets/payloads/`): dónde está el límite de cada capa, que la cuarentena por contenido activo retiene sin rechazar el depósito y solo se levanta a mano, y que lo que se almacena se entrega siempre como adjunto y byte a byte.
+* `test/24-github-sync.test.ts` — GitHub sin llamar a GitHub: el atajo del último commit, el diff por hash del blob, la copia en Pergamo, las bajas y que un recorrido cortado no da de baja nada ni adelanta el commit.
 * `test/17-drive-sync.test.ts` a `test/22-drive-adapters.test.ts` — Google Drive sin llamar a Google: el diff de la sincronización (altas, cambios, bajas con sus trozos, recuperación con el mismo `id`, carpetas solapadas y que un recorrido cortado no da de baja nada), la API y su `state` sellado, el contenido servido desde un temporal y los adaptadores.
 
 Las pruebas que necesitan un veredicto real del escáner usan `it.skip` cuando el antivirus está desactivado, de modo que Jest **las reporta como omitidas**. Antes iban envueltas en un `if`, que desaparecía del informe y daba la impresión de una cobertura inexistente.
@@ -995,7 +996,7 @@ mismo worker que el índice y el barrido: embebido en la API o en `pergamo-worke
 
 Con Drive desactivado en el despliegue todos responden `400 DRIVE_DISABLED`, y sin cliente
 OAuth registrado los que hablan con Google responden `400 DRIVE_NOT_CONFIGURED`. Un documento de Drive no admite
-`PUT /api/document/:id/file` (`400 DRIVE_READ_ONLY`) ni tiene versiones archivadas.
+`PUT /api/document/:id/file` (`400 REMOTE_READ_ONLY`) ni tiene versiones archivadas, igual que uno de GitHub.
 
 ### Antivirus de lo importado
 
@@ -1025,6 +1026,106 @@ DELETE FROM pergamo.drive_settings;
 Después, cada organización vuelve a registrar su cliente con `PUT /api/drive/settings` y
 pulsa «Conectar con Google Drive». No hay otra forma: sin la clave anterior no se puede
 recuperar nada de lo guardado.
+
+## GitHub
+
+Una organización guarda un token de GitHub, elige un **repositorio y una rama**, y Pergamo
+archiva su **documentación en Markdown** (`.md` y `.markdown`, a cualquier profundidad). Lo
+demás del repositorio no se mira: el objetivo es indexarla.
+
+El contenido **se queda en GitHub** y se baja por la API cuando hace falta —descargar,
+analizar, indexar—, igual que en Drive. Un repositorio puede además pedir **copia en
+Pergamo**: entonces el Markdown se guarda al sincronizar y se sirve desde aquí, que es lo
+que hay que marcar si la API puede dejar de estar disponible.
+
+Desactivado por defecto. Con `GITHUB_ENABLED=false` no aparece nada de esto.
+
+### Puesta en marcha
+
+1. Crear en GitHub un token —clásico o *fine-grained*— con permiso de **solo lectura** sobre
+   los repositorios que se quieran archivar.
+2. Rellenar el `.env` del despliegue:
+
+| Variable | Qué hace |
+|---|---|
+| `GITHUB_ENABLED` | Activa la integración. Exige `SECRET_KEY`: el arranque falla sin ella. |
+| `SECRET_KEY` | 32 bytes en base64 (`openssl rand -base64 32`). Cifra con AES-256-GCM el token guardado, igual que las credenciales de Drive. |
+| `GITHUB_SYNC_INTERVAL_MS` | Cada cuánto se sincroniza solo cada repositorio. `0`, el defecto, es solo a mano. |
+
+3. Guardar el token en la pantalla de GitHub, o con `PUT /api/github/settings` desde fuera,
+   que es como lo configura la administración de markbot. La URL de la API solo se rellena
+   para **GitHub Enterprise** (`https://<host>/api/v3`); en blanco es `github.com`.
+4. «Añadir repositorio»: se elige uno de los que alcanza el token, su rama, si se indexa,
+   si se guarda copia y **qué se deja fuera**. El alta encola la primera pasada.
+
+### Qué se deja fuera
+
+Cada repositorio lleva su lista de exclusiones: patrones glob relativos a la raíz de la
+rama, uno por línea en la interfaz. Un patrón sin comodines vale también como carpeta
+—`docs/interno` deja fuera todo lo que cuelga de ella—, `*` no cruza `/` y `**` sí, de modo
+que `**/CHANGELOG.md` alcanza ese fichero esté donde esté.
+
+Se cambian cuando se quiera, no solo al dar de alta, y **se aplican sobre lo ya archivado**:
+lo que pasa a estar excluido se da de baja —deja de verse y salen sus trozos del índice— y
+quitarlo de la lista lo recupera con su mismo `id`. Guardar la lista olvida el último commit
+y encola una pasada, porque si no una rama parada daría el trabajo por hecho y las
+exclusiones nuevas no se aplicarían nunca.
+
+### Qué hace una sincronización
+
+Lo primero que mira es el **commit de la rama**. Si sigue siendo el de la última pasada,
+termina ahí: no se lee el árbol ni se compara nada. Cuando ha avanzado, se recorre el árbol
+de ese commit y lo que decide fichero a fichero es el **hash del blob**, que en Git es el
+hash de su contenido:
+
+| En la rama | En Pergamo |
+|---|---|
+| Markdown nuevo y no excluido | Documento nuevo, `scan_status='pending'` y con índice si el repositorio lo pide. |
+| Blob con otro `sha` | Metadatos al día, análisis otra vez `pending` y reindexado si tenía índice. Las etiquetas y demás campos editados se conservan. |
+| Ya no está en la rama, o pasa a estar excluido | **Baja lógica**: deja de verse en la API y se borran sus trozos del índice. |
+| Vuelve a estar | Se recupera **el mismo documento, con su `id`**. |
+
+La identidad de un documento es `owner/repositorio@rama:ruta`, así que dos ramas
+sincronizadas del mismo repositorio no se pisan y **renombrar** un fichero es dar de baja
+uno y crear otro, que es lo que Git hace también.
+
+Las mismas garantías que en Drive, con una más:
+
+- **Un recorrido que se corta no da de baja nada** y **tampoco adelanta el commit**: la
+  siguiente pasada vuelve a comparar el árbol entero. Un árbol que GitHub devuelve truncado
+  —repositorios de más de 100.000 entradas— cuenta como fallo, no como rama vacía.
+- **Quitar un repositorio no borra sus documentos.** Dejan de sincronizarse, y volver a dar
+  de alta la misma rama los adopta.
+
+```bash
+npm run sync                     # sincroniza ahora carpetas de Drive y repositorios, sin cola
+npm run sync -- <organizacion>   # solo los de una organización
+```
+
+Desde la interfaz, «Sincronizar ahora» encola la pasada en `github-sync`, cola propia
+atendida por el mismo worker que el índice, el barrido y Drive.
+
+### API
+
+| Endpoint | Qué hace |
+|---|---|
+| `GET /api/github/settings` | `configured`, `api_url` y fechas. **Nunca el token**, ni cifrado. |
+| `PUT /api/github/settings` | Guarda o corrige `{ api_url, token }`. En `token`, un texto lo guarda o lo rota, `null` lo quita y omitirlo lo deja como estaba. |
+| `DELETE /api/github/settings` | Quita el token. Repositorios y documentos se quedan, pero sin token no se sincroniza ni se baja lo que no tenga copia. |
+| `GET /api/github/browse` | Repositorios a los que alcanza el token. |
+| `GET /api/github/branches?owner=&repository=` | Ramas de un repositorio. |
+| `GET` / `POST /api/github/repositories` | Repositorios dados de alta; alta con `{ owner, repository, branch, index, store_content, excludes }`, que encola la primera pasada. |
+| `PATCH /api/github/repositories/:id` | Cambia `{ excludes }` —hasta 100 patrones—, olvida el último commit y encola la pasada que los aplica. |
+| `DELETE /api/github/repositories/:id` | Deja de sincronizar esa rama. |
+| `POST` / `GET /api/github/repositories/:id/sync` | Encola una pasada —o devuelve la que ya corre— y su progreso. |
+
+Con GitHub desactivado en el despliegue todos responden `400 GITHUB_DISABLED`, y sin token
+guardado, `400 GITHUB_NOT_CONFIGURED`. Un token que GitHub rechaza es `401
+GITHUB_NOT_CONNECTED`, y la cuota agotada, `503 GITHUB_UNAVAILABLE`.
+
+Lo importado entra **sin veredicto** y lo recoge el mismo barrido de pendientes que lo de
+Drive, y tampoco admite `PUT /api/document/:id/file` (`400 REMOTE_READ_ONLY`): se cambia en
+el repositorio y la siguiente pasada lo trae.
 
 ## Licencia
 

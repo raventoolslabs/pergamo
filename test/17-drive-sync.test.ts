@@ -54,8 +54,8 @@ describe('Drive sync', () => {
 
   const row = async (fileId:string) => {
     const rows:any = await sequelize.query(
-      `SELECT id, drive_folder, drive_revision, index_status, scan_status, discharge_date, metadata
-      FROM pergamo.document WHERE organization = :organization AND drive_file_id = :fileId;`, {
+      `SELECT id, remote_folder, remote_revision, index_status, scan_status, discharge_date, metadata
+      FROM pergamo.document WHERE organization = :organization AND remote_file_id = :fileId;`, {
       replacements: { organization: ORGANIZATION, fileId },
       type: QueryTypes.SELECT
     });
@@ -98,7 +98,7 @@ describe('Drive sync', () => {
     expect(progress).toMatchObject({ seen: 3, created: 2, skipped: 1 });
 
     const a = await row('a');
-    expect(a).toMatchObject({ drive_folder: folderA, drive_revision: 'v1', index_status: 'pending', scan_status: 'pending' });
+    expect(a).toMatchObject({ remote_folder: folderA, remote_revision: 'v1', index_status: 'pending', scan_status: 'pending' });
     expect(a.metadata).toMatchObject({ name: 'a', extension: 'pdf', hash: 'drive:v1' });
     expect(enqueued).toHaveLength(2);
     // Lo importado entra sin veredicto: se pide el barrido, si hay antivirus.
@@ -119,13 +119,13 @@ describe('Drive sync', () => {
 
     await sequelize.query(
       `UPDATE pergamo.document SET index_status = 'indexed', scan_status = 'clean',
-        metadata = jsonb_set(metadata, '{tags}', '["keep"]') WHERE drive_file_id = 'a';`, { type: QueryTypes.UPDATE });
+        metadata = jsonb_set(metadata, '{tags}', '["keep"]') WHERE remote_file_id = 'a';`, { type: QueryTypes.UPDATE });
 
     const progress = await sync(folderA, { A: [file('a', 'v2'), file('b')] });
 
     expect(progress.updated).toBe(1);
     const a = await row('a');
-    expect(a).toMatchObject({ drive_revision: 'v2', index_status: 'pending', scan_status: 'pending' });
+    expect(a).toMatchObject({ remote_revision: 'v2', index_status: 'pending', scan_status: 'pending' });
     expect(a.metadata.tags).toEqual(['keep']);
     expect(enqueued).toEqual([a.id]);
   });
@@ -167,7 +167,7 @@ describe('Drive sync', () => {
 
     const progress = await sync(folderB, { B: [file('a', 'v2')] });
     expect(progress).toMatchObject({ created: 0, updated: 0 });
-    expect((await row('a')).drive_folder).toBe(folderA);
+    expect((await row('a')).remote_folder).toBe(folderA);
 
     await sync(folderB, { B: [] });
     expect((await row('a')).discharge_date).toBeNull();

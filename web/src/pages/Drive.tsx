@@ -5,7 +5,7 @@ import { api } from '../api/client';
 import type { DriveConnection, DriveFolder, DriveSettings as Settings, DriveSyncState } from '../api/types';
 import { DriveConnection as DriveConnectionSection } from '../components/DriveConnection';
 import { DriveFolderDialog } from '../components/DriveFolderDialog';
-import { DriveSyncProgress } from '../components/DriveSyncProgress';
+import { SyncProgress } from '../components/SyncProgress';
 import { useToast } from '../components/toast';
 import { Dialog, Empty, ErrorNotice, Loading, Notice, errorMessage, formatDate } from '../components/ui';
 import { t } from '../i18n';
@@ -142,18 +142,18 @@ export const Drive = () => {
                   <div className="version__text">
                     <div className="version__title">{folder.name}</div>
                     <div className="version__note">
-                      {folder.sync_date ? t('drive.syncedOn', { date: formatDate(folder.sync_date) }) : t('drive.neverSynced')}
-                      {folder.index_documents ? ` · ${t('drive.indexed')}` : ''}
+                      {folder.sync_date ? t('sync.on', { date: formatDate(folder.sync_date) }) : t('sync.never')}
+                      {folder.index_documents ? ` · ${t('sync.indexed')}` : ''}
                     </div>
                     {folder.sync_error ? (
                       <div className="version__note drive-folder__error" title={folder.sync_error}>
-                        {t('drive.syncFailed')}: {folder.sync_error}
+                        {t('sync.failed')}: {folder.sync_error}
                       </div>
                     ) : null}
-                    <DriveSyncProgress folder={folder.id} started={started[folder.id]} onSettled={load} />
+                    <SyncProgress source={folder.id} load={api.driveSync} started={started[folder.id]} onSettled={load} />
                   </div>
                   <button type="button" className="btn btn--tiny" onClick={() => sync(folder)} disabled={!connected}>
-                    <SyncIcon /> {t('drive.syncNow')}
+                    <SyncIcon /> {t('sync.now')}
                   </button>
                   <button
                     type="button"

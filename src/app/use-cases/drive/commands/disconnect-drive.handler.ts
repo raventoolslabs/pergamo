@@ -12,7 +12,7 @@ const liveDocuments = async (organization:string, deps:DriveDeps):Promise<string
 
   for(let afterId:string = null; ;) {
 
-    const page = await deps.documents.listRemoteState(organization, afterId, PAGE_SIZE);
+    const page = await deps.documents.listRemoteState(organization, 'drive', afterId, PAGE_SIZE);
 
     page.forEach((state) => { if(!state.discharged) live.push(state.id); });
 

@@ -4,9 +4,11 @@ import sequelize from '@/infrastructure/db/client';
 import { startWorker, stopWorker } from '@/api/queue/index.worker';
 import { startRescanWorker, stopRescanWorker } from '@/api/queue/rescan.worker';
 import { startDriveSyncWorker, stopDriveSyncWorker } from '@/api/queue/drive-sync.worker';
+import { startGitHubSyncWorker, stopGitHubSyncWorker } from '@/api/queue/github-sync.worker';
 import { indexQueue } from '@/infrastructure/queue/index.queue';
 import { rescanQueue } from '@/infrastructure/queue/rescan.queue';
 import { driveSyncQueue } from '@/infrastructure/queue/drive-sync.queue';
+import { githubSyncQueue } from '@/infrastructure/queue/github-sync.queue';
 
 /**
  * Worker suelto: el mismo codigo que el embebido, en su propio proceso.
@@ -26,8 +28,8 @@ const shutdown = async (signal:string) => {
 
   log.info(`${signal} received: finishing the job in progress`);
 
-  await Promise.all([stopWorker(), stopRescanWorker(), stopDriveSyncWorker()]);
-  await Promise.all([indexQueue.close(), rescanQueue.close(), driveSyncQueue.close()]);
+  await Promise.all([stopWorker(), stopRescanWorker(), stopDriveSyncWorker(), stopGitHubSyncWorker()]);
+  await Promise.all([indexQueue.close(), rescanQueue.close(), driveSyncQueue.close(), githubSyncQueue.close()]);
   await sequelize.close().catch(() => {});
 
   process.exit(0);
@@ -38,14 +40,15 @@ process.on('SIGINT', () => { shutdown('SIGINT'); });
 
 const start = async () => {
 
-  if(!Config.indexing.enabled && !Config.enable_antivirus && !Config.drive.enabled) throw new Error(
-    'None of INDEXING_ENABLED, ENABLE_ANTIVIRUS or DRIVE_ENABLED is enabled: there is nothing for this worker to do.');
+  if(!Config.indexing.enabled && !Config.enable_antivirus && !Config.drive.enabled && !Config.github.enabled) throw new Error(
+    'None of INDEXING_ENABLED, ENABLE_ANTIVIRUS, DRIVE_ENABLED or GITHUB_ENABLED is enabled: there is nothing for this worker to do.');
 
   // El del indice comprueba antes el esquema y el proveedor de embeddings; el
   // del barrido no necesita ninguno de los dos.
   if(Config.indexing.enabled) await startWorker();
   if(Config.enable_antivirus) await startRescanWorker();
   if(Config.drive.enabled) await startDriveSyncWorker();
+  if(Config.github.enabled) await startGitHubSyncWorker();
 };
 
 start().catch((error:any) => {

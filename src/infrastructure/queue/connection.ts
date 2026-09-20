@@ -23,3 +23,8 @@ export const connection = () => new Redis(Config.queue.redis_url, {
 // de Google, y no debe hacer esperar al barrido ni al indice.
 export const DRIVE_SYNC_QUEUE_NAME = 'drive-sync';
 export const DRIVE_SYNC_JOB_NAME = 'sync-drive-folder';
+
+// Y otra para GitHub, por lo mismo: su cuota es de otro tercero y su ritmo,
+// el de un arbol de Git.
+export const GITHUB_SYNC_QUEUE_NAME = 'github-sync';
+export const GITHUB_SYNC_JOB_NAME = 'sync-github-repository';

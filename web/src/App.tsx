@@ -7,6 +7,7 @@ import { Account } from './pages/Account';
 import { DocumentDetail } from './pages/DocumentDetail';
 import { Documents } from './pages/Documents';
 import { Drive } from './pages/Drive';
+import { GitHub } from './pages/GitHub';
 import { Login } from './pages/Login';
 import { Organizations } from './pages/Organizations';
 
@@ -33,6 +34,7 @@ export const App = () => {
               <Route path="/documents/:id" element={<DocumentDetail />} />
               <Route path="/account" element={<Account />} />
               <Route path="/drive" element={<Drive />} />
+              <Route path="/github" element={<GitHub />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
           )}

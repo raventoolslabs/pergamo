@@ -19,15 +19,17 @@ export interface DocumentMetadata {
   [key: string]: unknown;
 }
 
-export type DocumentSource = 'disk' | 'drive';
+export type DocumentSource = 'disk' | 'drive' | 'github';
 
 /**
- * Donde vive el binario de un documento de Drive. `revision` es lo que decide si
- * cambio: se compara, nunca se descarga para calcular un hash.
+ * Donde vive el binario de un documento que no es de disco. `revision` es lo que
+ * decide si cambio: se compara, nunca se descarga para calcular un hash.
  */
 export interface RemoteSource {
+  // Quien lo sirve: es lo que dice que cliente lo sabe bajar.
+  source: Exclude<DocumentSource, 'disk'>;
   fileId: string;
-  // Ausente si la carpeta se quito: el documento sigue hasta que se de de baja.
+  // Ausente si la carpeta o el repositorio se quito: el documento sigue hasta que se de de baja.
   folder?: string;
   revision: string;
   viewLink?: string;
@@ -76,7 +78,7 @@ export interface DocumentSummary {
   scanSignature?: string;
   scanEngine?: string;
   source: DocumentSource;
-  driveViewLink?: string;
+  viewLink?: string;
 }
 
 export interface ScanInfo {
