@@ -96,18 +96,36 @@ const isOoxml = async (head:Buffer, filePath:string, marker:string) => {
 }
 
 /**
+ * HTML no tiene magic bytes: se exige texto (sin NUL) que abra con el doctype o
+ * con <html>, tras un BOM, espacios o comentarios. Basta para que un binario no
+ * pase declarado como HTML.
+ */
+const isHtml = (head:Buffer) => {
+
+  if(head.includes(0)) return false;
+
+  const start = head.toString('utf8')
+    .replace(/^\uFEFF/, '')
+    .replace(/^(\s|<!--[\s\S]*?-->)*/, '')
+    .toLowerCase();
+
+  return start.startsWith('<!doctype html') || start.startsWith('<html');
+}
+
+/**
  * Firma por mimetype. Devolver false es rechazar: verifyMimetype solo considera
  * verificable lo que aparezca aqui, y el llamante trata lo no verificable como
  * un 400.
  *
- * HTML, Markdown, CSV y texto plano no estan, y no es un olvido: no tienen
- * magic bytes, asi que no hay nada que contrastar con el mimetype declarado.
- * Anadirlos a VALID_MIMETYPE sin resolver esto los rechazaria con un 400
- * confuso.
+ * Markdown, CSV y texto plano no estan, y no es un olvido: no tienen magic
+ * bytes ni una apertura fija, asi que no hay nada que contrastar con el
+ * mimetype declarado. Anadirlos a VALID_MIMETYPE sin resolver esto los
+ * rechazaria con un 400 confuso.
  */
 const SIGNATURES:{ [mimetype:string]: (head:Buffer, filePath:string) => boolean | Promise<boolean> } = {
   'application/pdf': (head) => head.subarray(0, 5).toString('latin1') === '%PDF-',
   'application/rtf': (head) => head.subarray(0, 6).toString('latin1') === '{\\rtf1',
+  'text/html': isHtml,
 
   'application/vnd.oasis.opendocument.text': (head) =>
     isOpenDocument(head, 'application/vnd.oasis.opendocument.text'),
