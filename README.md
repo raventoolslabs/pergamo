@@ -534,10 +534,11 @@ allowlist. Ampliar el catálogo es siempre las dos cosas.
 | ODT, ODS, ODP | ZIP cuya primera entrada es `mimetype` sin comprimir, con el valor exacto del formato. |
 | EPUB | La misma convención que ODF, con `application/epub+zip`. |
 | DOCX, XLSX, PPTX | ZIP cuya primera entrada es `[Content_Types].xml`. La cabecera solo distingue la **familia**, así que esa entrada se descomprime y se lee el content type real: sin ese paso, un XLSX declarado como DOCX pasaría. |
+| HTML | Texto sin bytes NUL que abre con `<!doctype html` o `<html` (tras BOM, espacios o comentarios). Se descarga con `Content-Security-Policy: sandbox` y no se indexa. |
 
-**HTML, Markdown, CSV y texto plano quedan fuera a propósito.** No tienen magic
-bytes, así que no hay nada que contrastar con el mimetype declarado y un diseño
-fail-closed no puede verificarlos. Añadirlos a `VALID_MIMETYPE` sin resolver eso
+**Markdown, CSV y texto plano quedan fuera a propósito.** No tienen magic
+bytes ni una apertura fija, así que no hay nada que contrastar con el mimetype
+declarado y un diseño fail-closed no puede verificarlos. Añadirlos a `VALID_MIMETYPE` sin resolver eso
 los haría fallar con un `400` que no explica nada.
 
 DOC, XLS, PPT (los binarios anteriores a OOXML), las imágenes y el ZIP genérico
