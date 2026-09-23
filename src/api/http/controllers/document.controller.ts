@@ -106,6 +106,9 @@ const getFile = async (req, res, next) => {
 
     res.setHeader('Content-Disposition',
       contentDisposition(`${document.metadata.name}.${document.metadata.extension}`));
+    // Un HTML abierto en el navegador ejecutaria sus scripts con el origen de
+    // Pergamo: sandbox lo deja en un origen opaco aunque se ignore el attachment.
+    if(document.metadata.mimetype === 'text/html') res.setHeader('Content-Security-Policy', 'sandbox');
     res.status(StatusCodes.OK)
       .set('Content-Type', document.metadata.mimetype)
       .sendFile(filePath);

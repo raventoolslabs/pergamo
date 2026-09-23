@@ -82,12 +82,48 @@ describe('Content signatures', () => {
     }
   });
 
+  const verifyText = async (content:string|Buffer, mimetype:string) => {
+
+    const tmp = path.join(Config.tmp_base, `text-${Date.now()}-${Math.random()}.tmp`);
+
+    fs.writeFileSync(tmp, content);
+
+    try {
+      return await verifyMimetype(tmp, mimetype);
+    } finally {
+      fs.unlinkSync(tmp);
+    }
+  };
+
+  it.each([
+    '<!DOCTYPE html><html><body>x</body></html>',
+    '\uFEFF\n  <!doctype HTML>\n<html lang="es">',
+    '<!-- informe -->\n<html><head></head></html>'
+  ])('Should verify an HTML document: %j', async (content) => {
+
+    await expect(verifyText(content, 'text/html')).resolves.toEqual({ verifiable: true, matches: true });
+  });
+
+  it.each([
+    ['plain text', 'hola, esto no es html'],
+    ['a fragment', '<div>sin documento</div>'],
+    ['a binary with an html opening', Buffer.concat([Buffer.from('<html>'), Buffer.from([0, 1, 2])])]
+  ])('Should reject %s declared as text/html', async (_label, content) => {
+
+    await expect(verifyText(content, 'text/html')).resolves.toEqual({ verifiable: true, matches: false });
+  });
+
+  it('Should reject a PDF declared as text/html', async () => {
+
+    await expect(verify('test.pdf', 'text/html')).resolves.toEqual({ verifiable: true, matches: false });
+  });
+
   /**
    * No tienen magic bytes, asi que no hay nada que contrastar con el mimetype
    * declarado y quedan fuera de SIGNATURES. Fijarlo aqui evita que se anadan a
    * VALID_MIMETYPE por descuido: fail-closed los rechazaria con un 400 confuso.
    */
-  it.each(['text/plain', 'text/html', 'text/csv', 'text/markdown', 'application/zip'])(
+  it.each(['text/plain', 'text/csv', 'text/markdown', 'application/zip'])(
     'Should report %s as unverifiable', async (mimetype) => {
 
     await expect(verify('test.pdf', mimetype)).resolves.toEqual({ verifiable: false, matches: true });
